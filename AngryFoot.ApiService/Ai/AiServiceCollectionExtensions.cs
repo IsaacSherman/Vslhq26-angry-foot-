@@ -16,10 +16,11 @@ public static class AiServiceCollectionExtensions
             ?? configuration["OpenAI:ApiKey"];
         var deployment = configuration["AzureOpenAI:ChatDeployment"]
             ?? configuration["AzureOpenAI:Deployment"]
-            ?? configuration["AzureOpenAI:Model"]  // Support model name as alias
-            ?? defaultDeployment;
+            ?? configuration["AzureOpenAI:Model"];  // Support model name as alias
         var serviceVersion = configuration["AzureOpenAI:ServiceVersion"];
+        // Priority: explicit config > deployment embedded in the endpoint path > default.
         NormalizeEndpointAndDeployment(ref endpoint, ref deployment);
+        deployment ??= defaultDeployment;
 
         if (!string.IsNullOrWhiteSpace(endpoint)
             && !string.IsNullOrWhiteSpace(apiKey)

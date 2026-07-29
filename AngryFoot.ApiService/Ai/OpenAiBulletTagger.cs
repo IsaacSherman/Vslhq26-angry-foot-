@@ -153,6 +153,8 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
             .ToArray();
     }
 
-    [GeneratedRegex(@"\b(\d+%|\d+[\+]?)\b", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
+    // No trailing \b: there is no word boundary between '%' and following punctuation,
+    // which previously made the pattern capture "40" instead of "40%".
+    [GeneratedRegex(@"\b\d+[%+]?", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
     private static partial Regex ImpactPattern();
 }

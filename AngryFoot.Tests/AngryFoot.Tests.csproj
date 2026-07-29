@@ -13,9 +13,11 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.Testing" Version="13.4.6" />
+    <PackageReference Include="AwesomeAssertions" Version="9.5.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="xunit.v3" Version="3.0.1" />
   </ItemGroup>
@@ -23,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AngryFoot.AppHost\AngryFoot.AppHost.csproj" />
     <ProjectReference Include="..\AngryFoot.Contracts\AngryFoot.Contracts.csproj" />
+    <ProjectReference Include="..\AngryFoot.ApiService\AngryFoot.ApiService.csproj" />
   </ItemGroup>
 
   <ItemGroup>
