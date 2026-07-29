@@ -81,6 +81,33 @@ Force re-enriches metadata for an existing bullet. Returns `200` with `BulletDto
 }
 ```
 
+## Generations
+
+### POST `/api/generations/analyze`
+Analyzes a job description and returns structured metadata used for ranking and tailoring.
+
+Request:
+```json
+{ "jobDescription": "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure." }
+```
+
+Response: `JobAnalysisDto`
+
+### POST `/api/generations`
+Runs the A2 pipeline: analyze job description, rank bullets, rewrite selected bullets, generate resume markdown, generate cover letter markdown, and persist a generation artifact.
+
+Request:
+```json
+{
+  "jobDescription": "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure.",
+  "jobTitle": "Senior .NET Engineer",
+  "company": "Contoso",
+  "maxBullets": 8
+}
+```
+
+Response: `GenerationResultDto`
+
 ## Artifacts
 
 ### GET `/api/artifacts`

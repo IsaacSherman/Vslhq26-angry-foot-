@@ -2,6 +2,7 @@ using AngryFoot.ApiService.Ai;
 using AngryFoot.ApiService.Api;
 using AngryFoot.ApiService.Application.Artifacts;
 using AngryFoot.ApiService.Application.Bullets;
+using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
 using AngryFoot.ApiService.Data;
 using Microsoft.EntityFrameworkCore;
@@ -18,10 +19,16 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 
 builder.Services.AddAngryFootAi(builder.Configuration);
-builder.Services.AddScoped<IBulletTagger, NoOpBulletTagger>();
+builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();
 builder.Services.AddScoped<IBulletService, BulletService>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
+builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
+builder.Services.AddScoped<BulletRankingService>();
+builder.Services.AddScoped<BulletRewriteService>();
+builder.Services.AddScoped<ResumeMarkdownService>();
+builder.Services.AddScoped<CoverLetterService>();
+builder.Services.AddScoped<IGenerationOrchestrator, GenerationOrchestrator>();
 
 builder.Services.AddDbContext<AngryFootDbContext>(options =>
 {
@@ -47,6 +54,7 @@ var api = app.MapGroup("/api");
 api.MapProfileEndpoints();
 api.MapBulletEndpoints();
 api.MapArtifactEndpoints();
+api.MapGenerationEndpoints();
 
 string[] summaries = ["Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"];
 app.MapGet("/weatherforecast", () =>

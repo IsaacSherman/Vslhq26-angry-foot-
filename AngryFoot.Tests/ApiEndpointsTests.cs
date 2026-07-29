@@ -145,4 +145,48 @@ public class ApiEndpointsTests
         var deleteMissing = await apiClient.DeleteAsync($"/api/artifacts/{missingId}", cancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, deleteMissing.StatusCode);
     }
+
+    [Fact]
+    public async Task GenerationEndpointsProduceAndPersistArtifacts()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest("Implemented automated validation workflows that reduced manual review effort by 75%."), cancellationToken);
+
+        var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new { JobDescription = "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure." }, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
+        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobAnalysisDto>(cancellationToken);
+        Assert.NotNull(analysis);
+
+        var generationResponse = await apiClient.PostAsJsonAsync("/api/generations", new GenerationRequest(
+            "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure. Drive architecture and automation.",
+            "Senior .NET Engineer",
+            "Contoso",
+            8), cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, generationResponse.StatusCode);
+        var result = await generationResponse.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken);
+        Assert.NotNull(result);
+        Assert.False(string.IsNullOrWhiteSpace(result!.ResumeMarkdown));
+        Assert.False(string.IsNullOrWhiteSpace(result.CoverLetterMarkdown));
+
+        var artifactsResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, artifactsResponse.StatusCode);
+        var artifacts = await artifactsResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
+        Assert.NotNull(artifacts);
+        Assert.Contains(artifacts!, x => x.Id == result.ArtifactId);
+    }
 }
