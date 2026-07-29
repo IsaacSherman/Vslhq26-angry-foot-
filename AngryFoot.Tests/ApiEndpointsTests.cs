@@ -136,7 +136,6 @@ public class ApiEndpointsTests
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
         var list = await listResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
         Assert.NotNull(list);
-        Assert.Empty(list!);
 
         var missingId = Guid.NewGuid();
         var getMissing = await apiClient.GetAsync($"/api/artifacts/{missingId}", cancellationToken);

@@ -1,0 +1,149 @@
+@page "/bullets"
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Bullets</PageTitle>
+
+<h1>Bullets</h1>
+
+<div class="mb-3">
+    <button class="btn btn-primary" @onclick="CreateNew">Add Bullet</button>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <input class="form-control" placeholder="Search text" @bind="search" />
+            </div>
+            <div class="col-md-2">
+                <input class="form-control" placeholder="Tag" @bind="tag" />
+            </div>
+            <div class="col-md-2">
+                <input class="form-control" placeholder="Skill" @bind="skill" />
+            </div>
+            <div class="col-md-2">
+                <input class="form-control" placeholder="Technology" @bind="technology" />
+            </div>
+            <div class="col-md-2">
+                <input class="form-control" placeholder="Category" @bind="category" />
+            </div>
+        </div>
+        <div class="mt-2">
+            <button class="btn btn-secondary me-2" @onclick="LoadAsync">Apply Filters</button>
+            <button class="btn btn-outline-secondary" @onclick="ClearFilters">Clear</button>
+        </div>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <p>Loading...</p>
+}
+else if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (bullets.Count == 0)
+{
+    <p>No bullets found.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Bullet</th>
+                <th>Skills</th>
+                <th>Technologies</th>
+                <th>State</th>
+                <th style="width: 260px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var bullet in bullets)
+            {
+                <tr>
+                    <td>@bullet.BulletText</td>
+                    <td>@string.Join(", ", bullet.Skills)</td>
+                    <td>@string.Join(", ", bullet.Technologies)</td>
+                    <td>@bullet.EnrichmentState</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(bullet.Id)">Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EnrichAsync(bullet.Id)">Retry Enrich</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(bullet.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private readonly List<AngryFoot.Contracts.BulletDto> bullets = [];
+    private bool isLoading;
+    private string? errorMessage;
+
+    private string? search;
+    private string? tag;
+    private string? skill;
+    private string? technology;
+    private string? category;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        errorMessage = null;
+        isLoading = true;
+
+        try
+        {
+            bullets.Clear();
+            bullets.AddRange(await ApiClient.GetBulletsAsync(search, tag, skill, technology, category));
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/bullets/edit");
+    }
+
+    private void Edit(Guid id)
+    {
+        Navigation.NavigateTo($"/bullets/edit/{id}");
+    }
+
+    private async Task EnrichAsync(Guid id)
+    {
+        await ApiClient.EnrichBulletAsync(id);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await ApiClient.DeleteBulletAsync(id);
+        await LoadAsync();
+    }
+
+    private async Task ClearFilters()
+    {
+        search = null;
+        tag = null;
+        skill = null;
+        technology = null;
+        category = null;
+        await LoadAsync();
+    }
+}

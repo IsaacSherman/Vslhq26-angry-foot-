@@ -1,0 +1,98 @@
+@page "/bullets/edit"
+@page "/bullets/edit/{BulletId:guid}"
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Bullet Editor</PageTitle>
+
+<h1>@(IsCreate ? "Create Bullet" : "Edit Bullet")</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+<div class="mb-3">
+    <label class="form-label">Bullet Text</label>
+    <textarea class="form-control" rows="6" @bind="bulletText"></textarea>
+</div>
+
+<div>
+    <button class="btn btn-primary me-2" @onclick="SaveAsync" disabled="@isSaving">Save</button>
+    <button class="btn btn-outline-secondary" @onclick="Back">Back</button>
+</div>
+
+@code {
+    [Parameter]
+    public Guid? BulletId { get; set; }
+
+    private string bulletText = string.Empty;
+    private bool isSaving;
+    private string? errorMessage;
+
+    private bool IsCreate => !BulletId.HasValue;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        errorMessage = null;
+        if (BulletId is null)
+        {
+            bulletText = string.Empty;
+            return;
+        }
+
+        var bullet = await ApiClient.GetBulletAsync(BulletId.Value);
+        if (bullet is null)
+        {
+            errorMessage = "Bullet not found.";
+            return;
+        }
+
+        bulletText = bullet.BulletText;
+    }
+
+    private async Task SaveAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(bulletText))
+        {
+            errorMessage = "Bullet text is required.";
+            return;
+        }
+
+        isSaving = true;
+
+        try
+        {
+            if (BulletId is null)
+            {
+                await ApiClient.CreateBulletAsync(bulletText.Trim());
+            }
+            else
+            {
+                var updated = await ApiClient.UpdateBulletAsync(BulletId.Value, bulletText.Trim());
+                if (updated is null)
+                {
+                    errorMessage = "Bullet not found.";
+                    return;
+                }
+            }
+
+            Navigation.NavigateTo("/bullets");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Back()
+    {
+        Navigation.NavigateTo("/bullets");
+    }
+}
