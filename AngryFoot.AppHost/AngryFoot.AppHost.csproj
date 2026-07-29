@@ -1,0 +1,16 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>41dab263-ddf0-4fc1-9851-36946711cea1</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AngryFoot.ApiService\AngryFoot.ApiService.csproj" />
+    <ProjectReference Include="..\AngryFoot.Web\AngryFoot.Web.csproj" />
+  </ItemGroup>
+
+</Project>

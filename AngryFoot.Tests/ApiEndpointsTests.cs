@@ -1,0 +1,148 @@
+using System.Net;
+using System.Net.Http.Json;
+using AngryFoot.Contracts;
+using Microsoft.Extensions.Logging;
+
+namespace AngryFoot.Tests;
+
+[Collection(IntegrationTestCollection.Name)]
+public class ApiEndpointsTests
+{
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
+
+    [Fact]
+    public async Task ProfileGetAndPutRoundTripWorks()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        var getResponse = await apiClient.GetAsync("/api/profile", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        var profile = await getResponse.Content.ReadFromJsonAsync<ProfileDto>(cancellationToken);
+        Assert.NotNull(profile);
+
+        var updated = profile! with
+        {
+            Name = "Isaac Sherman",
+            Email = "isaac@example.com",
+            Phone = "555-555-5555",
+            LinkedIn = "https://linkedin.com/in/isaacsherman",
+            GitHub = "https://github.com/isaacsherman",
+            ProfessionalSummary = "Principal engineer building AI-enhanced productivity tooling.",
+            WorkHistory =
+            [
+                new WorkHistoryDto(Guid.Empty, "Acme Corp", "Principal Engineer", "Remote", "2023", null, 0)
+            ],
+            Education =
+            [
+                new EducationDto(Guid.Empty, "State University", "BS", "Computer Science", "2016", 0)
+            ],
+            Certifications =
+            [
+                new CertificationDto(Guid.Empty, "Azure Developer Associate", "Microsoft", "2025", 0)
+            ]
+        };
+
+        var putResponse = await apiClient.PutAsJsonAsync("/api/profile", updated, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, putResponse.StatusCode);
+
+        var putProfile = await putResponse.Content.ReadFromJsonAsync<ProfileDto>(cancellationToken);
+        Assert.NotNull(putProfile);
+        Assert.Equal("Isaac Sherman", putProfile!.Name);
+        Assert.Single(putProfile.WorkHistory);
+        Assert.Single(putProfile.Education);
+        Assert.Single(putProfile.Certifications);
+    }
+
+    [Fact]
+    public async Task BulletCrudSearchAndEnrichWorks()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        var createResponse = await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest("Reduced widget waste by 30% by redesigning the assembly process."), cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var created = await createResponse.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
+        Assert.NotNull(created);
+        Assert.Equal(EnrichmentStateDto.Enriched, created!.EnrichmentState);
+
+        var listResponse = await apiClient.GetAsync("/api/bullets?search=widget", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var list = await listResponse.Content.ReadFromJsonAsync<List<BulletDto>>(cancellationToken);
+        Assert.NotNull(list);
+        Assert.Single(list!);
+
+        var updateResponse = await apiClient.PutAsJsonAsync($"/api/bullets/{created.Id}", new UpdateBulletRequest("Reduced widget waste by 35% by redesigning the assembly process."), cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
+        Assert.NotNull(updated);
+        Assert.Contains("35%", updated!.BulletText);
+
+        var enrichResponse = await apiClient.PostAsync($"/api/bullets/{created.Id}/enrich", content: null, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, enrichResponse.StatusCode);
+
+        var deleteResponse = await apiClient.DeleteAsync($"/api/bullets/{created.Id}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var getDeletedResponse = await apiClient.GetAsync($"/api/bullets/{created.Id}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, getDeletedResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task ArtifactHistoryEndpointsReturnExpectedDefaults()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        var listResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var list = await listResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
+        Assert.NotNull(list);
+        Assert.Empty(list!);
+
+        var missingId = Guid.NewGuid();
+        var getMissing = await apiClient.GetAsync($"/api/artifacts/{missingId}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, getMissing.StatusCode);
+
+        var deleteMissing = await apiClient.DeleteAsync($"/api/artifacts/{missingId}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, deleteMissing.StatusCode);
+    }
+}
