@@ -20,7 +20,7 @@ public class ApiEndpointsTests
             logging.SetMinimumLevel(LogLevel.Warning);
             logging.AddFilter("Aspire.", LogLevel.Warning);
         });
-        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
         await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
@@ -77,7 +77,7 @@ public class ApiEndpointsTests
             logging.SetMinimumLevel(LogLevel.Warning);
             logging.AddFilter("Aspire.", LogLevel.Warning);
         });
-        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
         await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
@@ -124,7 +124,7 @@ public class ApiEndpointsTests
             logging.SetMinimumLevel(LogLevel.Warning);
             logging.AddFilter("Aspire.", LogLevel.Warning);
         });
-        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
         await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
@@ -148,14 +148,17 @@ public class ApiEndpointsTests
     [Fact]
     public async Task GenerationEndpointsProduceAndPersistArtifacts()
     {
+        // var cts = new CancellationTokenSource();
         var cancellationToken = TestContext.Current.CancellationToken;
+        // var cancellationToken = cts.Token;
+        // cts.CancelAfter(10000);
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
             logging.AddFilter("Aspire.", LogLevel.Warning);
         });
-        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler());
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
         await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);

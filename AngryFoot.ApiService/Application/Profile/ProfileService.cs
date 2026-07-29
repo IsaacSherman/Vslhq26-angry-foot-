@@ -23,25 +23,23 @@ public sealed class ProfileService(AngryFootDbContext dbContext) : IProfileServi
     {
         var profile = await GetOrCreateProfileAsync(cancellationToken);
 
-        profile.Name = profileDto.Name.Trim();
-        profile.Email = profileDto.Email.Trim();
-        profile.Phone = profileDto.Phone.Trim();
-        profile.LinkedIn = profileDto.LinkedIn.Trim();
-        profile.GitHub = profileDto.GitHub.Trim();
-        profile.ProfessionalSummary = profileDto.ProfessionalSummary.Trim();
+        profile.Name = TrimOrEmpty(profileDto.Name);
+        profile.Email = TrimOrEmpty(profileDto.Email);
+        profile.Phone = TrimOrEmpty(profileDto.Phone);
+        profile.LinkedIn = TrimOrEmpty(profileDto.LinkedIn);
+        profile.GitHub = TrimOrEmpty(profileDto.GitHub);
+        profile.ProfessionalSummary = TrimOrEmpty(profileDto.ProfessionalSummary);
         profile.ModifiedDate = DateTime.UtcNow;
 
-        await dbContext.WorkHistory.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
-        await dbContext.Education.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
-        await dbContext.Certifications.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
-
-        var workHistory = profileDto.WorkHistory
+        // Materialize all replacement rows before touching the database so a bad
+        // payload cannot fail after the existing rows have been deleted.
+        var workHistory = (profileDto.WorkHistory ?? [])
             .OrderBy(x => x.SortOrder)
             .Select(item => new WorkHistory
             {
                 Id = Guid.NewGuid(),
                 ProfileId = profile.Id,
-                Employer = item.Employer.Trim(),
+                Employer = TrimOrEmpty(item.Employer),
                 Title = item.Title?.Trim(),
                 Location = item.Location?.Trim(),
                 StartDate = item.StartDate?.Trim(),
@@ -50,13 +48,13 @@ public sealed class ProfileService(AngryFootDbContext dbContext) : IProfileServi
             })
             .ToArray();
 
-        var education = profileDto.Education
+        var education = (profileDto.Education ?? [])
             .OrderBy(x => x.SortOrder)
             .Select(item => new Education
             {
                 Id = Guid.NewGuid(),
                 ProfileId = profile.Id,
-                Institution = item.Institution.Trim(),
+                Institution = TrimOrEmpty(item.Institution),
                 Credential = item.Credential?.Trim(),
                 Field = item.Field?.Trim(),
                 GraduationDate = item.GraduationDate?.Trim(),
@@ -64,28 +62,39 @@ public sealed class ProfileService(AngryFootDbContext dbContext) : IProfileServi
             })
             .ToArray();
 
-        var certifications = profileDto.Certifications
+        var certifications = (profileDto.Certifications ?? [])
             .OrderBy(x => x.SortOrder)
             .Select(item => new Certification
             {
                 Id = Guid.NewGuid(),
                 ProfileId = profile.Id,
-                Name = item.Name.Trim(),
+                Name = TrimOrEmpty(item.Name),
                 Issuer = item.Issuer?.Trim(),
                 IssueDate = item.IssueDate?.Trim(),
                 SortOrder = item.SortOrder
             })
             .ToArray();
 
+        // ExecuteDeleteAsync commits immediately outside a transaction, so wrap the
+        // delete-and-replace in one to keep the upsert atomic.
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        await dbContext.WorkHistory.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
+        await dbContext.Education.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
+        await dbContext.Certifications.Where(x => x.ProfileId == profile.Id).ExecuteDeleteAsync(cancellationToken);
+
         dbContext.WorkHistory.AddRange(workHistory);
         dbContext.Education.AddRange(education);
         dbContext.Certifications.AddRange(certifications);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         var updated = await GetOrCreateProfileWithChildrenAsync(cancellationToken);
         return updated.ToDto();
     }
+
+    private static string TrimOrEmpty(string? value) => value?.Trim() ?? string.Empty;
 
     private async Task<Domain.Profile> GetOrCreateProfileAsync(CancellationToken cancellationToken)
     {

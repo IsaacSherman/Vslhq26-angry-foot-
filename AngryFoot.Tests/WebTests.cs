@@ -24,7 +24,7 @@ public class WebTests
         });
         appHost.Services.ConfigureHttpClientDefaults(clientBuilder =>
         {
-            clientBuilder.AddStandardResilienceHandler();
+            clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler);
         });
 
         await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);

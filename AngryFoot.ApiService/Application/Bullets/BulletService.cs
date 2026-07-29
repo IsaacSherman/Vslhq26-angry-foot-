@@ -2,6 +2,7 @@ using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
 using Microsoft.EntityFrameworkCore;
+using SQLitePCL;
 
 namespace AngryFoot.ApiService.Application.Bullets;
 
@@ -15,9 +16,11 @@ public interface IBulletService
     Task<BulletDto?> EnrichAsync(Guid id, CancellationToken cancellationToken);
 }
 
-public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bulletTagger) : IBulletService
+public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bulletTagger, ILogger<BulletService> logger) : IBulletService
 {
-    private static readonly TimeSpan TaggingTimeout = TimeSpan.FromSeconds(10);
+    // Outer safety net; must exceed the tagger's own AI timeout so the tagger can
+    // time out gracefully and still return its heuristic fallback.
+    private static readonly TimeSpan TaggingTimeout = TimeSpan.FromSeconds(30);
 
     public async Task<IReadOnlyList<BulletDto>> SearchAsync(string? search, string? tag, string? skill, string? technology, string? category, CancellationToken cancellationToken)
     {
@@ -143,14 +146,23 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         {
             bullet.EnrichmentState = EnrichmentState.Failed;
         }
-        catch
+        catch (Exception ex)
         {
+            if(logger.IsEnabled(LogLevel.Error))
+            {
+                logger.LogError(ex, "Failed to enrich bullet with ID {BulletId}", bullet.Id);
+            }
             bullet.EnrichmentState = EnrichmentState.Failed;
+            
         }
         finally
         {
             if (bullet.EnrichmentState == EnrichmentState.Pending)
             {
+                if(logger.IsEnabled(LogLevel.Warning))
+                {
+                    logger.LogWarning("Failed without exception- bullet with ID {BulletId} is still pending after enrichment attempt", bullet.Id);
+                }
                 bullet.EnrichmentState = EnrichmentState.Failed;
             }
         }

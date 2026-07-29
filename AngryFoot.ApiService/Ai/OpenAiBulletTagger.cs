@@ -7,7 +7,7 @@ namespace AngryFoot.ApiService.Ai;
 
 public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<OpenAiBulletTagger> logger) : IBulletTagger
 {
-    private static readonly TimeSpan AiTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan AiTimeout = TimeSpan.FromSeconds(20);
 
     private static readonly string[] KnownTechnologies =
     [
@@ -29,7 +29,10 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
 
         try
         {
-            var responseText = await GetResponseWithTimeoutAsync(systemPrompt, userPrompt, cancellationToken);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(AiTimeout);
+
+            var responseText = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, timeoutCts.Token);
             if (AiJsonUtilities.TryDeserialize<TagResponse>(responseText, out var parsed) && parsed is not null)
             {
                 var aiResult = Normalize(new BulletTagging(
@@ -41,27 +44,23 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
 
                 return HasMetadata(aiResult) ? aiResult : fallback;
             }
+
+            logger.LogWarning("Bullet enrichment AI response could not be parsed. Using heuristic fallback.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Bullet enrichment AI call timed out after {TimeoutSeconds:0}s. Using heuristic fallback.", AiTimeout.TotalSeconds);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Bullet enrichment AI call failed. Using heuristic fallback.");
         }
-        logger.LogWarning("Using Fallback without exception- indicates Deserialize failed");
+
         return fallback;
-    }
-
-    private async Task<string> GetResponseWithTimeoutAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
-    {
-        var responseTask = chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-        var timeoutTask = Task.Delay(AiTimeout, cancellationToken);
-
-        var completed = await Task.WhenAny(responseTask, timeoutTask);
-        if (completed != responseTask)
-        {
-            throw new TimeoutException($"AI request timed out after {AiTimeout.TotalSeconds:0} seconds.");
-        }
-
-        return await responseTask;
     }
 
     private static BulletTagging TagHeuristically(string bulletText)

@@ -33,15 +33,18 @@ public static class AiServiceCollectionExtensions
                 return client.GetChatClient(deployment).AsIChatClient();
             });
 
-            // Register health check for AI endpoint
-            //services.AddHealthChecks()
-            //    .AddCheck<AiHealthCheck>("ai-endpoint");
+            services.AddSingleton(new AiConfigurationStatus(
+                IsConfigured: true,
+                Message: $"Azure OpenAI configured with deployment '{deployment}'."));
 
             return services;
         }
 
-        services.AddSingleton<IChatClient>(_ => new StaticResponseChatClient(
-            "AI is not configured. Set AzureOpenAI:Endpoint and AzureOpenAI:ApiKey (or AzureOpenAI:Key), and set AzureOpenAI:ChatDeployment (or AzureOpenAI:Deployment / AzureOpenAI:Model). Optionally set AzureOpenAI:ServiceVersion."));
+        const string notConfiguredMessage =
+            "AI is not configured. Set AzureOpenAI:Endpoint and AzureOpenAI:ApiKey (or AzureOpenAI:Key), and set AzureOpenAI:ChatDeployment (or AzureOpenAI:Deployment / AzureOpenAI:Model). Optionally set AzureOpenAI:ServiceVersion.";
+
+        services.AddSingleton<IChatClient>(_ => new StaticResponseChatClient(notConfiguredMessage));
+        services.AddSingleton(new AiConfigurationStatus(IsConfigured: false, Message: notConfiguredMessage));
 
         return services;
     }

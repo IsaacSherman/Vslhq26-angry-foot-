@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="AngryFoot.ApiService/AngryFoot.ApiService.csproj" />
   <Project Path="AngryFoot.AppHost/AngryFoot.AppHost.csproj" />
   <Project Path="AngryFoot.Contracts/AngryFoot.Contracts.csproj" />

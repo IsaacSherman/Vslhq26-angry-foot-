@@ -1,6 +1,5 @@
 using AngryFoot.ApiService.Ai;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace AngryFoot.ApiService.Api;
 
@@ -16,31 +15,11 @@ public static class AiEndpoints
             .WithDescription("Get the current status of the AI endpoint configuration.");
     }
 
-    private static async Task<Ok<AiStatusResponse>> GetAiStatus(HealthCheckService healthCheckService)
+    private static Ok<AiStatusResponse> GetAiStatus(AiConfigurationStatus status)
     {
-        try
-        {
-            var result = await healthCheckService.CheckHealthAsync(registration => registration.Name == "ai-endpoint");
-            var aiStatus = HealthStatus.Unhealthy;
-            var description = "AI endpoint not configured";
-
-            if (result.Entries.TryGetValue("ai-endpoint", out var aiEntry))
-            {
-                aiStatus = aiEntry.Status;
-                description = aiEntry.Description ?? description;
-            }
-
-            return TypedResults.Ok(new AiStatusResponse(
-                IsHealthy: aiStatus == HealthStatus.Healthy,
-                Status: aiStatus.ToString(),
-                Message: description));
-        }
-        catch (Exception ex)
-        {
-            return TypedResults.Ok(new AiStatusResponse(
-                IsHealthy: false,
-                Status: "Unhealthy",
-                Message: ex.Message));
-        }
+        return TypedResults.Ok(new AiStatusResponse(
+            IsHealthy: status.IsConfigured,
+            Status: status.IsConfigured ? "Healthy" : "Unhealthy",
+            Message: status.Message));
     }
 }

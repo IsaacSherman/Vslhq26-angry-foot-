@@ -6,11 +6,24 @@ using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
 using AngryFoot.ApiService.Data;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
+
+// Log to a rolling file in ./Logs/ in addition to the default console/OTel providers.
+var logsPath = Path.Combine(builder.Environment.ContentRootPath, "Logs");
+Directory.CreateDirectory(logsPath);
+builder.Logging.AddSerilog(new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.File(
+        Path.Combine(logsPath, "apiservice-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+    .CreateLogger(), dispose: true);
 
 // Add services to the container.
 builder.Services.AddProblemDetails();
@@ -33,8 +46,28 @@ builder.Services.AddScoped<IGenerationOrchestrator, GenerationOrchestrator>();
 
 builder.Services.AddDbContext<AngryFootDbContext>(options =>
 {
-    var databasePath = Path.Combine(builder.Environment.ContentRootPath, "angryfoot.db");
-    options.UseSqlite($"Data Source={databasePath}");
+    var connectionString = builder.Configuration.GetConnectionString("angryfoot");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        // Default to a per-user data directory: the content root can be read-only in
+        // deployed environments, and a DB next to the binaries gets shared by tests.
+        var dataDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "AngryFoot");
+        Directory.CreateDirectory(dataDirectory);
+        var databasePath = Path.Combine(dataDirectory, "angryfoot.db");
+
+        // One-time migration from the previous location next to the app binaries.
+        var legacyPath = Path.Combine(builder.Environment.ContentRootPath, "angryfoot.db");
+        if (!File.Exists(databasePath) && File.Exists(legacyPath))
+        {
+            File.Copy(legacyPath, databasePath);
+        }
+
+        connectionString = $"Data Source={databasePath}";
+    }
+
+    options.UseSqlite(connectionString);
 });
 
 var app = builder.Build();
