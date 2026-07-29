@@ -4,7 +4,8 @@ var azureOpenAiEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
 var azureOpenAiApiKey = builder.Configuration["AzureOpenAI:Key"]
     ?? builder.Configuration["AzureOpenAI:ApiKey"];
 var azureOpenAiDeployment = builder.Configuration["AzureOpenAI:ChatDeployment"]
-    ?? builder.Configuration["AzureOpenAI:Deployment"];
+    ?? builder.Configuration["AzureOpenAI:Deployment"]
+    ?? builder.Configuration["AzureOpenAI:Model"];
 
 var apiService = builder.AddProject<Projects.AngryFoot_ApiService>("apiservice")
     .WithHttpHealthCheck("/health");

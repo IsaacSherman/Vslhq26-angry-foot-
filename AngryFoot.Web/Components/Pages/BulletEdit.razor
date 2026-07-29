@@ -1,5 +1,6 @@
 @page "/bullets/edit"
 @page "/bullets/edit/{BulletId:guid}"
+@using AngryFoot.Contracts
 @inject AngryFoot.Web.Services.ApiClient ApiClient
 @inject NavigationManager Navigation
 
@@ -17,6 +18,33 @@
     <textarea class="form-control" rows="6" @bind="bulletText"></textarea>
 </div>
 
+<div class="mb-3">
+    <button class="btn btn-outline-primary" @onclick="RewriteAsync" disabled="@isRewriting">Rewrite Suggestion</button>
+</div>
+
+@if (rewriteResult is not null)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Suggested Rewrite</h5>
+            <p class="card-text">@rewriteResult.RewrittenText</p>
+
+            @if (rewriteResult.Suggestions.Count > 0)
+            {
+                <h6>Suggestions</h6>
+                <ul>
+                    @foreach (var suggestion in rewriteResult.Suggestions)
+                    {
+                        <li>@suggestion</li>
+                    }
+                </ul>
+            }
+
+            <button class="btn btn-sm btn-success" @onclick="ApplyRewrite">Use Suggested Rewrite</button>
+        </div>
+    </div>
+}
+
 <div>
     <button class="btn btn-primary me-2" @onclick="SaveAsync" disabled="@isSaving">Save</button>
     <button class="btn btn-outline-secondary" @onclick="Back">Back</button>
@@ -28,13 +56,16 @@
 
     private string bulletText = string.Empty;
     private bool isSaving;
+    private bool isRewriting;
     private string? errorMessage;
+    private RewriteBulletResponse? rewriteResult;
 
     private bool IsCreate => !BulletId.HasValue;
 
     protected override async Task OnParametersSetAsync()
     {
         errorMessage = null;
+        rewriteResult = null;
         if (BulletId is null)
         {
             bulletText = string.Empty;
@@ -49,6 +80,40 @@
         }
 
         bulletText = bullet.BulletText;
+    }
+
+    private async Task RewriteAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(bulletText))
+        {
+            errorMessage = "Bullet text is required.";
+            return;
+        }
+
+        isRewriting = true;
+
+        try
+        {
+            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isRewriting = false;
+        }
+    }
+
+    private void ApplyRewrite()
+    {
+        if (rewriteResult is not null && !string.IsNullOrWhiteSpace(rewriteResult.RewrittenText))
+        {
+            bulletText = rewriteResult.RewrittenText;
+        }
     }
 
     private async Task SaveAsync()

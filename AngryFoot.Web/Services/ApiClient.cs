@@ -45,6 +45,13 @@ public sealed class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
     }
 
+    public async Task<RewriteBulletResponse> RewriteBulletAsync(string bulletText, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite", new RewriteBulletRequest(bulletText), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
+    }
+
     public async Task<bool> DeleteBulletAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.DeleteAsync($"/api/bullets/{id}", cancellationToken);
@@ -131,4 +138,22 @@ public sealed class ApiClient(HttpClient httpClient)
             query.Add($"{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value.Trim())}");
         }
     }
+
+    public async Task<AiStatusResponse?> GetAiStatusAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await httpClient.GetFromJsonAsync<AiStatusResponse>("/api/ai/status", cancellationToken);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
+
+public sealed record AiStatusResponse(
+    bool IsHealthy,
+    string Status,
+    string? Message = null);
+

@@ -23,3 +23,9 @@ public sealed record BulletDto(
 public sealed record CreateBulletRequest(string BulletText);
 
 public sealed record UpdateBulletRequest(string BulletText);
+
+public sealed record RewriteBulletRequest(string BulletText);
+
+public sealed record RewriteBulletResponse(
+    string RewrittenText,
+    IReadOnlyList<string> Suggestions);

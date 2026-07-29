@@ -7,6 +7,8 @@ namespace AngryFoot.ApiService.Ai;
 
 public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<OpenAiBulletTagger> logger) : IBulletTagger
 {
+    private static readonly TimeSpan AiTimeout = TimeSpan.FromSeconds(3);
+
     private static readonly string[] KnownTechnologies =
     [
         ".net", "c#", "asp.net", "blazor", "azure", "sql", "sqlite", "postgresql", "mysql", "redis", "python", "java", "javascript", "typescript", "react", "angular", "docker", "kubernetes", "aws", "gcp", "github", "git"
@@ -27,7 +29,7 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
 
         try
         {
-            var responseText = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
+            var responseText = await GetResponseWithTimeoutAsync(systemPrompt, userPrompt, cancellationToken);
             if (AiJsonUtilities.TryDeserialize<TagResponse>(responseText, out var parsed) && parsed is not null)
             {
                 var aiResult = Normalize(new BulletTagging(
@@ -44,8 +46,22 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
         {
             logger.LogWarning(ex, "Bullet enrichment AI call failed. Using heuristic fallback.");
         }
-
+        logger.LogWarning("Using Fallback without exception- indicates Deserialize failed");
         return fallback;
+    }
+
+    private async Task<string> GetResponseWithTimeoutAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+    {
+        var responseTask = chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
+        var timeoutTask = Task.Delay(AiTimeout, cancellationToken);
+
+        var completed = await Task.WhenAny(responseTask, timeoutTask);
+        if (completed != responseTask)
+        {
+            throw new TimeoutException($"AI request timed out after {AiTimeout.TotalSeconds:0} seconds.");
+        }
+
+        return await responseTask;
     }
 
     private static BulletTagging TagHeuristically(string bulletText)

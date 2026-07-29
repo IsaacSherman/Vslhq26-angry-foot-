@@ -1,0 +1,109 @@
+@using AngryFoot.Web.Services
+@inject ApiClient ApiClient
+@implements IAsyncDisposable
+
+<div class="ai-status-indicator">
+    @if (_isLoading)
+    {
+        <span class="badge bg-secondary">
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Checking AI...
+        </span>
+    }
+    else if (_isHealthy)
+    {
+        <span class="badge bg-success" title="@_statusMessage">
+            <span class="bi bi-check-circle-fill me-1"></span>
+            AI Ready
+        </span>
+    }
+    else
+    {
+        <span class="badge bg-warning" title="@_statusMessage">
+            <span class="bi bi-exclamation-triangle-fill me-1"></span>
+            AI Unavailable
+        </span>
+    }
+</div>
+
+@code {
+    private bool _isHealthy = false;
+    private bool _isLoading = true;
+    private string? _statusMessage;
+    private PeriodicTimer? _refreshTimer;
+    private readonly CancellationTokenSource _disposeCts = new();
+
+    protected override Task OnInitializedAsync()
+    {
+        _refreshTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        _ = RefreshLoop();
+        _ = CheckAndRefreshUiAsync();
+        return Task.CompletedTask;
+    }
+
+    private async Task CheckAndRefreshUiAsync()
+    {
+        await CheckAiStatus();
+        if (!_disposeCts.IsCancellationRequested)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CheckAiStatus()
+    {
+        try
+        {
+            _isLoading = true;
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_disposeCts.Token);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+            var statusResponse = await ApiClient.GetAiStatusAsync(timeoutCts.Token);
+
+            _isHealthy = statusResponse?.IsHealthy ?? false;
+            _statusMessage = statusResponse?.Message ?? "Unknown status";
+        }
+        catch (Exception ex)
+        {
+            _isHealthy = false;
+            _statusMessage = $"Error checking status: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RefreshLoop()
+    {
+        try
+        {
+            while (await _refreshTimer!.WaitForNextTickAsync(_disposeCts.Token))
+            {
+                await CheckAndRefreshUiAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        _disposeCts.Cancel();
+        _refreshTimer?.Dispose();
+        _disposeCts.Dispose();
+    }
+}
+
+<style>
+    .ai-status-indicator {
+        display: inline-block;
+    }
+
+    .spinner-border-sm {
+        width: 0.875rem;
+        height: 0.875rem;
+        border-width: 0.15em;
+    }
+</style>

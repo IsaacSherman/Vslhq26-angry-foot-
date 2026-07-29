@@ -1,0 +1,129 @@
+using System.Text.RegularExpressions;
+using AngryFoot.ApiService.Ai;
+using AngryFoot.Contracts;
+using Microsoft.Extensions.AI;
+
+namespace AngryFoot.ApiService.Application.Bullets;
+
+public interface IBulletRewriteAssistant
+{
+    Task<RewriteBulletResponse> RewriteAsync(string bulletText, CancellationToken cancellationToken);
+}
+
+internal sealed partial class BulletRewriteAssistant(IChatClient chatClient) : IBulletRewriteAssistant
+{
+    private sealed record RewritePayload(string RewrittenText, IReadOnlyList<string> Suggestions);
+
+    public async Task<RewriteBulletResponse> RewriteAsync(string bulletText, CancellationToken cancellationToken)
+    {
+        var trimmed = bulletText.Trim();
+        var fallback = CreateFallback(trimmed);
+
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return fallback;
+        }
+
+        var systemPrompt = "You improve resume bullets while preserving factual truth. Do not invent technologies, metrics, employers, timelines, scope, or outcomes. Return strict JSON object with fields: rewrittenText (string), suggestions (string[]). Suggestions should highlight missing impact/metrics/context if relevant.";
+        var userPrompt = $"Bullet: {trimmed}";
+
+        try
+        {
+            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
+            if (!AiJsonUtilities.TryDeserialize<RewritePayload>(text, out var payload) || payload is null)
+            {
+                return fallback;
+            }
+
+            var rewritten = string.IsNullOrWhiteSpace(payload.RewrittenText) ? trimmed : payload.RewrittenText.Trim();
+            var suggestions = NormalizeSuggestions(payload.Suggestions);
+            if (suggestions.Count == 0)
+            {
+                suggestions = fallback.Suggestions.ToList();
+            }
+
+            return new RewriteBulletResponse(rewritten, suggestions);
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private static RewriteBulletResponse CreateFallback(string bulletText)
+    {
+        var suggestions = new List<string>();
+
+        if (!ImpactPattern().IsMatch(bulletText))
+        {
+            suggestions.Add("Add a measurable result (percentage, time saved, cost reduction, or volume)." );
+        }
+
+        if (!ContainsOutcomeKeyword(bulletText))
+        {
+            suggestions.Add("Include business impact (customer value, reliability, delivery speed, or quality)." );
+        }
+
+        if (!ContainsTechnologyKeyword(bulletText))
+        {
+            suggestions.Add("Consider naming key tools/technologies used when appropriate.");
+        }
+
+        var rewritten = ToProfessionalTone(bulletText);
+        return new RewriteBulletResponse(rewritten, suggestions);
+    }
+
+    private static IReadOnlyList<string> NormalizeSuggestions(IReadOnlyList<string>? suggestions)
+    {
+        if (suggestions is null)
+        {
+            return [];
+        }
+
+        return suggestions
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool ContainsOutcomeKeyword(string text)
+    {
+        var lower = text.ToLowerInvariant();
+        return lower.Contains("improv")
+            || lower.Contains("increas")
+            || lower.Contains("reduc")
+            || lower.Contains("faster")
+            || lower.Contains("quality")
+            || lower.Contains("reliab")
+            || lower.Contains("efficien");
+    }
+
+    private static bool ContainsTechnologyKeyword(string text)
+    {
+        var lower = text.ToLowerInvariant();
+        return lower.Contains(".net")
+            || lower.Contains("c#")
+            || lower.Contains("api")
+            || lower.Contains("sql")
+            || lower.Contains("azure")
+            || lower.Contains("blazor")
+            || lower.Contains("docker")
+            || lower.Contains("github");
+    }
+
+    private static string ToProfessionalTone(string text)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0)
+        {
+            return trimmed;
+        }
+
+        var rewritten = char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
+        return rewritten.EndsWith('.') ? rewritten : rewritten + ".";
+    }
+
+    [GeneratedRegex("\\b(\\d+%|\\$?\\d+[\\d,]*(\\.\\d+)?|\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?))\\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ImpactPattern();
+}

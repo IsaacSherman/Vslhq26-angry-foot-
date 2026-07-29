@@ -34,6 +34,17 @@ public static class BulletEndpoints
             return Results.Created($"/api/bullets/{result.Id}", result);
         });
 
+        bullets.MapPost("/rewrite", async (RewriteBulletRequest request, IBulletRewriteAssistant rewriteAssistant, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BulletText))
+            {
+                return Results.BadRequest("Bullet text is required.");
+            }
+
+            var result = await rewriteAssistant.RewriteAsync(request.BulletText, cancellationToken);
+            return Results.Ok(result);
+        });
+
         bullets.MapPut("/{id:guid}", async (Guid id, UpdateBulletRequest request, IBulletService bulletService, CancellationToken cancellationToken) =>
         {
             var result = await bulletService.UpdateAsync(id, request, cancellationToken);

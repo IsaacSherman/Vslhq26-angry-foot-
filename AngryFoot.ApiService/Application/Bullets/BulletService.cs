@@ -17,6 +17,8 @@ public interface IBulletService
 
 public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bulletTagger) : IBulletService
 {
+    private static readonly TimeSpan TaggingTimeout = TimeSpan.FromSeconds(10);
+
     public async Task<IReadOnlyList<BulletDto>> SearchAsync(string? search, string? tag, string? skill, string? technology, string? category, CancellationToken cancellationToken)
     {
         var bullets = await dbContext.Bullets
@@ -72,8 +74,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
             EnrichmentState = EnrichmentState.Pending
         };
 
-        await ApplyTaggingAsync(bullet, cancellationToken);
-
+        await TryApplyTaggingAsync(bullet, cancellationToken);
         dbContext.Bullets.Add(bullet);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -92,7 +93,9 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         bullet.ModifiedDate = DateTime.UtcNow;
         bullet.EnrichmentState = EnrichmentState.Pending;
 
-        await ApplyTaggingAsync(bullet, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return bullet.ToDto();
@@ -115,10 +118,42 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         bullet.ModifiedDate = DateTime.UtcNow;
         bullet.EnrichmentState = EnrichmentState.Pending;
 
-        await ApplyTaggingAsync(bullet, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return bullet.ToDto();
+    }
+
+    private async Task TryApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TaggingTimeout);
+
+        try
+        {
+            await ApplyTaggingAsync(bullet, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            bullet.EnrichmentState = EnrichmentState.Failed;
+        }
+        catch
+        {
+            bullet.EnrichmentState = EnrichmentState.Failed;
+        }
+        finally
+        {
+            if (bullet.EnrichmentState == EnrichmentState.Pending)
+            {
+                bullet.EnrichmentState = EnrichmentState.Failed;
+            }
+        }
     }
 
     private async Task ApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)
