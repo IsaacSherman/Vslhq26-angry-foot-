@@ -1,0 +1,150 @@
+@page "/history"
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+@inject IJSRuntime JsRuntime
+
+<PageTitle>History</PageTitle>
+
+<h1>Generation History</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (isLoading)
+{
+    <p>Loading...</p>
+}
+else if (artifacts.Count == 0)
+{
+    <p>No generated artifacts yet.</p>
+}
+else
+{
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="list-group">
+                @foreach (var item in artifacts)
+                {
+                    <button class="list-group-item list-group-item-action @(selectedId == item.Id ? "active" : null)" @onclick="() => SelectAsync(item.Id)">
+                        <div><strong>@(string.IsNullOrWhiteSpace(item.JobTitle) ? "Untitled Role" : item.JobTitle)</strong></div>
+                        <div>@item.Company</div>
+                        <small>@item.CreatedDate.ToLocalTime()</small>
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            @if (selectedArtifact is null)
+            {
+                <p>Select a generation.</p>
+            }
+            else
+            {
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="mb-0">@(selectedArtifact.JobTitle ?? "Generated Artifact")</h3>
+                    <div>
+                        <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyResumeAsync">Copy Resume</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyCoverLetterAsync">Copy Cover Letter</button>
+                        <button class="btn btn-outline-danger btn-sm" @onclick="DeleteSelectedAsync">Delete</button>
+                    </div>
+                </div>
+
+                <p><strong>Company:</strong> @selectedArtifact.Company</p>
+                <p><strong>Created:</strong> @selectedArtifact.CreatedDate.ToLocalTime()</p>
+
+                <label class="form-label">Original Job Description</label>
+                <textarea class="form-control mb-3" rows="6" readonly>@selectedArtifact.JobDescription</textarea>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Resume (Markdown)</label>
+                        <textarea class="form-control" rows="18" readonly>@selectedArtifact.ResumeMarkdown</textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cover Letter (Markdown)</label>
+                        <textarea class="form-control" rows="18" readonly>@selectedArtifact.CoverLetterMarkdown</textarea>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private readonly List<AngryFoot.Contracts.ArtifactSummaryDto> artifacts = [];
+    private AngryFoot.Contracts.GenerationArtifactDto? selectedArtifact;
+    private Guid? selectedId;
+
+    private bool isLoading;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        errorMessage = null;
+        isLoading = true;
+
+        try
+        {
+            artifacts.Clear();
+            artifacts.AddRange(await ApiClient.GetArtifactsAsync());
+
+            if (artifacts.Count > 0)
+            {
+                await SelectAsync(artifacts[0].Id);
+            }
+            else
+            {
+                selectedArtifact = null;
+                selectedId = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        selectedId = id;
+        selectedArtifact = await ApiClient.GetArtifactAsync(id);
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (selectedId is null)
+        {
+            return;
+        }
+
+        await ApiClient.DeleteArtifactAsync(selectedId.Value);
+        await LoadAsync();
+    }
+
+    private async Task CopyResumeAsync()
+    {
+        if (selectedArtifact is not null)
+        {
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", selectedArtifact.ResumeMarkdown);
+        }
+    }
+
+    private async Task CopyCoverLetterAsync()
+    {
+        if (selectedArtifact is not null)
+        {
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", selectedArtifact.CoverLetterMarkdown);
+        }
+    }
+}

@@ -81,6 +81,49 @@ public sealed class ApiClient(HttpClient httpClient)
         return (await response.Content.ReadFromJsonAsync<ProfileDto>(cancellationToken))!;
     }
 
+    public async Task<JobAnalysisDto> AnalyzeJobAsync(string jobDescription, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/generations/analyze", new { jobDescription }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<JobAnalysisDto>(cancellationToken))!;
+    }
+
+    public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/generations", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken))!;
+    }
+
+    public async Task<List<ArtifactSummaryDto>> GetArtifactsAsync(CancellationToken cancellationToken = default)
+    {
+        return await httpClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken) ?? [];
+    }
+
+    public async Task<GenerationArtifactDto?> GetArtifactAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/artifacts/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+    }
+
+    public async Task<bool> DeleteArtifactAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.DeleteAsync($"/api/artifacts/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     private static void AddQuery(ICollection<string> query, string key, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value))
