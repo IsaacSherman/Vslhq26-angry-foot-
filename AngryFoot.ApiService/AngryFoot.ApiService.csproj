@@ -32,6 +32,7 @@
       <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
       <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="2.0.0" />
       <PackageReference Include="Microsoft.SemanticKernel.Connectors.SqliteVec" Version="1.74.0-preview" />
+      <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
       <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
       <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
