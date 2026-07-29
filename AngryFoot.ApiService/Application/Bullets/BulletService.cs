@@ -72,6 +72,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         {
             Id = Guid.NewGuid(),
             BulletText = request.BulletText.Trim(),
+            SourceEmployer = NormalizeEmployer(request.SourceEmployer),
             CreatedDate = now,
             ModifiedDate = now,
             EnrichmentState = EnrichmentState.Pending
@@ -93,6 +94,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         }
 
         bullet.BulletText = request.BulletText.Trim();
+        bullet.SourceEmployer = NormalizeEmployer(request.SourceEmployer);
         bullet.ModifiedDate = DateTime.UtcNow;
         bullet.EnrichmentState = EnrichmentState.Pending;
 
@@ -185,6 +187,11 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
             || bullet.Impact.Count > 0;
 
         bullet.EnrichmentState = hasMetadata ? EnrichmentState.Enriched : EnrichmentState.Failed;
+    }
+
+    private static string? NormalizeEmployer(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     private static bool ContainsIgnoreCase(IEnumerable<string> values, string value)

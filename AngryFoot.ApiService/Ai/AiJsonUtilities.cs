@@ -23,8 +23,9 @@ internal static class AiJsonUtilities
             value = JsonSerializer.Deserialize<T>(candidate, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             return value is not null;
         }
-        catch
+        catch (JsonException)
         {
+            // Invalid JSON is an expected outcome for AI responses; callers log and fall back.
             return false;
         }
     }

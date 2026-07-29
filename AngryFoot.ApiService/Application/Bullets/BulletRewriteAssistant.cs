@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using AngryFoot.ApiService.Ai;
 using AngryFoot.Contracts;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace AngryFoot.ApiService.Application.Bullets;
 
@@ -10,7 +11,7 @@ public interface IBulletRewriteAssistant
     Task<RewriteBulletResponse> RewriteAsync(string bulletText, CancellationToken cancellationToken);
 }
 
-internal sealed partial class BulletRewriteAssistant(IChatClient chatClient) : IBulletRewriteAssistant
+internal sealed partial class BulletRewriteAssistant(IChatClient chatClient, ILogger<BulletRewriteAssistant> logger) : IBulletRewriteAssistant
 {
     private sealed record RewritePayload(string RewrittenText, IReadOnlyList<string> Suggestions);
 
@@ -32,6 +33,7 @@ internal sealed partial class BulletRewriteAssistant(IChatClient chatClient) : I
             var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
             if (!AiJsonUtilities.TryDeserialize<RewritePayload>(text, out var payload) || payload is null)
             {
+                logger.LogWarning("Bullet rewrite assistant AI response could not be parsed as JSON. Using heuristic fallback.");
                 return fallback;
             }
 
@@ -44,8 +46,13 @@ internal sealed partial class BulletRewriteAssistant(IChatClient chatClient) : I
 
             return new RewriteBulletResponse(rewritten, suggestions);
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Bullet rewrite assistant AI call failed. Using heuristic fallback.");
             return fallback;
         }
     }

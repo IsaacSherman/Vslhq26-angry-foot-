@@ -3,7 +3,7 @@ using AngryFoot.Contracts;
 
 namespace AngryFoot.Web.Services;
 
-public sealed class ApiClient(HttpClient httpClient)
+public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
 {
     public async Task<List<BulletDto>> GetBulletsAsync(string? search, string? tag, string? skill, string? technology, string? category, CancellationToken cancellationToken = default)
     {
@@ -26,16 +26,16 @@ public sealed class ApiClient(HttpClient httpClient)
         return await httpClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{id}", cancellationToken);
     }
 
-    public async Task<BulletDto> CreateBulletAsync(string bulletText, CancellationToken cancellationToken = default)
+    public async Task<BulletDto> CreateBulletAsync(string bulletText, string? sourceEmployer = null, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText), cancellationToken);
+        var response = await httpClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText, sourceEmployer), cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken))!;
     }
 
-    public async Task<BulletDto?> UpdateBulletAsync(Guid id, string bulletText, CancellationToken cancellationToken = default)
+    public async Task<BulletDto?> UpdateBulletAsync(Guid id, string bulletText, string? sourceEmployer = null, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PutAsJsonAsync($"/api/bullets/{id}", new UpdateBulletRequest(bulletText), cancellationToken);
+        var response = await httpClient.PutAsJsonAsync($"/api/bullets/{id}", new UpdateBulletRequest(bulletText, sourceEmployer), cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
@@ -145,8 +145,13 @@ public sealed class ApiClient(HttpClient httpClient)
         {
             return await httpClient.GetFromJsonAsync<AiStatusResponse>("/api/ai/status", cancellationToken);
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to fetch AI status from the API service.");
             return null;
         }
     }

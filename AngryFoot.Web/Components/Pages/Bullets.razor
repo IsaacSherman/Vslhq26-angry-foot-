@@ -54,6 +54,7 @@ else
         <thead>
             <tr>
                 <th>Bullet</th>
+                <th>Employer</th>
                 <th>Skills</th>
                 <th>Technologies</th>
                 <th>State</th>
@@ -65,6 +66,7 @@ else
             {
                 <tr>
                     <td>@bullet.BulletText</td>
+                    <td>@(bullet.SourceEmployer ?? "—")</td>
                     <td>@string.Join(", ", bullet.Skills)</td>
                     <td>@string.Join(", ", bullet.Technologies)</td>
                     <td>@bullet.EnrichmentState</td>

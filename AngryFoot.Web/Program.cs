@@ -2,11 +2,24 @@ using AngryFoot.Web;
 using AngryFoot.Web.Components;
 using AngryFoot.Web.Services;
 using Microsoft.Extensions.Http.Resilience;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
+
+// Log to a rolling file in ./Logs/ in addition to the default console/OTel providers.
+var logsPath = Path.Combine(builder.Environment.ContentRootPath, "Logs");
+Directory.CreateDirectory(logsPath);
+builder.Logging.AddSerilog(new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .WriteTo.File(
+        Path.Combine(logsPath, "web-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+    .CreateLogger(), dispose: true);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

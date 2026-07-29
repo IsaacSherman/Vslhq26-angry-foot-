@@ -3,6 +3,7 @@
 @using AngryFoot.Contracts
 @inject AngryFoot.Web.Services.ApiClient ApiClient
 @inject NavigationManager Navigation
+@inject ILogger<BulletEdit> Logger
 
 <PageTitle>Bullet Editor</PageTitle>
 
@@ -16,6 +17,18 @@
 <div class="mb-3">
     <label class="form-label">Bullet Text</label>
     <textarea class="form-control" rows="6" @bind="bulletText"></textarea>
+</div>
+
+<div class="mb-3">
+    <label class="form-label">Employer</label>
+    <input class="form-control" list="employer-options" placeholder="Which employer does this bullet belong to?" @bind="sourceEmployer" />
+    <datalist id="employer-options">
+        @foreach (var employer in knownEmployers)
+        {
+            <option value="@employer" />
+        }
+    </datalist>
+    <div class="form-text">Used to group this bullet under the matching work history entry on generated resumes.</div>
 </div>
 
 <div class="mb-3">
@@ -55,12 +68,32 @@
     public Guid? BulletId { get; set; }
 
     private string bulletText = string.Empty;
+    private string? sourceEmployer;
+    private List<string> knownEmployers = [];
     private bool isSaving;
     private bool isRewriting;
     private string? errorMessage;
     private RewriteBulletResponse? rewriteResult;
 
     private bool IsCreate => !BulletId.HasValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profile = await ApiClient.GetProfileAsync();
+            knownEmployers = profile.WorkHistory
+                .Select(x => x.Employer)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            // Employer suggestions are optional; the editor works without them.
+            Logger.LogWarning(ex, "Failed to load employer suggestions from the profile.");
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -69,6 +102,7 @@
         if (BulletId is null)
         {
             bulletText = string.Empty;
+            sourceEmployer = null;
             return;
         }
 
@@ -80,6 +114,7 @@
         }
 
         bulletText = bullet.BulletText;
+        sourceEmployer = bullet.SourceEmployer;
     }
 
     private async Task RewriteAsync()
@@ -130,13 +165,14 @@
 
         try
         {
+            var employer = string.IsNullOrWhiteSpace(sourceEmployer) ? null : sourceEmployer.Trim();
             if (BulletId is null)
             {
-                await ApiClient.CreateBulletAsync(bulletText.Trim());
+                await ApiClient.CreateBulletAsync(bulletText.Trim(), employer);
             }
             else
             {
-                var updated = await ApiClient.UpdateBulletAsync(BulletId.Value, bulletText.Trim());
+                var updated = await ApiClient.UpdateBulletAsync(BulletId.Value, bulletText.Trim(), employer);
                 if (updated is null)
                 {
                     errorMessage = "Bullet not found.";

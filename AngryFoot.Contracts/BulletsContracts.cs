@@ -20,9 +20,9 @@ public sealed record BulletDto(
     DateTime CreatedDate,
     DateTime ModifiedDate);
 
-public sealed record CreateBulletRequest(string BulletText);
+public sealed record CreateBulletRequest(string BulletText, string? SourceEmployer = null);
 
-public sealed record UpdateBulletRequest(string BulletText);
+public sealed record UpdateBulletRequest(string BulletText, string? SourceEmployer = null);
 
 public sealed record RewriteBulletRequest(string BulletText);
 

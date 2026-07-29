@@ -5,7 +5,7 @@ using Microsoft.Extensions.AI;
 
 namespace AngryFoot.ApiService.Application.Generation;
 
-internal sealed class CoverLetterService(IChatClient chatClient)
+internal sealed class CoverLetterService(IChatClient chatClient, ILogger<CoverLetterService> logger)
 {
     public async Task<string> BuildCoverLetterAsync(Domain.Profile profile, CoverLetterContext context, CancellationToken cancellationToken)
     {
@@ -21,9 +21,16 @@ internal sealed class CoverLetterService(IChatClient chatClient)
             {
                 return text.Trim();
             }
+
+            logger.LogWarning("Cover letter AI response was empty. Using template fallback.");
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cover letter AI call failed. Using template fallback.");
         }
 
         return fallback;

@@ -4,7 +4,7 @@ using Microsoft.Extensions.AI;
 
 namespace AngryFoot.ApiService.Application.Generation;
 
-public sealed class HeuristicJobAnalyzer(IChatClient chatClient) : IJobAnalyzer
+public sealed class HeuristicJobAnalyzer(IChatClient chatClient, ILogger<HeuristicJobAnalyzer> logger) : IJobAnalyzer
 {
     private static readonly string[] KnownTechnologies =
     [
@@ -30,9 +30,16 @@ public sealed class HeuristicJobAnalyzer(IChatClient chatClient) : IJobAnalyzer
             {
                 return Normalize(aiResult);
             }
+
+            logger.LogWarning("Job analysis AI response could not be parsed as JSON. Using heuristic fallback. Response starts with: {ResponseStart}", Truncate(text, 200));
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Job analysis AI call failed. Using heuristic fallback.");
         }
 
         return fallback;
@@ -124,13 +131,19 @@ public sealed class HeuristicJobAnalyzer(IChatClient chatClient) : IJobAnalyzer
             dto.InferredSeniority?.Trim());
     }
 
-    private static IReadOnlyList<string> NormalizeValues(IReadOnlyList<string> values)
+    private static IReadOnlyList<string> NormalizeValues(IReadOnlyList<string>? values)
     {
-        return values
+        // The AI may omit a field entirely, which deserializes the list as null.
+        return (values ?? [])
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(25)
             .ToArray();
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        return value.Length <= maxLength ? value : value[..maxLength];
     }
 }

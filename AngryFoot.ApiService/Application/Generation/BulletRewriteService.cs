@@ -5,7 +5,7 @@ using Microsoft.Extensions.AI;
 
 namespace AngryFoot.ApiService.Application.Generation;
 
-internal sealed class BulletRewriteService(IChatClient chatClient)
+internal sealed class BulletRewriteService(IChatClient chatClient, ILogger<BulletRewriteService> logger)
 {
     private sealed record RewriteItem(Guid BulletId, string Rewritten);
 
@@ -28,6 +28,7 @@ internal sealed class BulletRewriteService(IChatClient chatClient)
             var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
             if (!AiJsonUtilities.TryDeserialize<List<RewriteItem>>(text, out var rewrites) || rewrites is null)
             {
+                logger.LogWarning("Bullet rewrite AI response could not be parsed as JSON. Using original bullet text.");
                 return fallback;
             }
 
@@ -41,8 +42,13 @@ internal sealed class BulletRewriteService(IChatClient chatClient)
                     : new RewrittenBullet(x.Bullet, x.Bullet.BulletText))
                 .ToArray();
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Bullet rewrite AI call failed. Using original bullet text.");
             return fallback;
         }
     }
