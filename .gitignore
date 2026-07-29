@@ -427,3 +427,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Local app database files
+**/angryfoot.db
+**/angryfoot.db-shm
+**/angryfoot.db-wal
