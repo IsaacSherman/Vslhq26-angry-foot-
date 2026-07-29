@@ -130,7 +130,14 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         bullet.Technologies = Normalize(tagging.Technologies);
         bullet.JobCategories = Normalize(tagging.JobCategories);
         bullet.Impact = Normalize(tagging.Impact);
-        bullet.EnrichmentState = EnrichmentState.Enriched;
+
+        var hasMetadata = bullet.Tags.Count > 0
+            || bullet.Skills.Count > 0
+            || bullet.Technologies.Count > 0
+            || bullet.JobCategories.Count > 0
+            || bullet.Impact.Count > 0;
+
+        bullet.EnrichmentState = hasMetadata ? EnrichmentState.Enriched : EnrichmentState.Failed;
     }
 
     private static bool ContainsIgnoreCase(IEnumerable<string> values, string value)
