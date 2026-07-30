@@ -39,10 +39,74 @@
     </div>
 </div>
 
-@if (analysis is not null)
+@if (fit is not null)
 {
     <div class="card mb-3">
-        <div class="card-header">Job Analysis</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Your Fit for This Role</span>
+            <span class="badge @FitBadgeClass(fit.FitScore)">Fit Score: @fit.FitScore / 100</span>
+        </div>
+        <div class="card-body">
+            <div class="progress mb-3" role="progressbar" aria-label="Fit score" aria-valuenow="@fit.FitScore" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar @FitBarClass(fit.FitScore)" style="width: @(fit.FitScore)%"></div>
+            </div>
+
+            <p class="lead">@fit.Verdict</p>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <h6 class="text-success">Strengths</h6>
+                    @if (fit.Strengths.Count == 0)
+                    {
+                        <p class="text-muted">No clear strengths found for this role's requirements.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var strength in fit.Strengths)
+                            {
+                                <li class="mb-1">&#10003; @strength</li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-danger">Gaps</h6>
+                    @if (fit.Gaps.Count == 0)
+                    {
+                        <p class="text-muted">No significant gaps identified.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var gap in fit.Gaps)
+                            {
+                                <li class="mb-1">&#10007; @gap</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            @if (fit.BulletSuggestions.Count > 0)
+            {
+                <hr />
+                <h6>Focus new bullets on</h6>
+                <ol class="mb-0">
+                    @foreach (var suggestion in fit.BulletSuggestions)
+                    {
+                        <li>@suggestion</li>
+                    }
+                </ol>
+            }
+        </div>
+    </div>
+}
+
+@if (analysis is not null)
+{
+    <details class="card mb-3">
+        <summary class="card-header" style="cursor: pointer;">Extracted Job Requirements</summary>
         <div class="card-body">
             <p><strong>Inferred Title:</strong> @analysis.InferredTitle</p>
             <p><strong>Inferred Seniority:</strong> @analysis.InferredSeniority</p>
@@ -51,7 +115,7 @@
             <p><strong>Technologies:</strong> @string.Join(", ", analysis.Technologies)</p>
             <p><strong>Experience Themes:</strong> @string.Join(", ", analysis.ExperienceThemes)</p>
         </div>
-    </div>
+    </details>
 }
 
 @if (result is not null)
@@ -84,7 +148,22 @@
     private string? errorMessage;
 
     private AngryFoot.Contracts.JobAnalysisDto? analysis;
+    private AngryFoot.Contracts.FitAssessmentDto? fit;
     private AngryFoot.Contracts.GenerationResultDto? result;
+
+    private static string FitBadgeClass(int score) => score switch
+    {
+        >= 75 => "text-bg-success",
+        >= 50 => "text-bg-warning",
+        _ => "text-bg-danger"
+    };
+
+    private static string FitBarClass(int score) => score switch
+    {
+        >= 75 => "bg-success",
+        >= 50 => "bg-warning",
+        _ => "bg-danger"
+    };
 
     private async Task AnalyzeAsync()
     {
@@ -99,7 +178,9 @@
         isWorking = true;
         try
         {
-            analysis = await ApiClient.AnalyzeJobAsync(jobDescription.Trim());
+            var fitAnalysis = await ApiClient.AnalyzeJobAsync(jobDescription.Trim());
+            analysis = fitAnalysis.Job;
+            fit = fitAnalysis.Fit;
         }
         catch (Exception ex)
         {

@@ -15,6 +15,21 @@ public sealed record JobAnalysisDto(
     string? InferredTitle,
     string? InferredSeniority);
 
+/// <summary>
+/// An assessment of how qualified the user is for a specific job, grounded in the
+/// user's bullet library rather than a restatement of the job description.
+/// </summary>
+public sealed record FitAssessmentDto(
+    int FitScore,
+    string Verdict,
+    IReadOnlyList<string> Strengths,
+    IReadOnlyList<string> Gaps,
+    IReadOnlyList<string> BulletSuggestions);
+
+public sealed record JobFitAnalysisDto(
+    JobAnalysisDto Job,
+    FitAssessmentDto Fit);
+
 public sealed record GenerationResultDto(
     Guid ArtifactId,
     string ResumeMarkdown,
