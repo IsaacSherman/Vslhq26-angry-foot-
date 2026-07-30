@@ -5,6 +5,7 @@ using AngryFoot.ApiService.Application.Bullets;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
 using AngryFoot.ApiService.Data;
+using AngryFoot.ApiService.Mcp;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -43,6 +44,12 @@ builder.Services.AddScoped<BulletRewriteService>();
 builder.Services.AddScoped<ResumeMarkdownService>();
 builder.Services.AddScoped<CoverLetterService>();
 builder.Services.AddScoped<IGenerationOrchestrator, GenerationOrchestrator>();
+
+// MCP server over streamable HTTP; tools reuse the same scoped application services
+// as the REST endpoints.
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithTools([typeof(BulletTools)]);
 
 builder.Services.AddDbContext<AngryFootDbContext>(options =>
 {
@@ -85,6 +92,8 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => "API service is running. Navigate to /api/profile for bootstrap profile data.");
 
 app.MapAiEndpoints();
+
+app.MapMcp("/mcp");
 
 var api = app.MapGroup("/api");
 api.MapProfileEndpoints();
