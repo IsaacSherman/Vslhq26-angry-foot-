@@ -203,6 +203,8 @@ Bullet'r is built on the following open-source packages. Versions and licenses r
 
 All listed licenses (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, Public Domain) are permissive. If you redistribute this application, retain the copyright and license notices of these projects per their respective terms.
 
+# Special Thanks
+Special thanks to Ryan (https://github.com/RyCox), who helped me polish the idea that's been kicking around in my brain for years.
 # License
 This project is under the MIT license.  MIT License
 
