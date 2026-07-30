@@ -1,0 +1,44 @@
+@using Markdig
+
+<div class="d-flex justify-content-between align-items-center mb-1">
+    <label class="form-label mb-0">@Title</label>
+    <div class="btn-group btn-group-sm" role="group" aria-label="View mode">
+        <button type="button"
+                class="btn @(showMarkup ? "btn-outline-secondary" : "btn-secondary")"
+                @onclick="() => showMarkup = false">
+            Preview
+        </button>
+        <button type="button"
+                class="btn @(showMarkup ? "btn-secondary" : "btn-outline-secondary")"
+                @onclick="() => showMarkup = true">
+            Markdown
+        </button>
+    </div>
+</div>
+
+@if (showMarkup)
+{
+    <textarea class="form-control font-monospace" rows="@Rows" readonly>@Markdown</textarea>
+}
+else
+{
+    <div class="border rounded p-3 overflow-auto" style="height: @(Rows * 1.55)em;">
+        @((MarkupString)RenderedHtml)
+    </div>
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Markdown { get; set; } = string.Empty;
+    [Parameter] public int Rows { get; set; } = 18;
+
+    private bool showMarkup;
+
+    // DisableHtml so any raw HTML in AI-generated markdown is escaped rather than rendered.
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    private string RenderedHtml => Markdig.Markdown.ToHtml(Markdown ?? string.Empty, Pipeline);
+}

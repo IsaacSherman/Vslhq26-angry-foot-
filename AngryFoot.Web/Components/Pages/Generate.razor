@@ -66,12 +66,10 @@
 
     <div class="row g-3">
         <div class="col-md-6">
-            <label class="form-label">Resume (Markdown)</label>
-            <textarea class="form-control" rows="24" readonly>@result.ResumeMarkdown</textarea>
+            <MarkdownPane Title="Resume" Markdown="@result.ResumeMarkdown" Rows="24" />
         </div>
         <div class="col-md-6">
-            <label class="form-label">Cover Letter (Markdown)</label>
-            <textarea class="form-control" rows="24" readonly>@result.CoverLetterMarkdown</textarea>
+            <MarkdownPane Title="Cover Letter" Markdown="@result.CoverLetterMarkdown" Rows="24" />
         </div>
     </div>
 }

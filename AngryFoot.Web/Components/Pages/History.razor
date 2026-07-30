@@ -59,12 +59,10 @@ else
 
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Resume (Markdown)</label>
-                        <textarea class="form-control" rows="18" readonly>@selectedArtifact.ResumeMarkdown</textarea>
+                        <MarkdownPane Title="Resume" Markdown="@selectedArtifact.ResumeMarkdown" Rows="18" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Cover Letter (Markdown)</label>
-                        <textarea class="form-control" rows="18" readonly>@selectedArtifact.CoverLetterMarkdown</textarea>
+                        <MarkdownPane Title="Cover Letter" Markdown="@selectedArtifact.CoverLetterMarkdown" Rows="18" />
                     </div>
                 </div>
             }
