@@ -174,8 +174,12 @@ public class ApiEndpointsTests
 
         var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new { JobDescription = "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure." }, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
-        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobAnalysisDto>(cancellationToken);
+        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken);
         Assert.NotNull(analysis);
+        Assert.NotNull(analysis!.Job);
+        Assert.NotNull(analysis.Fit);
+        Assert.InRange(analysis.Fit.FitScore, 0, 100);
+        Assert.False(string.IsNullOrWhiteSpace(analysis.Fit.Verdict));
 
         var generationResponse = await apiClient.PostAsJsonAsync("/api/generations", new GenerationRequest(
             "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure. Drive architecture and automation.",

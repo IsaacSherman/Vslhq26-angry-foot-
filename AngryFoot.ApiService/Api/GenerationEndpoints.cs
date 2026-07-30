@@ -22,15 +22,16 @@ public static class GenerationEndpoints
             return Results.Ok(result);
         });
 
-        generations.MapPost("/analyze", async (AnalyzeRequest request, IJobAnalyzer analyzer, CancellationToken cancellationToken) =>
+        generations.MapPost("/analyze", async (AnalyzeRequest request, IJobAnalyzer analyzer, IFitAssessor fitAssessor, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.JobDescription))
             {
                 return Results.BadRequest(new { error = "jobDescription is required." });
             }
 
-            var result = await analyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
-            return Results.Ok(result);
+            var job = await analyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
+            var fit = await fitAssessor.AssessAsync(request.JobDescription, job, cancellationToken);
+            return Results.Ok(new JobFitAnalysisDto(job, fit));
         });
 
         return apiGroup;

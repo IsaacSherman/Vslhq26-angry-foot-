@@ -39,6 +39,7 @@ builder.Services.AddScoped<IBulletRewriteAssistant, BulletRewriteAssistant>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
+builder.Services.AddScoped<IFitAssessor, FitAssessmentService>();
 builder.Services.AddScoped<BulletRankingService>();
 builder.Services.AddScoped<BulletRewriteService>();
 builder.Services.AddScoped<ResumeMarkdownService>();
