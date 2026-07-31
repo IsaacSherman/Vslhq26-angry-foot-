@@ -27,13 +27,6 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddOutputCache();
 
-builder.Services.AddHttpClient<WeatherApiClient>(client =>
-    {
-        // This URL uses "https+http://" to indicate HTTPS is preferred over HTTP.
-        // Learn more about service discovery scheme resolution at https://aka.ms/dotnet/sdschemes.
-        client.BaseAddress = new("https+http://apiservice");
-    });
-
 // RemoveAllResilienceHandlers is experimental (EXTEXP0001) but is the only way to
 // replace the default handler added by ConfigureHttpClientDefaults in ServiceDefaults.
 #pragma warning disable EXTEXP0001
