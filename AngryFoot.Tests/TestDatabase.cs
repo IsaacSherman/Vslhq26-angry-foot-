@@ -5,6 +5,13 @@ namespace AngryFoot.Tests;
 internal static class TestDatabase
 {
     /// <summary>
+    /// Args for <c>DistributedApplicationTestingBuilder.CreateAsync</c>: Qdrant runs
+    /// automatically by default (it requires Docker), but integration tests must never depend
+    /// on Docker being available, so they explicitly disable it here.
+    /// </summary>
+    public static readonly string[] AppHostArgs = ["--Qdrant:Enabled=false"];
+
+    /// <summary>
     /// Points the apiservice at a fresh temp SQLite file so integration tests never
     /// read or write the developer's real database.
     /// </summary>

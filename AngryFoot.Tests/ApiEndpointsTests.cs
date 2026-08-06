@@ -14,7 +14,7 @@ public class ApiEndpointsTests
     public async Task ProfileGetAndPutRoundTripWorks()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
@@ -72,7 +72,7 @@ public class ApiEndpointsTests
     public async Task BulletCrudSearchAndEnrichWorks()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
@@ -120,7 +120,7 @@ public class ApiEndpointsTests
     public async Task ArtifactHistoryEndpointsReturnExpectedDefaults()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
@@ -155,7 +155,7 @@ public class ApiEndpointsTests
         var cancellationToken = TestContext.Current.CancellationToken;
         // var cancellationToken = cts.Token;
         // cts.CancelAfter(10000);
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(cancellationToken);
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);

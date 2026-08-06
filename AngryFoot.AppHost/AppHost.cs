@@ -33,15 +33,24 @@ if (!string.IsNullOrWhiteSpace(azureOpenAiEmbeddingDeployment))
     apiService = apiService.WithEnvironment("AzureOpenAI__EmbeddingDeployment", azureOpenAiEmbeddingDeployment);
 }
 
-// Qdrant-backed bullet retrieval is opt-in: it requires Docker to run the container, so it
-// must never become a hard requirement to `dotnet run`/`dotnet test` this solution. Enable it
-// with `Qdrant:Enabled=true` (user-secrets on this AppHost project, or a `Qdrant__Enabled`
-// env var). When disabled (the default), the API service falls back to its existing
-// deterministic keyword ranking.
-if (builder.Configuration.GetValue("Qdrant:Enabled", false))
+// Qdrant-backed bullet retrieval runs automatically: Aspire launches the latest Qdrant image
+// as a Docker container and the API service waits for it to be healthy before serving traffic.
+// Vector data is stored locally next to the SQLite database (not in an opaque Docker volume),
+// so it survives container recreation the same way angryfoot.db does. Embeddings still require
+// AzureOpenAI:EmbeddingDeployment to be configured; without it the API service falls back to
+// deterministic keyword ranking even though Qdrant is running. Set Qdrant:Enabled=false
+// (user-secrets on this AppHost project, or a `Qdrant__Enabled` env var) to skip starting the
+// container entirely, e.g. in environments without Docker.
+if (builder.Configuration.GetValue("Qdrant:Enabled", true))
 {
+    var qdrantDataPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AngryFoot", "qdrant");
+    Directory.CreateDirectory(qdrantDataPath);
+
     var qdrant = builder.AddQdrant("qdrant")
-        .WithDataVolume();
+        .WithImageTag("latest")
+        .WithDataBindMount(qdrantDataPath);
 
     apiService = apiService.WithReference(qdrant).WaitFor(qdrant);
 }
