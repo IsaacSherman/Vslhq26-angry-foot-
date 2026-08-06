@@ -1,3 +1,4 @@
+using AngryFoot.ApiService.Application.Retrieval;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
@@ -16,7 +17,11 @@ public interface IBulletService
     Task<BulletDto?> EnrichAsync(Guid id, CancellationToken cancellationToken);
 }
 
-public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bulletTagger, ILogger<BulletService> logger) : IBulletService
+public sealed class BulletService(
+    AngryFootDbContext dbContext,
+    IBulletTagger bulletTagger,
+    IBulletVectorStore vectorStore,
+    ILogger<BulletService> logger) : IBulletService
 {
     // Outer safety net; must exceed the tagger's own AI timeout so the tagger can
     // time out gracefully and still return its heuristic fallback.
@@ -81,6 +86,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         await TryApplyTaggingAsync(bullet, cancellationToken);
         dbContext.Bullets.Add(bullet);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await vectorStore.UpsertAsync(bullet, cancellationToken);
 
         return bullet.ToDto();
     }
@@ -102,6 +108,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
 
         await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await vectorStore.UpsertAsync(bullet, cancellationToken);
 
         return bullet.ToDto();
     }
@@ -109,6 +116,11 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await dbContext.Bullets.Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken);
+        if (deleted > 0)
+        {
+            await vectorStore.DeleteAsync(id, cancellationToken);
+        }
+
         return deleted > 0;
     }
 
@@ -127,6 +139,7 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
 
         await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await vectorStore.UpsertAsync(bullet, cancellationToken);
 
         return bullet.ToDto();
     }

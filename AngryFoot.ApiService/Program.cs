@@ -33,6 +33,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 
 builder.Services.AddAngryFootAi(builder.Configuration);
+builder.AddAngryFootRetrieval();
 builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();
 builder.Services.AddScoped<IBulletService, BulletService>();
 builder.Services.AddScoped<IBulletRewriteAssistant, BulletRewriteAssistant>();
@@ -40,6 +41,7 @@ builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
 builder.Services.AddScoped<IFitAssessor, FitAssessmentService>();
+builder.Services.AddScoped<BulletRetrievalService>();
 builder.Services.AddScoped<BulletRankingService>();
 builder.Services.AddScoped<BulletRewriteService>();
 builder.Services.AddScoped<ResumeMarkdownService>();

@@ -15,11 +15,13 @@ public static class AiEndpoints
             .WithDescription("Get the current status of the AI endpoint configuration.");
     }
 
-    private static Ok<AiStatusResponse> GetAiStatus(AiConfigurationStatus status)
+    private static Ok<AiStatusResponse> GetAiStatus(AiConfigurationStatus status, RetrievalConfigurationStatus retrievalStatus)
     {
         return TypedResults.Ok(new AiStatusResponse(
             IsHealthy: status.IsConfigured,
             Status: status.IsConfigured ? "Healthy" : "Unhealthy",
-            Message: status.Message));
+            Message: status.Message,
+            RetrievalEnabled: retrievalStatus.IsEnabled,
+            RetrievalMessage: retrievalStatus.Message));
     }
 }

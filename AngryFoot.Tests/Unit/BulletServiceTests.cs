@@ -1,5 +1,6 @@
 using AngryFoot.ApiService.Application.Bullets;
 using AngryFoot.Contracts;
+using AngryFoot.Tests.Fakes;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -19,9 +20,10 @@ public class BulletServiceTests : IDisposable
 
     private readonly SqliteTestDatabase _database = new();
     private readonly Mock<IBulletTagger> _tagger = new();
+    private readonly FakeBulletVectorStore _vectorStore = new();
 
     private BulletService CreateSut()
-        => new(_database.Context, _tagger.Object, NullLogger<BulletService>.Instance);
+        => new(_database.Context, _tagger.Object, _vectorStore, NullLogger<BulletService>.Instance);
 
     public void Dispose() => _database.Dispose();
 
@@ -161,6 +163,55 @@ public class BulletServiceTests : IDisposable
 
         (await sut.DeleteAsync(created.Id, CancellationToken.None)).Should().BeTrue();
         (await sut.DeleteAsync(created.Id, CancellationToken.None)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateAsync_UpsertsTheBulletIntoTheVectorStore()
+    {
+        _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RichTagging);
+        var sut = CreateSut();
+
+        var result = await sut.CreateAsync(new CreateBulletRequest("Did the thing."), CancellationToken.None);
+
+        _vectorStore.Upserted.Should().ContainSingle(x => x.Id == result.Id);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UpsertsTheBulletIntoTheVectorStoreAgain()
+    {
+        _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyTagging);
+        var sut = CreateSut();
+        var created = await sut.CreateAsync(new CreateBulletRequest("old text"), CancellationToken.None);
+
+        await sut.UpdateAsync(created.Id, new UpdateBulletRequest("new text"), CancellationToken.None);
+
+        _vectorStore.Upserted.Should().HaveCount(2, "both the create and the update should index the bullet");
+        _vectorStore.Upserted[^1].BulletText.Should().Be("new text");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesTheBulletFromTheVectorStore()
+    {
+        _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyTagging);
+        var sut = CreateSut();
+        var created = await sut.CreateAsync(new CreateBulletRequest("A bullet."), CancellationToken.None);
+
+        await sut.DeleteAsync(created.Id, CancellationToken.None);
+
+        _vectorStore.Deleted.Should().ContainSingle(id => id == created.Id);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WithUnknownId_DoesNotTouchTheVectorStore()
+    {
+        var sut = CreateSut();
+
+        await sut.DeleteAsync(Guid.NewGuid(), CancellationToken.None);
+
+        _vectorStore.Deleted.Should().BeEmpty();
     }
 
     [Fact]

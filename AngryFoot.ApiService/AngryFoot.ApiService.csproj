@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Qdrant.Client" Version="13.4.6" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
       <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
       <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
@@ -29,6 +30,7 @@
       <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.10" />
       <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
       <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
+      <PackageReference Include="Qdrant.Client" Version="1.18.1" />
       <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
       <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>

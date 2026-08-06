@@ -13,4 +13,8 @@
     <ProjectReference Include="..\AngryFoot.Web\AngryFoot.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Qdrant" Version="13.4.6" />
+  </ItemGroup>
+
 </Project>

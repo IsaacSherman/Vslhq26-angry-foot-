@@ -25,7 +25,7 @@ AngryFoot is a .NET Aspire solution with two runnable services and three support
 
 - **AngryFoot.AppHost** — Aspire orchestrator. Launches the API service and web frontend, wires up service discovery, and hosts the developer dashboard.
 - **AngryFoot.Web** — Blazor Server UI (Bullets, Profile, Generate, History pages). Talks to the API service exclusively through a typed `ApiClient` (`HttpClient` resolved via Aspire service discovery, `https+http://apiservice`). Renders generated Markdown with a Preview/Markdown toggle (Markdig).
-- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, candidate-fit assessment, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Persistence is EF Core over a per-user SQLite database.
+- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, candidate-fit assessment, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Bullet selection for a generation prefers semantic retrieval — bullets are embedded and indexed in Qdrant, and the job description is matched against them by vector similarity — falling back to the original deterministic keyword-overlap ranking when embeddings/Qdrant aren't configured (see [Optional: semantic bullet retrieval (RAG)](#optional-semantic-bullet-retrieval-rag)). Persistence is EF Core over a per-user SQLite database.
 - **AngryFoot.Contracts** — shared DTOs referenced by both Web and ApiService, so the UI and API can never drift apart silently.
 - **AngryFoot.ServiceDefaults** — shared Aspire plumbing: HTTP resilience (retry/circuit-breaker), service discovery, and OpenTelemetry tracing/metrics for both services.
 - **AngryFoot.Tests** — xUnit suite: fast Moq-based unit tests for every service, plus Aspire integration tests that boot the full AppHost against isolated temp databases (including an end-to-end MCP client test).
@@ -61,14 +61,14 @@ flowchart LR
     Defaults -.-> Api
 ```
 
-The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `FitAssessmentService` (score the user's chances against their bullet library) → `BulletRankingService` (pick the best bullets) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
+The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `FitAssessmentService` (score the user's chances against their bullet library) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
 
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
-- **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` abstraction), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5. Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
-- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, fit assessment, bullet rewriting, and cover-letter drafting. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI configured.
-- **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports; no cloud deployment or Docker required. Data lives in a per-user SQLite database.
+- **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` and `IEmbeddingGenerator` abstractions), Qdrant.Client + Aspire.Hosting.Qdrant/Aspire.Qdrant.Client (optional semantic retrieval), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5. Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
+- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, fit assessment, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
+- **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports; no cloud deployment or Docker required by default. Data lives in a per-user SQLite database. Docker is only needed if you opt into Aspire-managed Qdrant (see below).
 
 ## Getting started
 
@@ -109,9 +109,26 @@ Secrets are stored with **.NET user secrets** (never committed; there is no `.en
 | `AzureOpenAI:ApiKey` (or `AzureOpenAI:Key`) | opaque key string | Azure OpenAI API key |
 | `AzureOpenAI:ChatDeployment` (or `Deployment` / `Model`) | deployment name, e.g. `gpt-5-mini` | Chat deployment to use; defaults to `gpt-5-mini` |
 | `AzureOpenAI:ServiceVersion` | e.g. `V2024_10_21` | Optional Azure OpenAI API version pin |
+| `AzureOpenAI:EmbeddingDeployment` | deployment name, e.g. `text-embedding-3-small` | Optional. Enables semantic bullet retrieval when also paired with `Qdrant:Enabled` (see below). |
+| `AzureOpenAI:EmbeddingDimensions` | integer | Optional. Vector size for the embedding model; defaults to `1536` (matches `text-embedding-3-small`/`text-embedding-ada-002`). |
+| `Qdrant:Enabled` | `true`/`false` | Optional, AppHost-only. Set to `true` to have Aspire start a Qdrant container and wire it to the API service; defaults to `false` so `dotnet run`/`dotnet test` never require Docker. |
 | `ConnectionStrings:angryfoot` | `Data Source=<path>` | Optional SQLite override. Default: `%LOCALAPPDATA%\AngryFoot\angryfoot.db` (per-user, survives rebuilds; integration tests point this at isolated temp files) |
 
-If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instructions, and all AI features fall back to heuristics. Both services write rolling log files to their own `Logs/` directory in addition to the console. The MCP endpoint is served at `http://localhost:<apiservice-port>/mcp` (streamable HTTP; find the port on the Aspire dashboard).
+If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instructions, and all AI features fall back to heuristics; the same response's `retrievalEnabled`/`retrievalMessage` fields report whether semantic bullet retrieval is active. Both services write rolling log files to their own `Logs/` directory in addition to the console. The MCP endpoint is served at `http://localhost:<apiservice-port>/mcp` (streamable HTTP; find the port on the Aspire dashboard).
+
+### Optional: semantic bullet retrieval (RAG)
+
+By default, picking bullets for a generation loads the whole bullet library and scores it with deterministic keyword overlap (`BulletRankingService`). Turning on semantic retrieval instead embeds each bullet and indexes it in Qdrant, so a generation retrieves only the bullets that are actually relevant to the job description by vector similarity — this scales better as your bullet library grows and finds matches keyword overlap misses (e.g. "led cloud migration" matching a JD asking for "cloud transformation experience").
+
+This is opt-in and requires Docker (Aspire runs Qdrant as a container):
+
+```bash
+dotnet user-secrets set "AzureOpenAI:EmbeddingDeployment" "text-embedding-3-small" --project AngryFoot.AppHost
+dotnet user-secrets set "Qdrant:Enabled" "true" --project AngryFoot.AppHost
+dotnet run --project AngryFoot.AppHost
+```
+
+With `Qdrant:Enabled` left at its default (`false`), or with no embedding deployment configured, nothing changes: the app runs exactly as before, with zero external services, using keyword-overlap ranking.
 
 ## Demo
 
@@ -128,6 +145,7 @@ If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instr
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, but there is no verification pass — generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.
+- **Semantic retrieval is opt-in and unindexed bullets are invisible to it.** Bullets are only embedded going forward from when `Qdrant:Enabled`/`AzureOpenAI:EmbeddingDeployment` are turned on (via `IBulletService`'s create/update/enrich paths); there's no backfill/reindex job yet, so bullets created before retrieval was enabled won't surface until they're edited or re-enriched. With retrieval disabled (the default), generation still keyword-scores the entire bullet library on every request, so cost/latency there still scale with library size.
 
 ## Open Source Software (FOSS) Attribution
 
@@ -139,6 +157,7 @@ AngryFoot is built on the following open-source packages. Versions and licenses 
 |---|---|---|---|
 | .NET / ASP.NET Core / Blazor | net10.0 | MIT | <https://github.com/dotnet> |
 | Aspire (AppHost SDK, orchestration) | 13.4.6 | MIT | <https://github.com/microsoft/aspire> |
+| Aspire.Hosting.Qdrant | 13.4.6 | MIT | Optional Aspire container resource for Qdrant (opt-in via `Qdrant:Enabled`) |
 
 ### API Service (`AngryFoot.ApiService`)
 
@@ -148,11 +167,13 @@ AngryFoot is built on the following open-source packages. Versions and licenses 
 | Microsoft.AspNetCore.OpenApi | 10.0.8 | MIT | OpenAPI document generation |
 | Microsoft.EntityFrameworkCore.Sqlite | 10.0.8 | MIT | EF Core ORM with SQLite provider |
 | Microsoft.EntityFrameworkCore.Design | 10.0.8 | MIT | EF Core migrations tooling (build-time) |
-| Microsoft.Extensions.AI | 10.8.1 | MIT | Provider-agnostic `IChatClient` abstractions |
+| Microsoft.Extensions.AI | 10.8.1 | MIT | Provider-agnostic `IChatClient`/`IEmbeddingGenerator` abstractions |
 | Microsoft.Extensions.AI.OpenAI | 10.8.1 | MIT | OpenAI adapter for Microsoft.Extensions.AI |
 | Microsoft.Extensions.Configuration.UserSecrets | 10.0.10 | MIT | Local secret storage for AI credentials |
 | Microsoft.Extensions.Logging.Console | 10.0.10 | MIT | Console logging provider |
 | ModelContextProtocol.AspNetCore | 2.0.0 | Apache-2.0 | MCP server over streamable HTTP (`/mcp`) |
+| Qdrant.Client | 1.18.1 | Apache-2.0 | Vector database client for optional semantic bullet retrieval |
+| Aspire.Qdrant.Client | 13.4.6 | MIT | Aspire client integration wiring `QdrantClient` via service discovery |
 | Serilog.Extensions.Logging | 10.0.0 | Apache-2.0 | Serilog bridge for Microsoft.Extensions.Logging |
 | Serilog.Sinks.File | 7.0.0 | Apache-2.0 | Rolling file logging to `./Logs/` |
 
