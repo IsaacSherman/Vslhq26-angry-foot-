@@ -71,9 +71,15 @@ else
                     <td>@string.Join(", ", bullet.Technologies)</td>
                     <td>@bullet.EnrichmentState</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(bullet.Id)">Edit</button>
-                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EnrichAsync(bullet.Id)">Retry Enrich</button>
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(bullet.Id)">Delete</button>
+                        <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(bullet.Id)" disabled="@(enrichingId == bullet.Id)">Edit</button>
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => EnrichAsync(bullet.Id)" disabled="@(enrichingId is not null)">
+                            @if (enrichingId == bullet.Id)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                            }
+                            Retry Enrich
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(bullet.Id)" disabled="@(enrichingId == bullet.Id)">Delete</button>
                     </td>
                 </tr>
             }
@@ -91,6 +97,7 @@ else
     private string? skill;
     private string? technology;
     private string? category;
+    private Guid? enrichingId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,8 +136,22 @@ else
 
     private async Task EnrichAsync(Guid id)
     {
-        await ApiClient.EnrichBulletAsync(id);
-        await LoadAsync();
+        errorMessage = null;
+        enrichingId = id;
+
+        try
+        {
+            await ApiClient.EnrichBulletAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            enrichingId = null;
+        }
     }
 
     private async Task DeleteAsync(Guid id)

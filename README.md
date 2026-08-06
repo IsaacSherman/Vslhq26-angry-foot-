@@ -1,4 +1,4 @@
-# Bullet'r
+# AngryFoot
 
 Helps a job candidate generate a bespoke resume for a target job description by storing achievement bullets, enriching them with AI metadata, analyzing the target job description, and generating a tailored resume + cover letter in Markdown.
 
@@ -16,12 +16,12 @@ Helps a job candidate generate a bespoke resume for a target job description by 
 
 ## What it does
 
-Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  Bullet'r both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired
+Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  AngryFoot both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired
 
 
 ## Architecture
 
-Bullet'r is a .NET Aspire solution with two runnable services and three supporting projects:
+AngryFoot is a .NET Aspire solution with two runnable services and three supporting projects:
 
 - **AngryFoot.AppHost** — Aspire orchestrator. Launches the API service and web frontend, wires up service discovery, and hosts the developer dashboard.
 - **AngryFoot.Web** — Blazor Server UI (Bullets, Profile, Generate, History pages). Talks to the API service exclusively through a typed `ApiClient` (`HttpClient` resolved via Aspire service discovery, `https+http://apiservice`). Renders generated Markdown with a Preview/Markdown toggle (Markdig).
@@ -131,7 +131,7 @@ If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instr
 
 ## Open Source Software (FOSS) Attribution
 
-Bullet'r is built on the following open-source packages. Versions and licenses reflect the package metadata shipped with each NuGet package (`dotnet list package` for the full transitive graph).
+AngryFoot is built on the following open-source packages. Versions and licenses reflect the package metadata shipped with each NuGet package (`dotnet list package` for the full transitive graph).
 
 ### Platform & SDKs
 

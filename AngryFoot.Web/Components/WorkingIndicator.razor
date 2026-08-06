@@ -1,0 +1,50 @@
+@implements IDisposable
+
+@if (Visible)
+{
+    <div class="d-flex align-items-center gap-3 border rounded p-3 mb-3 bg-body-tertiary" role="status" aria-live="polite">
+        <div class="spinner-border text-primary" aria-hidden="true"></div>
+        <div class="flex-grow-1">
+            <div>@Message <span class="text-muted">(@elapsed.ToString(@"m\:ss") elapsed)</span></div>
+            <div class="progress mt-2" style="height: 6px;" aria-hidden="true">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Message { get; set; } = "Working...";
+
+    private System.Timers.Timer? timer;
+    private DateTime startedUtc;
+    private TimeSpan elapsed;
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && timer is null)
+        {
+            startedUtc = DateTime.UtcNow;
+            elapsed = TimeSpan.Zero;
+            timer = new System.Timers.Timer(1000);
+            timer.Elapsed += (_, _) =>
+            {
+                elapsed = DateTime.UtcNow - startedUtc;
+                _ = InvokeAsync(StateHasChanged);
+            };
+            timer.Start();
+        }
+        else if (!Visible && timer is not null)
+        {
+            timer.Dispose();
+            timer = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+        timer = null;
+    }
+}
