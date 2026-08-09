@@ -5,7 +5,7 @@
       "name": "apphost",
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "AngryFoot.AppHost", "--launch-profile", "http"],
-      "port": 15205
+      "port": 15205 
     }
   ]
 }
