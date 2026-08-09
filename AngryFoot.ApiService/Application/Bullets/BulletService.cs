@@ -1,8 +1,8 @@
+using AngryFoot.ApiService.Application.Retrieval;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
 using Microsoft.EntityFrameworkCore;
-using SQLitePCL;
 
 namespace AngryFoot.ApiService.Application.Bullets;
 
@@ -14,9 +14,15 @@ public interface IBulletService
     Task<BulletDto?> UpdateAsync(Guid id, UpdateBulletRequest request, CancellationToken cancellationToken);
     Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
     Task<BulletDto?> EnrichAsync(Guid id, CancellationToken cancellationToken);
+    Task<BulletDto?> IndexAsync(Guid id, CancellationToken cancellationToken);
+    Task<int> IndexAllMissingAsync(CancellationToken cancellationToken);
 }
 
-public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bulletTagger, ILogger<BulletService> logger) : IBulletService
+public sealed class BulletService(
+    AngryFootDbContext dbContext,
+    IBulletTagger bulletTagger,
+    IBulletVectorStore vectorStore,
+    ILogger<BulletService> logger) : IBulletService
 {
     // Outer safety net; must exceed the tagger's own AI timeout so the tagger can
     // time out gracefully and still return its heuristic fallback.
@@ -56,13 +62,22 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
             query = query.Where(x => ContainsIgnoreCase(x.JobCategories, category));
         }
 
-        return query.Select(x => x.ToDto()).ToArray();
+        var matched = query.ToArray();
+        var indexedIds = await vectorStore.GetIndexedIdsAsync(matched.Select(x => x.Id).ToArray(), cancellationToken);
+
+        return matched.Select(x => x.ToDto(indexedIds.Contains(x.Id))).ToArray();
     }
 
     public async Task<BulletDto?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         var bullet = await dbContext.Bullets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        return bullet?.ToDto();
+        if (bullet is null)
+        {
+            return null;
+        }
+
+        var indexedIds = await vectorStore.GetIndexedIdsAsync([bullet.Id], cancellationToken);
+        return bullet.ToDto(indexedIds.Contains(bullet.Id));
     }
 
     public async Task<BulletDto> CreateAsync(CreateBulletRequest request, CancellationToken cancellationToken)
@@ -81,8 +96,9 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
         await TryApplyTaggingAsync(bullet, cancellationToken);
         dbContext.Bullets.Add(bullet);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
-        return bullet.ToDto();
+        return bullet.ToDto(isIndexed);
     }
 
     public async Task<BulletDto?> UpdateAsync(Guid id, UpdateBulletRequest request, CancellationToken cancellationToken)
@@ -102,13 +118,19 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
 
         await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
-        return bullet.ToDto();
+        return bullet.ToDto(isIndexed);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await dbContext.Bullets.Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken);
+        if (deleted > 0)
+        {
+            await vectorStore.DeleteAsync(id, cancellationToken);
+        }
+
         return deleted > 0;
     }
 
@@ -127,8 +149,56 @@ public sealed class BulletService(AngryFootDbContext dbContext, IBulletTagger bu
 
         await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
-        return bullet.ToDto();
+        return bullet.ToDto(isIndexed);
+    }
+
+    /// <summary>
+    /// Embeds and upserts an existing bullet into the vector store as-is, without touching its
+    /// enrichment metadata or re-running AI tagging. Used to backfill bullets that predate
+    /// semantic retrieval being configured.
+    /// </summary>
+    public async Task<BulletDto?> IndexAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var bullet = await dbContext.Bullets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (bullet is null)
+        {
+            return null;
+        }
+
+        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
+
+        return bullet.ToDto(isIndexed);
+    }
+
+    /// <summary>
+    /// Indexes every bullet that doesn't yet have a point in the vector store, without touching
+    /// enrichment metadata. Returns the number successfully upserted rather than the number
+    /// attempted, so a single bad bullet does not make the UI overstate backfill progress.
+    /// </summary>
+    public async Task<int> IndexAllMissingAsync(CancellationToken cancellationToken)
+    {
+        var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
+        var allIds = bullets.Select(x => x.Id).ToArray();
+        var alreadyIndexed = await vectorStore.GetIndexedIdsAsync(allIds, cancellationToken);
+        var missing = bullets.Where(x => !alreadyIndexed.Contains(x.Id)).ToArray();
+
+        if (missing.Length == 0)
+        {
+            return 0;
+        }
+
+        var indexedCount = 0;
+        foreach (var bullet in missing)
+        {
+            if (await vectorStore.UpsertAsync(bullet, cancellationToken))
+            {
+                indexedCount++;
+            }
+        }
+
+        return indexedCount;
     }
 
     private async Task TryApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)

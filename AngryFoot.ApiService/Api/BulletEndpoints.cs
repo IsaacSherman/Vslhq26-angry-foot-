@@ -63,6 +63,18 @@ public static class BulletEndpoints
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
+        bullets.MapPost("/{id:guid}/index", async (Guid id, IBulletService bulletService, CancellationToken cancellationToken) =>
+        {
+            var result = await bulletService.IndexAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
+        bullets.MapPost("/index-missing", async (IBulletService bulletService, CancellationToken cancellationToken) =>
+        {
+            var indexedCount = await bulletService.IndexAllMissingAsync(cancellationToken);
+            return Results.Ok(new IndexMissingBulletsResponse(indexedCount));
+        });
+
         return apiGroup;
     }
 }

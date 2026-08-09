@@ -1,6 +1,8 @@
 using AngryFoot.ApiService.Application.Generation;
+using AngryFoot.ApiService.Application.Retrieval;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
+using AngryFoot.Tests.Fakes;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -11,6 +13,7 @@ public class GenerationOrchestratorTests : IDisposable
 {
     private readonly SqliteTestDatabase _database = new();
     private readonly Mock<IJobAnalyzer> _analyzer = new();
+    private readonly FakeBulletVectorStore _vectorStore = new() { IsAvailable = false };
 
     public void Dispose() => _database.Dispose();
 
@@ -22,6 +25,7 @@ public class GenerationOrchestratorTests : IDisposable
         return new GenerationOrchestrator(
             _database.Context,
             _analyzer.Object,
+            new BulletRetrievalService(_vectorStore),
             new BulletRankingService(),
             new BulletRewriteService(deadChatClient.Object, NullLogger<BulletRewriteService>.Instance),
             new ResumeMarkdownService(),
@@ -123,5 +127,118 @@ public class GenerationOrchestratorTests : IDisposable
 
         result.ResumeMarkdown.Should().Contain("Candidate Name", "an empty profile renders placeholders");
         _database.Context.Profiles.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenRetrievalIsAvailable_UsesRetrievedBulletsInsteadOfKeywordRanking()
+    {
+        SeedProfileAndBullets("Watered the office plants.");
+        var semanticMatch = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Built distributed systems in C#.",
+            ModifiedDate = DateTime.UtcNow
+        };
+        _database.Context.Bullets.Add(semanticMatch);
+        _database.Context.SaveChanges();
+
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults = [new BulletSimilarityMatch(semanticMatch.Id, 0.87f)];
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto([], [], [], [], [], null, null));
+        var sut = CreateSut();
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("C# distributed systems role.", null, null, MaxBullets: 1),
+            CancellationToken.None);
+
+        result.SelectedBulletIds.Should().ContainSingle().Which.Should().Be(semanticMatch.Id, "the semantically retrieved bullet should win over the keyword-scored one");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenRetrievalIsAvailableButReturnsNoMatches_FallsBackToKeywordRanking()
+    {
+        SeedProfileAndBullets("Built C# services.");
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults = [];
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["c#"], [], [], [], [], null, null));
+        var sut = CreateSut();
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("C# role.", null, null, MaxBullets: 1),
+            CancellationToken.None);
+
+        result.SelectedBulletIds.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenSemanticMatchesAreWeak_FallsBackToKeywordRanking()
+    {
+        _database.Context.Profiles.Add(new Profile { Id = Guid.NewGuid(), Name = "Ada" });
+        var keywordMatch = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Built C# services.",
+            ModifiedDate = DateTime.UtcNow
+        };
+        var weakSemanticMatch = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Watered the office plants.",
+            ModifiedDate = DateTime.UtcNow.AddMinutes(1)
+        };
+        _database.Context.Bullets.AddRange(keywordMatch, weakSemanticMatch);
+        _database.Context.SaveChanges();
+
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults = [new BulletSimilarityMatch(weakSemanticMatch.Id, 0.10f)];
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["c#"], [], [], [], [], null, null));
+        var sut = CreateSut();
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("C# role.", null, null, MaxBullets: 1),
+            CancellationToken.None);
+
+        result.SelectedBulletIds.Should().ContainSingle().Which.Should().Be(keywordMatch.Id);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WhenRetrievalReturnsFewerStrongMatches_TopsOffWithKeywordRanking()
+    {
+        _database.Context.Profiles.Add(new Profile { Id = Guid.NewGuid(), Name = "Ada" });
+        var semanticMatch = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Led distributed systems design.",
+            ModifiedDate = DateTime.UtcNow
+        };
+        var keywordMatch = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Built C# services.",
+            ModifiedDate = DateTime.UtcNow
+        };
+        var unrelated = new Bullet
+        {
+            Id = Guid.NewGuid(),
+            BulletText = "Watered the office plants.",
+            ModifiedDate = DateTime.UtcNow.AddMinutes(1)
+        };
+        _database.Context.Bullets.AddRange(semanticMatch, keywordMatch, unrelated);
+        _database.Context.SaveChanges();
+
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults = [new BulletSimilarityMatch(semanticMatch.Id, 0.87f)];
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["c#"], [], [], [], [], null, null));
+        var sut = CreateSut();
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("C# distributed systems role.", null, null, MaxBullets: 2),
+            CancellationToken.None);
+
+        result.SelectedBulletIds.Should().Equal(semanticMatch.Id, keywordMatch.Id);
     }
 }

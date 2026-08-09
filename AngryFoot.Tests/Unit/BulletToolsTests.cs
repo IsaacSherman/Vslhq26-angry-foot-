@@ -10,7 +10,7 @@ namespace AngryFoot.Tests.Unit;
 public class BulletToolsTests
 {
     private static BulletDto Dto(Guid? id = null, string text = "A bullet.")
-        => new(id ?? Guid.NewGuid(), text, [], [], [], [], [], null, EnrichmentStateDto.Enriched, DateTime.UtcNow, DateTime.UtcNow);
+        => new(id ?? Guid.NewGuid(), text, [], [], [], [], [], null, EnrichmentStateDto.Enriched, DateTime.UtcNow, DateTime.UtcNow, false);
 
     private readonly Mock<IBulletService> _bulletService = new();
     private readonly Mock<IBulletRewriteAssistant> _rewriteAssistant = new();

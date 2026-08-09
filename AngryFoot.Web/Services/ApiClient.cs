@@ -76,6 +76,26 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
     }
 
+    public async Task<BulletDto?> IndexBulletAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsync($"/api/bullets/{id}/index", null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
+    }
+
+    public async Task<int> IndexMissingBulletsAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsync("/api/bullets/index-missing", null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<IndexMissingBulletsResponse>(cancellationToken);
+        return result?.IndexedCount ?? 0;
+    }
+
     public async Task<ProfileDto> GetProfileAsync(CancellationToken cancellationToken = default)
     {
         return (await httpClient.GetFromJsonAsync<ProfileDto>("/api/profile", cancellationToken))!;
@@ -160,5 +180,7 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
 public sealed record AiStatusResponse(
     bool IsHealthy,
     string Status,
-    string? Message = null);
+    string? Message = null,
+    bool RetrievalEnabled = false,
+    string? RetrievalMessage = null);
 

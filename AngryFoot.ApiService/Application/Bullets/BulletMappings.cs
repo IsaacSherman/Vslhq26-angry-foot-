@@ -5,7 +5,7 @@ namespace AngryFoot.ApiService.Application.Bullets;
 
 public static class BulletMappings
 {
-    public static BulletDto ToDto(this Bullet bullet)
+    public static BulletDto ToDto(this Bullet bullet, bool isIndexed = false)
     {
         return new BulletDto(
             bullet.Id,
@@ -23,6 +23,7 @@ public static class BulletMappings
                 _ => EnrichmentStateDto.Failed
             },
             bullet.CreatedDate,
-            bullet.ModifiedDate);
+            bullet.ModifiedDate,
+            isIndexed);
     }
 }

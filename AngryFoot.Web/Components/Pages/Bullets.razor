@@ -8,6 +8,16 @@
 
 <div class="mb-3">
     <button class="btn btn-primary" @onclick="CreateNew">Add Bullet</button>
+    @if (retrievalEnabled && bullets.Any(b => !b.IsIndexed))
+    {
+        <button class="btn btn-outline-warning ms-2" @onclick="IndexAllMissingAsync" disabled="@(isBulkIndexing || indexingId is not null)">
+            @if (isBulkIndexing)
+            {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            }
+            Index All Missing
+        </button>
+    }
 </div>
 
 <div class="card mb-3">
@@ -35,6 +45,11 @@
         </div>
     </div>
 </div>
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
 
 @if (isLoading)
 {
@@ -79,6 +94,16 @@ else
                             }
                             Retry Enrich
                         </button>
+                        @if (retrievalEnabled && !bullet.IsIndexed)
+                        {
+                            <button class="btn btn-sm btn-outline-warning me-1" title="Not yet in the semantic search index" @onclick="() => IndexAsync(bullet.Id)" disabled="@(indexingId is not null || isBulkIndexing)">
+                                @if (indexingId == bullet.Id)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                }
+                                Add to Vector Index
+                            </button>
+                        }
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(bullet.Id)" disabled="@(enrichingId == bullet.Id)">Delete</button>
                     </td>
                 </tr>
@@ -91,6 +116,7 @@ else
     private readonly List<AngryFoot.Contracts.BulletDto> bullets = [];
     private bool isLoading;
     private string? errorMessage;
+    private string? successMessage;
 
     private string? search;
     private string? tag;
@@ -98,15 +124,22 @@ else
     private string? technology;
     private string? category;
     private Guid? enrichingId;
+    private Guid? indexingId;
+    private bool isBulkIndexing;
+    private bool retrievalEnabled;
 
     protected override async Task OnInitializedAsync()
     {
+        var aiStatus = await ApiClient.GetAiStatusAsync();
+        retrievalEnabled = aiStatus?.RetrievalEnabled ?? false;
+
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
         errorMessage = null;
+        successMessage = null;
         isLoading = true;
 
         try
@@ -151,6 +184,50 @@ else
         finally
         {
             enrichingId = null;
+        }
+    }
+
+    private async Task IndexAsync(Guid id)
+    {
+        errorMessage = null;
+        indexingId = id;
+
+        try
+        {
+            await ApiClient.IndexBulletAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            indexingId = null;
+        }
+    }
+
+    private async Task IndexAllMissingAsync()
+    {
+        errorMessage = null;
+        isBulkIndexing = true;
+
+        try
+        {
+            var missingBefore = bullets.Count(b => !b.IsIndexed);
+            var indexedCount = await ApiClient.IndexMissingBulletsAsync();
+            await LoadAsync();
+            successMessage = indexedCount == 0
+                ? "No bullets needed indexing."
+                : $"Indexed {indexedCount} of {missingBefore} bullet{(missingBefore == 1 ? "" : "s")}.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isBulkIndexing = false;
         }
     }
 

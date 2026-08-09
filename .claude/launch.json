@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "apphost",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "AngryFoot.AppHost", "--launch-profile", "http"],
+      "port": 15205 
+    }
+  ]
+}
