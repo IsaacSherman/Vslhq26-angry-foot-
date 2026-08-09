@@ -178,6 +178,21 @@ public class BulletServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_WhenVectorUpsertFails_ReturnsNotIndexed()
+    {
+        _vectorStore.UpsertSucceeds = false;
+        _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RichTagging);
+        var sut = CreateSut();
+
+        var result = await sut.CreateAsync(new CreateBulletRequest("Did the thing."), CancellationToken.None);
+
+        result.IsIndexed.Should().BeFalse();
+        var persisted = await sut.GetByIdAsync(result.Id, CancellationToken.None);
+        persisted!.IsIndexed.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task UpdateAsync_UpsertsTheBulletIntoTheVectorStoreAgain()
     {
         _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -212,6 +227,20 @@ public class BulletServiceTests : IDisposable
         await sut.DeleteAsync(Guid.NewGuid(), CancellationToken.None);
 
         _vectorStore.Deleted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task IndexAllMissingAsync_CountsOnlySuccessfulUpserts()
+    {
+        _vectorStore.UpsertSucceeds = false;
+        _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(EmptyTagging);
+        var sut = CreateSut();
+        await sut.CreateAsync(new CreateBulletRequest("A bullet."), CancellationToken.None);
+
+        var indexedCount = await sut.IndexAllMissingAsync(CancellationToken.None);
+
+        indexedCount.Should().Be(0);
     }
 
     [Fact]

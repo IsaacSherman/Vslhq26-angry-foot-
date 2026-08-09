@@ -11,6 +11,10 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
 {
     public bool IsAvailable { get; set; } = true;
 
+    public bool UpsertSucceeds { get; set; } = true;
+
+    public RetrievalHealth Health { get; set; } = new(true, "Semantic retrieval is ready.");
+
     public List<Bullet> Upserted { get; } = [];
 
     public List<Guid> Deleted { get; } = [];
@@ -19,11 +23,15 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
 
     private readonly HashSet<Guid> _indexedIds = [];
 
-    public Task UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
+    public Task<bool> UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
     {
         Upserted.Add(bullet);
-        _indexedIds.Add(bullet.Id);
-        return Task.CompletedTask;
+        if (UpsertSucceeds)
+        {
+            _indexedIds.Add(bullet.Id);
+        }
+
+        return Task.FromResult(UpsertSucceeds);
     }
 
     public Task DeleteAsync(Guid bulletId, CancellationToken cancellationToken)
@@ -38,4 +46,7 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
 
     public Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlySet<Guid>>(_indexedIds.Intersect(bulletIds).ToHashSet());
+
+    public Task<RetrievalHealth> CheckHealthAsync(CancellationToken cancellationToken)
+        => Task.FromResult(Health);
 }

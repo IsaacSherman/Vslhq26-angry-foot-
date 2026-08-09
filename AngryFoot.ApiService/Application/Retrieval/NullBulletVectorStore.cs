@@ -11,7 +11,7 @@ internal sealed class NullBulletVectorStore : IBulletVectorStore
 {
     public bool IsAvailable => false;
 
-    public Task UpsertAsync(Bullet bullet, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task<bool> UpsertAsync(Bullet bullet, CancellationToken cancellationToken) => Task.FromResult(false);
 
     public Task DeleteAsync(Guid bulletId, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -20,4 +20,7 @@ internal sealed class NullBulletVectorStore : IBulletVectorStore
 
     public Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
+
+    public Task<RetrievalHealth> CheckHealthAsync(CancellationToken cancellationToken)
+        => Task.FromResult(new RetrievalHealth(false, "Semantic retrieval is not configured."));
 }

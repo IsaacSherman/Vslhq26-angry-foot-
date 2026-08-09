@@ -14,6 +14,8 @@ internal sealed class GenerationOrchestrator(
     ResumeMarkdownService resumeService,
     CoverLetterService coverLetterService) : IGenerationOrchestrator
 {
+    private const float MinimumSemanticSimilarity = 0.35f;
+
     public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.JobDescription))
@@ -76,38 +78,49 @@ internal sealed class GenerationOrchestrator(
     }
 
     /// <summary>
-    /// Prefers semantic retrieval (only the matched bullets are loaded from the database) and
-    /// falls back to the deterministic keyword-overlap ranking over the full bullet library when
-    /// retrieval is unavailable or configured but returns nothing.
+    /// Prefers strong semantic matches, then fills any remaining slots with the deterministic
+    /// keyword-overlap ranker so retrieval cannot hide otherwise useful bullets.
     /// </summary>
     private async Task<IReadOnlyList<RankedBullet>> RetrieveRankedBulletsAsync(
         string jobDescription, JobAnalysisDto analysis, int maxBullets, CancellationToken cancellationToken)
     {
+        var retrieved = Array.Empty<RankedBullet>();
+
         if (retrievalService.IsAvailable)
         {
             var matches = await retrievalService.SearchAsync(jobDescription, analysis, maxBullets, cancellationToken);
             if (matches.Count > 0)
             {
-                var matchedIds = matches.Select(x => x.BulletId).ToArray();
+                var strongMatches = matches
+                    .Where(x => x.Score >= MinimumSemanticSimilarity)
+                    .ToArray();
+                var matchedIds = strongMatches.Select(x => x.BulletId).ToArray();
                 var bulletsById = await dbContext.Bullets
                     .AsNoTracking()
                     .Where(x => matchedIds.Contains(x.Id))
                     .ToDictionaryAsync(x => x.Id, cancellationToken);
 
-                var retrieved = matches
+                retrieved = strongMatches
                     .Where(x => bulletsById.ContainsKey(x.BulletId))
                     .Select(x => new RankedBullet(bulletsById[x.BulletId], ScoreToRankingPoints(x.Score)))
                     .ToArray();
 
-                if (retrieved.Length > 0)
+                if (retrieved.Length >= maxBullets)
                 {
                     return retrieved;
                 }
             }
         }
 
-        var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
-        return rankingService.Rank(bullets, analysis, maxBullets);
+        var selectedIds = retrieved.Select(x => x.Bullet.Id).ToHashSet();
+        var remainingSlots = maxBullets - retrieved.Length;
+        var bullets = await dbContext.Bullets
+            .AsNoTracking()
+            .Where(x => !selectedIds.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+        var keywordRanked = rankingService.Rank(bullets, analysis, remainingSlots);
+
+        return retrieved.Concat(keywordRanked).Take(maxBullets).ToArray();
     }
 
     // Qdrant cosine similarity is in [-1, 1]; scale onto roughly the same order of magnitude as

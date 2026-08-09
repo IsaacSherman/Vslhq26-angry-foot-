@@ -18,21 +18,23 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Qdrant.Client" Version="13.4.6" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
       <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
-      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         <PrivateAssets>all</PrivateAssets>
       </PackageReference>
-      <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
-      <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.1" />
-      <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.1" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+      <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.3" />
+      <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
       <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.10" />
       <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
-      <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
-      <PackageReference Include="Qdrant.Client" Version="1.18.1" />
+      <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+      <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.1.0" />
+      <PackageReference Include="Qdrant.Client" Version="1.19.0" />
       <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
       <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+      <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
   </ItemGroup>
 
 </Project>

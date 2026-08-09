@@ -24,7 +24,7 @@ internal sealed class QdrantBulletVectorStore(
 
     public bool IsAvailable => true;
 
-    public async Task UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
+    public async Task<bool> UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
     {
         try
         {
@@ -40,12 +40,18 @@ internal sealed class QdrantBulletVectorStore(
             };
 
             await client.UpsertAsync(CollectionName, [point], cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex,
                 "Failed to index bullet {BulletId} in Qdrant. It will be missing from semantic retrieval until the next successful upsert; keyword ranking still covers it.",
                 bullet.Id);
+            return false;
         }
     }
 
@@ -55,6 +61,10 @@ internal sealed class QdrantBulletVectorStore(
         {
             await EnsureCollectionAsync(cancellationToken);
             await client.DeleteAsync(CollectionName, bulletId, cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -79,6 +89,10 @@ internal sealed class QdrantBulletVectorStore(
                 .Where(x => x.Id.HasUuid && Guid.TryParse(x.Id.Uuid, out _))
                 .Select(x => new BulletSimilarityMatch(Guid.Parse(x.Id.Uuid), x.Score))
                 .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -107,10 +121,42 @@ internal sealed class QdrantBulletVectorStore(
                 .Select(x => Guid.Parse(x.Id.Uuid))
                 .ToHashSet();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to check Qdrant indexing status for {Count} bullets.", bulletIds.Count);
             return new HashSet<Guid>();
+        }
+    }
+
+    public async Task<RetrievalHealth> CheckHealthAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await EnsureCollectionAsync(cancellationToken);
+
+            var vector = await embeddingGenerator.GenerateVectorAsync(
+                "retrieval health check", cancellationToken: cancellationToken);
+            if (vector.Length != options.EmbeddingDimensions)
+            {
+                return new RetrievalHealth(
+                    false,
+                    $"Embedding deployment returned {vector.Length} dimensions, but Qdrant collection expects {options.EmbeddingDimensions}.");
+            }
+
+            return new RetrievalHealth(true, "Semantic retrieval is ready.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Qdrant retrieval health check failed.");
+            return new RetrievalHealth(false, $"Semantic retrieval is configured but unavailable: {ex.Message}");
         }
     }
 
