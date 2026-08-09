@@ -19,4 +19,7 @@ public interface IBulletVectorStore
     Task DeleteAsync(Guid bulletId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken);
+
+    /// <summary>Which of the given bullet ids already have a point stored in the vector index.</summary>
+    Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken);
 }

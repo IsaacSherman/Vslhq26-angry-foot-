@@ -17,4 +17,7 @@ internal sealed class NullBulletVectorStore : IBulletVectorStore
 
     public Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<BulletSimilarityMatch>>([]);
+
+    public Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
 }

@@ -17,18 +17,25 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
 
     public IReadOnlyList<BulletSimilarityMatch> SearchResults { get; set; } = [];
 
+    private readonly HashSet<Guid> _indexedIds = [];
+
     public Task UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
     {
         Upserted.Add(bullet);
+        _indexedIds.Add(bullet.Id);
         return Task.CompletedTask;
     }
 
     public Task DeleteAsync(Guid bulletId, CancellationToken cancellationToken)
     {
         Deleted.Add(bulletId);
+        _indexedIds.Remove(bulletId);
         return Task.CompletedTask;
     }
 
     public Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken)
         => Task.FromResult(SearchResults);
+
+    public Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlySet<Guid>>(_indexedIds.Intersect(bulletIds).ToHashSet());
 }

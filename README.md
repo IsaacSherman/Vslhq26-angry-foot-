@@ -110,7 +110,7 @@ Secrets are stored with **.NET user secrets** (never committed; there is no `.en
 | `AzureOpenAI:ApiKey` (or `AzureOpenAI:Key`) | opaque key string | Azure OpenAI API key |
 | `AzureOpenAI:ChatDeployment` (or `Deployment` / `Model`) | deployment name, e.g. `gpt-5-mini` | Chat deployment to use; defaults to `gpt-5-mini` |
 | `AzureOpenAI:ServiceVersion` | e.g. `V2024_10_21` | Optional Azure OpenAI API version pin |
-| `AzureOpenAI:EmbeddingDeployment` | deployment name, e.g. `text-embedding-3-small` | Optional. Enables semantic bullet retrieval (Qdrant runs regardless; without this the API service still falls back to keyword ranking). |
+| `AzureOpenAI:EmbeddingDeployment` | deployment name | Not a secret — defaults to `text-embedding-3-small` in `AngryFoot.AppHost/appsettings.json` (checked in). Enables semantic bullet retrieval once the endpoint/key are also set (Qdrant runs regardless; without this the API service still falls back to keyword ranking). Override in that file, or via user-secrets/env var, if your Foundry deployment is named differently. |
 | `AzureOpenAI:EmbeddingDimensions` | integer | Optional. Vector size for the embedding model; defaults to `1536` (matches `text-embedding-3-small`/`text-embedding-ada-002`). |
 | `Qdrant:Enabled` | `true`/`false` | AppHost-only, set in `AngryFoot.AppHost/appsettings.json` (defaults to `true`): Aspire automatically starts the latest Qdrant container (Docker required) and wires it to the API service. Flip to `false` in that file — or override per-environment via user-secrets/env var — to skip it, e.g. without Docker. `dotnet test` always disables it for its integration tests, regardless of this setting. |
 | `ConnectionStrings:angryfoot` | `Data Source=<path>` | Optional SQLite override. Default: `%LOCALAPPDATA%\AngryFoot\angryfoot.db` (per-user, survives rebuilds; integration tests point this at isolated temp files) |
@@ -121,14 +121,19 @@ If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instr
 
 Picking bullets for a generation prefers semantic retrieval over the original deterministic keyword overlap (`BulletRankingService`): each bullet is embedded and indexed in Qdrant, so a generation retrieves only the bullets that are actually relevant to the job description by vector similarity — this scales better as your bullet library grows and finds matches keyword overlap misses (e.g. "led cloud migration" matching a JD asking for "cloud transformation experience").
 
-Qdrant itself (`qdrant/qdrant:latest`) starts automatically with `dotnet run --project AngryFoot.AppHost` — Aspire launches it as a Docker container and persists its data in `%LOCALAPPDATA%\AngryFoot\qdrant` (a local bind mount, not an opaque Docker volume), next to `angryfoot.db`. It still needs an embedding deployment to actually be used:
+Qdrant itself (`qdrant/qdrant:latest`) starts automatically with `dotnet run --project AngryFoot.AppHost` — Aspire launches it as a Docker container and persists its data in `%LOCALAPPDATA%\AngryFoot\qdrant` (a local bind mount, not an opaque Docker volume), next to `angryfoot.db`. It still needs an embedding deployment to actually be used, and — unlike the endpoint/API key — the deployment name isn't a secret, so it's a checked-in default in [`AngryFoot.AppHost/appsettings.json`](AngryFoot.AppHost/appsettings.json):
 
-```bash
-dotnet user-secrets set "AzureOpenAI:EmbeddingDeployment" "text-embedding-3-small" --project AngryFoot.AppHost
-dotnet run --project AngryFoot.AppHost
+```json
+{
+  "AzureOpenAI": {
+    "EmbeddingDeployment": "text-embedding-3-small"
+  }
+}
 ```
 
-Without `AzureOpenAI:EmbeddingDeployment` configured, Qdrant still starts (it's harmless and idle) but the API service falls back to keyword-overlap ranking, exactly as before this feature existed. If Docker isn't available, flip `Qdrant.Enabled` to `false` in [`AngryFoot.AppHost/appsettings.json`](AngryFoot.AppHost/appsettings.json) — no code change needed:
+So once you've deployed a `text-embedding-3-small` model in Azure AI Foundry on the **same resource** as your chat deployment (same `AzureOpenAI:Endpoint`/`ApiKey`), it's picked up automatically — no extra config needed. If you named the deployment something else, or deployed a different model (e.g. `text-embedding-3-large`, which needs `AzureOpenAI:EmbeddingDimensions` set to `3072` since it doesn't share `text-embedding-3-small`'s 1536-dim vectors), override the value above directly in that file, or via `dotnet user-secrets set "AzureOpenAI:EmbeddingDeployment" "<your-deployment-name>" --project AngryFoot.AppHost` for a machine-local override that doesn't touch the checked-in default.
+
+Without a usable embedding deployment, Qdrant still starts (it's harmless and idle) but the API service falls back to keyword-overlap ranking, exactly as before this feature existed. If Docker isn't available, flip `Qdrant.Enabled` to `false` in the same file — no code change needed:
 
 ```json
 {

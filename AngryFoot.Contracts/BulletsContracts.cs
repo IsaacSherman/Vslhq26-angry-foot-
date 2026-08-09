@@ -18,7 +18,8 @@ public sealed record BulletDto(
     string? SourceEmployer,
     EnrichmentStateDto EnrichmentState,
     DateTime CreatedDate,
-    DateTime ModifiedDate);
+    DateTime ModifiedDate,
+    bool IsIndexed);
 
 public sealed record CreateBulletRequest(string BulletText, string? SourceEmployer = null);
 
@@ -29,3 +30,5 @@ public sealed record RewriteBulletRequest(string BulletText);
 public sealed record RewriteBulletResponse(
     string RewrittenText,
     IReadOnlyList<string> Suggestions);
+
+public sealed record IndexMissingBulletsResponse(int IndexedCount);

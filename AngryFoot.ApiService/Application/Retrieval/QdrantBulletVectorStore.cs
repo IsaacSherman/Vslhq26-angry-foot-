@@ -87,6 +87,33 @@ internal sealed class QdrantBulletVectorStore(
         }
     }
 
+    public async Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
+    {
+        if (bulletIds.Count == 0)
+        {
+            return new HashSet<Guid>();
+        }
+
+        try
+        {
+            await EnsureCollectionAsync(cancellationToken);
+
+            var ids = bulletIds.Select(id => (PointId)id).ToList();
+            var points = await client.RetrieveAsync(
+                CollectionName, ids, withPayload: false, withVectors: false, cancellationToken: cancellationToken);
+
+            return points
+                .Where(x => x.Id.HasUuid && Guid.TryParse(x.Id.Uuid, out _))
+                .Select(x => Guid.Parse(x.Id.Uuid))
+                .ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to check Qdrant indexing status for {Count} bullets.", bulletIds.Count);
+            return new HashSet<Guid>();
+        }
+    }
+
     private async Task EnsureCollectionAsync(CancellationToken cancellationToken)
     {
         if (_collectionEnsured)
