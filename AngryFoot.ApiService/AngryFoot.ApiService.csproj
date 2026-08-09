@@ -27,8 +27,6 @@
       <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
       <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.3" />
       <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
-      <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.10" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
       <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
       <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.1.0" />
       <PackageReference Include="Qdrant.Client" Version="1.19.0" />
