@@ -149,9 +149,11 @@ internal sealed class QdrantBulletVectorStore(
 
             return new RetrievalHealth(true, "Semantic retrieval is ready.");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) 
         {
-            throw;
+            if (cancellationToken.IsCancellationRequested)
+                throw;
+            return new RetrievalHealth(false, $"Cancelled externally before retrieval could be completed.");
         }
         catch (Exception ex)
         {
