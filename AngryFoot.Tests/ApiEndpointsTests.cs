@@ -1,5 +1,7 @@
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using AngryFoot.Contracts;
 using Microsoft.Extensions.Logging;
 
@@ -66,6 +68,58 @@ public class ApiEndpointsTests
         Assert.Single(putProfile.WorkHistory);
         Assert.Single(putProfile.Education);
         Assert.Single(putProfile.Certifications);
+    }
+
+    [Fact]
+    public async Task ImportLinkedInProfileEndpointParsesExportWithoutPersisting()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        using var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("Positions.csv");
+            using var entryStream = entry.Open();
+            using var writer = new StreamWriter(entryStream, Encoding.UTF8);
+            writer.Write("Company Name,Title,Location,Started On,Finished On\nAcme Corp,Principal Engineer,Remote,2023,\n");
+        }
+        zipStream.Position = 0;
+
+        using var content = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(zipStream);
+        content.Add(fileContent, "file", "linkedin-export.zip");
+
+        var importResponse = await apiClient.PostAsync("/api/profile/import/linkedin", content, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, importResponse.StatusCode);
+
+        var imported = await importResponse.Content.ReadFromJsonAsync<LinkedInImportResultDto>(cancellationToken);
+        Assert.NotNull(imported);
+        Assert.Single(imported!.Profile.WorkHistory);
+        Assert.Equal("Acme Corp", imported.Profile.WorkHistory[0].Employer);
+        Assert.True(imported.WorkHistoryFound);
+        Assert.False(imported.EducationFound, "this fixture only includes Positions.csv, e.g. a Profile-only download");
+        Assert.False(imported.CertificationsFound, "this fixture only includes Positions.csv, e.g. a Profile-only download");
+
+        // Importing only returns a prefilled draft for review; it must not persist.
+        var getResponse = await apiClient.GetAsync("/api/profile", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        var stored = await getResponse.Content.ReadFromJsonAsync<ProfileDto>(cancellationToken);
+        Assert.NotNull(stored);
+        Assert.Empty(stored!.WorkHistory);
     }
 
     [Fact]

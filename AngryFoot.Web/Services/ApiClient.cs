@@ -108,6 +108,25 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<ProfileDto>(cancellationToken))!;
     }
 
+    public async Task<LinkedInImportResultDto> ImportLinkedInProfileAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default)
+    {
+        using var content = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        content.Add(fileContent, "file", fileName);
+
+        var response = await httpClient.PostAsync("/api/profile/import/linkedin", content, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            // Results.BadRequest(string) serializes the message as a JSON string literal.
+            var message = await response.Content.ReadFromJsonAsync<string>(cancellationToken);
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message)
+                ? $"LinkedIn import failed with status {(int)response.StatusCode}."
+                : message);
+        }
+
+        return (await response.Content.ReadFromJsonAsync<LinkedInImportResultDto>(cancellationToken))!;
+    }
+
     public async Task<JobFitAnalysisDto> AnalyzeJobAsync(string jobDescription, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/generations/analyze", new { jobDescription }, cancellationToken);

@@ -38,6 +38,7 @@ builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();
 builder.Services.AddScoped<IBulletService, BulletService>();
 builder.Services.AddScoped<IBulletRewriteAssistant, BulletRewriteAssistant>();
 builder.Services.AddScoped<IProfileService, ProfileService>();
+builder.Services.AddScoped<ILinkedInProfileImportService, LinkedInImportService>();
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
 builder.Services.AddScoped<IFitAssessor, FitAssessmentService>();
