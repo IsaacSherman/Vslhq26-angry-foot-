@@ -123,6 +123,83 @@ public class ApiEndpointsTests
     }
 
     [Fact]
+    public async Task ResumeImportPreviewsCandidatesWithoutPersistingThenImportsSelectedOnes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        const string resumeText = """
+            EXPERIENCE
+
+            Vandelay Industries
+            • Negotiated a vendor contract renewal that lowered annual licensing costs by 18%.
+            • Introduced a triage rotation that halved the median time to first response on incidents.
+            """;
+
+        var bulletsBefore = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.NotNull(bulletsBefore);
+
+        var previewResponse = await apiClient.PostAsJsonAsync("/api/bullets/import/resume/preview", new ResumeImportPreviewRequest(resumeText), cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+
+        var preview = await previewResponse.Content.ReadFromJsonAsync<ResumeImportPreviewResponse>(cancellationToken);
+        Assert.NotNull(preview);
+        Assert.Equal(2, preview!.Candidates.Count);
+        Assert.Equal("Vandelay Industries", preview.Candidates[0].SuggestedEmployer);
+        // Qdrant is disabled for integration tests, so preview must still work on the text-only path.
+        Assert.Equal(DuplicateDetectionModeDto.Lexical, preview.DetectionMode);
+
+        // Previewing is a dry run; nothing may be written until the user confirms.
+        var bulletsAfterPreview = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.NotNull(bulletsAfterPreview);
+        Assert.Equal(bulletsBefore!.Count, bulletsAfterPreview!.Count);
+
+        var chosen = preview.Candidates[0];
+        var confirmResponse = await apiClient.PostAsJsonAsync(
+            "/api/bullets/import/resume",
+            new ConfirmResumeImportRequest([
+                new ImportBulletItem(chosen.Index, chosen.BulletText, chosen.SuggestedEmployer, chosen.BulletText, [])
+            ]),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, confirmResponse.StatusCode);
+
+        var result = await confirmResponse.Content.ReadFromJsonAsync<ResumeImportResultDto>(cancellationToken);
+        Assert.NotNull(result);
+        Assert.Single(result!.Created);
+        Assert.Equal("Vandelay Industries", result.Created[0].SourceEmployer);
+
+        var bulletsAfterImport = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.NotNull(bulletsAfterImport);
+        Assert.Equal(bulletsBefore.Count + 1, bulletsAfterImport!.Count);
+        Assert.Contains(bulletsAfterImport, x => x.BulletText == chosen.BulletText);
+
+        // Blank texts are dropped during import, so a request made only of them creates nothing and
+        // must be rejected rather than reported as a successful import of zero bullets.
+        var blankResponse = await apiClient.PostAsJsonAsync(
+            "/api/bullets/import/resume",
+            new ConfirmResumeImportRequest([new ImportBulletItem(0, "   ", null, "   ", [])]),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, blankResponse.StatusCode);
+
+        var bulletsAfterBlank = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.NotNull(bulletsAfterBlank);
+        Assert.Equal(bulletsAfterImport.Count, bulletsAfterBlank!.Count);
+    }
+
+    [Fact]
     public async Task BulletCrudSearchAndEnrichWorks()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

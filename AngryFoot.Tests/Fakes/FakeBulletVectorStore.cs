@@ -21,6 +21,12 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
 
     public IReadOnlyList<BulletSimilarityMatch> SearchResults { get; set; } = [];
 
+    /// <summary>Search results keyed by query text; falls back to <see cref="SearchResults"/>.</summary>
+    public Dictionary<string, IReadOnlyList<BulletSimilarityMatch>> SearchResultsByQuery { get; } = [];
+
+    /// <summary>Vectors returned by <see cref="EmbedAsync"/>; unknown text embeds as null.</summary>
+    public Dictionary<string, float[]> Embeddings { get; } = [];
+
     private readonly HashSet<Guid> _indexedIds = [];
 
     public Task<bool> UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
@@ -42,7 +48,10 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
     }
 
     public Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken)
-        => Task.FromResult(SearchResults);
+        => Task.FromResult(SearchResultsByQuery.TryGetValue(queryText, out var scripted) ? scripted : SearchResults);
+
+    public Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken)
+        => Task.FromResult(Embeddings.TryGetValue(text, out var vector) ? vector : null);
 
     public Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlySet<Guid>>(_indexedIds.Intersect(bulletIds).ToHashSet());

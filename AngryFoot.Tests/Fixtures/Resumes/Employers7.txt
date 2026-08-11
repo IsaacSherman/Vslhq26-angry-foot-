@@ -1,0 +1,19 @@
+Gigglebyte Controls	Builds operator-facing integration layers for industrial systems whose protocol notes appear to have been annotated by three committees and one raccoon
+Gigglebyte Controls	Develops desktop configuration software and helper services as the primary UI owner on a compact team that alternates between precision and panic
+Gigglebyte Controls	Coordinates w/ QA, firmware, and hardware engineers on validation flows, failure triage, and the recurring mystery of why one cable fixes everything
+Gigglebyte Controls	Maintains a reusable diagnostics library to speed response when new product needs emerge or a release starts acting like it learned sarcasm
+Gigglebyte Controls	Uses internal harnesses to isolate faulty behavior, route issues sanely, and keep software defects from being blamed on innocent circuit boards
+Gigglebyte Controls	Authors configuration interfaces and support layers for multiple hardware variants using abstractions sturdy enough to outlive roadmap mood swings
+Gigglebyte Controls	Diagnoses cross-stack oddities and routes them to the proper team with evidence, repro steps, and noticeably less folklore
+Gigglebyte Controls	Automates routine workflows and text-processing chores to remove manual drift, shrink handoff friction, and reduce the number of sacred spreadsheet rituals
+Gigglebyte Controls	Ported prototype logic into production-grade application code with careful bit handling, clearer guardrails, and fewer opportunities for creative interpretation
+Gigglebyte Controls	Drafted and got approved a modernization plan, then shipped the first implementation without spawning any folders named final_really_final
+Gigglebyte Controls	Built several validation harnesses across multiple products, including one that had to prove three suspiciously independent components were cooperating
+Velvet Thunder Metrics	Reviewed adjacent research areas and translated the useful parts into prototype ideas instead of merely assembling a decorative literature graveyard
+Velvet Thunder Metrics	Performed large-scale data cleanup before testing ranking approaches on records that were technically structured but emotionally still a swamp
+Velvet Thunder Metrics	Developed a framework for rapidly trying alternate scoring strategies without rebuilding the entire pipeline every afternoon
+Velvet Thunder Metrics	Regularly explained technical tradeoffs and statistical caveats both one-on-one and to rooms full of people with very different tolerance for math
+Velvet Thunder Metrics	Standardized a loose collection of exports into a dataset that could actually be audited, queried, and trusted beyond a single heroic analyst
+North Central University of Questionable Science	Assisted and mentored students with calculus I-III, intro physics, logic, and the deeply personal process of discovering parentheses
+Interstate Compliance Patrol	Automated recurring compliance reminders; reduced accidental policy misses to the point where people had to discover new hobbies
+Interstate Compliance Patrol	Maintained workstation compliance across a busy unit; dozens of machines, no missing baselines, and only the usual amount of printer drama

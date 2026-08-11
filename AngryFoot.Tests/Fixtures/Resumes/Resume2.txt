@@ -1,0 +1,17 @@
+EXPERIENCE
+
+Marmot Signal Works
+Staff Data Engineer, 2021 - Present
+- Designed a streaming ingestion pipeline handling 1.9 billion events per day with a p99
+  end-to-end latency under 950 milliseconds.
+- Cut warehouse costs by $280,000 per year by migrating sleepy partitions to object storage.
+
+Plausible Peculiar Labs
+Data Engineer, 2019 - 2021
+* Automated the nightly reconciliation job, eliminating roughly 12 hours of manual work each week.
+* Mentored five junior engineers, four of whom were trusted with on-call duties within a year.
+
+EDUCATION
+
+Interstate University of Placeholder Studies
+BS, Computer Science

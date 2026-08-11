@@ -16,6 +16,7 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
     public DbSet<Education> Education => Set<Education>();
     public DbSet<Certification> Certifications => Set<Certification>();
     public DbSet<GenerationArtifact> GenerationArtifacts => Set<GenerationArtifact>();
+    public DbSet<IgnoredBulletDuplicatePair> IgnoredBulletDuplicatePairs => Set<IgnoredBulletDuplicatePair>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -110,6 +111,12 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
             selectedBulletIds.Metadata.SetValueComparer(guidListComparer);
 
             entity.Property(x => x.JobAnalysisJson).IsRequired();
+        });
+
+        modelBuilder.Entity<IgnoredBulletDuplicatePair>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.BulletIdA, x.BulletIdB }).IsUnique();
         });
     }
 }

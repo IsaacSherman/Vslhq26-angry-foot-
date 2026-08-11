@@ -8,6 +8,7 @@
 
 <div class="mb-3">
     <button class="btn btn-primary" @onclick="CreateNew">Add Bullet</button>
+    <button class="btn btn-outline-primary ms-2" @onclick="ImportResume">Import Resume</button>
     @if (retrievalEnabled && bullets.Any(b => !b.IsIndexed))
     {
         <button class="btn btn-outline-warning ms-2" @onclick="IndexAllMissingAsync" disabled="@(isBulkIndexing || indexingId is not null)">
@@ -160,6 +161,11 @@ else
     private void CreateNew()
     {
         Navigation.NavigateTo("/bullets/edit");
+    }
+
+    private void ImportResume()
+    {
+        Navigation.NavigateTo("/bullets/import");
     }
 
     private void Edit(Guid id)

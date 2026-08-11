@@ -30,6 +30,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Fixtures\Resumes\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AngryFoot.AppHost\AngryFoot.AppHost.csproj" />
     <ProjectReference Include="..\AngryFoot.Contracts\AngryFoot.Contracts.csproj" />
     <ProjectReference Include="..\AngryFoot.ApiService\AngryFoot.ApiService.csproj" />

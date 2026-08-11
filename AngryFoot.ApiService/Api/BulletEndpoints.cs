@@ -69,6 +69,38 @@ public static class BulletEndpoints
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
+        bullets.MapPost("/import/resume/preview", async (
+            ResumeImportPreviewRequest request,
+            IResumeBulletImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ResumeText))
+            {
+                return Results.BadRequest("Paste your resume text to import bullets from it.");
+            }
+
+            var result = await importService.PreviewAsync(request.ResumeText, cancellationToken);
+            return result.Candidates.Count == 0
+                ? Results.BadRequest("We couldn't find any bullets in that text. Check that the achievement lines were included.")
+                : Results.Ok(result);
+        });
+
+        bullets.MapPost("/import/resume", async (
+            ConfirmResumeImportRequest request,
+            IResumeBulletImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            // Blank texts are dropped during import, so counting the raw request would report
+            // success for a request that creates nothing.
+            if (!request.Bullets.Any(x => !string.IsNullOrWhiteSpace(x.BulletText)))
+            {
+                return Results.BadRequest("Select at least one bullet with text to import.");
+            }
+
+            var result = await importService.ConfirmAsync(request, cancellationToken);
+            return Results.Ok(result);
+        });
+
         bullets.MapPost("/index-missing", async (IBulletService bulletService, CancellationToken cancellationToken) =>
         {
             var indexedCount = await bulletService.IndexAllMissingAsync(cancellationToken);

@@ -109,12 +109,21 @@ public sealed class BulletService(
             return null;
         }
 
-        bullet.BulletText = request.BulletText.Trim();
+        var updatedText = request.BulletText.Trim();
+        var textChanged = !string.Equals(bullet.BulletText, updatedText, StringComparison.Ordinal);
+
+        bullet.BulletText = updatedText;
         bullet.SourceEmployer = NormalizeEmployer(request.SourceEmployer);
         bullet.ModifiedDate = DateTime.UtcNow;
         bullet.EnrichmentState = EnrichmentState.Pending;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (textChanged)
+        {
+            // The judgement that these two bullets were distinct was about the old wording.
+            await ForgetIgnoredDuplicatesAsync(id, cancellationToken);
+        }
 
         await TryApplyTaggingAsync(bullet, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -128,10 +137,18 @@ public sealed class BulletService(
         var deleted = await dbContext.Bullets.Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken);
         if (deleted > 0)
         {
+            await ForgetIgnoredDuplicatesAsync(id, cancellationToken);
             await vectorStore.DeleteAsync(id, cancellationToken);
         }
 
         return deleted > 0;
+    }
+
+    private Task ForgetIgnoredDuplicatesAsync(Guid bulletId, CancellationToken cancellationToken)
+    {
+        return dbContext.IgnoredBulletDuplicatePairs
+            .Where(x => x.BulletIdA == bulletId || x.BulletIdB == bulletId)
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     public async Task<BulletDto?> EnrichAsync(Guid id, CancellationToken cancellationToken)

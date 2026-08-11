@@ -22,6 +22,13 @@ public interface IBulletVectorStore
 
     Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Embeds arbitrary text without indexing it, so text that may never become a bullet (an
+    /// imported candidate the user discards) can be compared without polluting the collection.
+    /// Null when retrieval is unavailable or the embedding call fails.
+    /// </summary>
+    Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken);
+
     /// <summary>Which of the given bullet ids already have a point stored in the vector index.</summary>
     Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken);
 

@@ -84,7 +84,6 @@ internal sealed class QdrantBulletVectorStore(
                 vector,
                 limit: (ulong)Math.Max(1, topK),
                 cancellationToken: cancellationToken);
-
             return results
                 .Where(x => x.Id.HasUuid && Guid.TryParse(x.Id.Uuid, out _))
                 .Select(x => new BulletSimilarityMatch(Guid.Parse(x.Id.Uuid), x.Score))
@@ -98,6 +97,24 @@ internal sealed class QdrantBulletVectorStore(
         {
             logger.LogWarning(ex, "Qdrant similarity search failed. Falling back to keyword ranking.");
             return [];
+        }
+    }
+
+    public async Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var vector = await embeddingGenerator.GenerateVectorAsync(text, cancellationToken: cancellationToken);
+            return vector.ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to embed text for comparison. Callers fall back to lexical comparison.");
+            return null;
         }
     }
 

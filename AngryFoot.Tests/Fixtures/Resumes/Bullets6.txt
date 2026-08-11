@@ -1,0 +1,17 @@
+Builds operator-facing software for instrument workflows, especially when device behavior is documented mostly by folklore and sighing
+Owns UI and integration work for configuration tools that bridge desktop applications, local services, and occasionally grumpy hardware
+Coordinates w/ QA, firmware, and bench engineers on validation paths, failure triage, and the recurring mystery of why one cable matters more than the others
+Maintains a reusable test and diagnostics library to speed response when product needs change or a release decides to become self-aware
+Uses internal harnesses to isolate device faults, route issues sanely, and keep software bugs from being blamed on innocent circuit boards
+Authors configuration interfaces and support layers for multiple product variants using abstractions that survive roadmap churn
+Diagnoses production oddities and routes them to the proper team with evidence, repro steps, and fewer interpretive dance requirements
+Designs compact data stores for tracking device states, calibration history, and the paperwork generated whenever humans meet process
+Drafted and got approved a modernization plan, then shipped the first release without introducing any new mystery folders
+Created several validation harnesses across multiple products, including one that had to prove three suspiciously independent components were cooperating
+Performed large-scale data cleanup before building prototypes that ranked records by anomaly likelihood and practical usefulness
+Developed a framework for rapidly testing alternate scoring strategies without rebuilding the entire pipeline every afternoon
+Regularly explained technical tradeoffs and statistical caveats to both individual contributors and room-sized audiences with very different tolerance for math
+Standardized a loose collection of exports into a dataset that could actually be audited, joined, and trusted beyond a single heroic spreadsheet owner
+Assisted and mentored students with calculus I-III, intro physics, logic, and the deeply personal process of discovering parentheses
+Automated recurring compliance reminders; reduced accidental policy misses to the point where people had to find new hobbies
+Maintained workstation compliance across a busy unit; dozens of machines, no missing baselines, and only the usual amount of printer drama

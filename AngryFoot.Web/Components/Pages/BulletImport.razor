@@ -1,0 +1,267 @@
+@page "/bullets/import"
+@using AngryFoot.Contracts
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Import Resume Bullets</PageTitle>
+
+<h1>Import Resume Bullets</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (candidates is null)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Paste your resume</h5>
+            <p class="mb-0">
+                Paste the text of an existing resume below and we'll pull out the achievement bullets so
+                you can review them. Nothing is saved until you confirm the import.
+            </p>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <textarea class="form-control" rows="16" placeholder="Paste resume text here..."
+                  @bind="resumeText" @bind:event="oninput" disabled="@isPreviewing"></textarea>
+    </div>
+
+    <button class="btn btn-primary" @onclick="PreviewAsync" disabled="@(isPreviewing || string.IsNullOrWhiteSpace(resumeText))">
+        @if (isPreviewing)
+        {
+            <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+        }
+        Preview Bullets
+    </button>
+}
+else
+{
+    @if (detectionMode == DuplicateDetectionModeDto.Lexical)
+    {
+        <div class="alert alert-warning">
+            @(detectionMessage ?? "Semantic duplicate detection is unavailable, so duplicates were compared by text only.")
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(detectionMessage))
+    {
+        @* Semantic detection ran, but it couldn't see all of the library. *@
+        <div class="alert alert-info">@detectionMessage</div>
+    }
+
+    <p>
+        Found <strong>@candidates.Count</strong> candidate bullet@(candidates.Count == 1 ? "" : "s").
+        <strong>@candidates.Count(x => x.Selected)</strong> selected for import.
+    </p>
+
+    <div class="mb-3">
+        <button class="btn btn-outline-secondary btn-sm me-2" @onclick="SelectAll">Select All</button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="SelectNone">Select None</button>
+    </div>
+
+    @foreach (var candidate in candidates)
+    {
+        <div class="card mb-2 @(candidate.Selected ? "" : "opacity-50")">
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="@($"select-{candidate.Index}")" @bind="candidate.Selected" />
+                    <label class="form-check-label" for="@($"select-{candidate.Index}")">Import this bullet</label>
+                </div>
+
+                <div class="mb-2">
+                    <textarea class="form-control" rows="3"
+                              @bind="candidate.BulletText"
+                              @bind:after="candidate.OnTextChanged"></textarea>
+                </div>
+
+                @if (candidate.DuplicatesAreStale)
+                {
+                    <div class="alert alert-secondary mt-2 mb-0">
+                        You edited this bullet, so its duplicate warnings no longer apply and were cleared.
+                        Preview again if you want it re-checked.
+                    </div>
+                }
+
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-6">
+                        <input class="form-control" placeholder="Source employer (optional)" list="employer-suggestions"
+                               @bind="candidate.SourceEmployer" />
+                    </div>
+                    <div class="col-md-6 text-md-end">
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Discard(candidate)">Discard</button>
+                    </div>
+                </div>
+
+                @foreach (var warning in candidate.Duplicates)
+                {
+                    <div class="alert @(warning.Ignored || warning.Accepted ? "alert-secondary" : "alert-warning") mt-3 mb-0">
+                        <div class="mb-2">
+                            <strong>
+                                @(warning.Kind == DuplicateWarningKindDto.ExistingBullet
+                                    ? "Looks like an existing bullet"
+                                    : $"Looks like candidate #{(warning.CandidateIndex ?? 0) + 1} in this import")
+                            </strong>
+                            <span class="badge bg-secondary ms-1">@warning.Similarity.ToString("P0") similar</span>
+                        </div>
+                        <blockquote class="mb-2 fst-italic">@warning.MatchedText</blockquote>
+
+                        @if (warning.Ignored)
+                        {
+                            <div>
+                                Marked as distinct &mdash; this pair won't be flagged again.
+                                <button class="btn btn-sm btn-link" @onclick="() => ResetWarning(warning)">Undo</button>
+                            </div>
+                        }
+                        else if (warning.Accepted)
+                        {
+                            <div>
+                                Importing anyway.
+                                <button class="btn btn-sm btn-link" @onclick="() => ResetWarning(warning)">Undo</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => KeepAnyway(warning)">Keep Anyway</button>
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => IgnoreWarning(warning)">Ignore Warning</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Discard(candidate)">Discard Candidate</button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <datalist id="employer-suggestions">
+        @foreach (var employer in employerSuggestions)
+        {
+            <option value="@employer" />
+        }
+    </datalist>
+
+    <div class="mt-3 mb-5">
+        <button class="btn btn-primary" @onclick="ConfirmAsync" disabled="@(isImporting || !candidates.Any(x => x.Selected))">
+            @if (isImporting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            }
+            Confirm Import
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="Reset" disabled="@isImporting">Start Over</button>
+    </div>
+}
+
+@code {
+    private string? resumeText;
+    private List<EditableCandidateBullet>? candidates;
+    private DuplicateDetectionModeDto detectionMode;
+    private string? detectionMessage;
+    private List<string> employerSuggestions = [];
+    private bool isPreviewing;
+    private bool isImporting;
+    private string? errorMessage;
+
+    private async Task PreviewAsync()
+    {
+        errorMessage = null;
+        isPreviewing = true;
+
+        try
+        {
+            var preview = await ApiClient.PreviewResumeImportAsync(resumeText!);
+            candidates = preview.Candidates.Select(EditableCandidateBullet.FromDto).ToList();
+            detectionMode = preview.DetectionMode;
+            detectionMessage = preview.DetectionMessage;
+            await LoadEmployerSuggestionsAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isPreviewing = false;
+        }
+    }
+
+    private async Task LoadEmployerSuggestionsAsync()
+    {
+        try
+        {
+            var profile = await ApiClient.GetProfileAsync();
+            employerSuggestions = profile.WorkHistory
+                .Select(x => x.Employer)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            // Suggestions are a convenience; the employer field stays free text without them.
+            employerSuggestions = [];
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (candidates is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isImporting = true;
+
+        try
+        {
+            var items = candidates
+                .Where(x => x.Selected && !string.IsNullOrWhiteSpace(x.BulletText))
+                .Select(x => x.ToItem())
+                .ToArray();
+
+            await ApiClient.ConfirmResumeImportAsync(items);
+            Navigation.NavigateTo("/bullets");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+
+    private void SelectAll() => candidates?.ForEach(x => x.Selected = true);
+
+    private void SelectNone() => candidates?.ForEach(x => x.Selected = false);
+
+    private static void Discard(EditableCandidateBullet candidate) => candidate.Selected = false;
+
+    private static void KeepAnyway(EditableDuplicateWarning warning)
+    {
+        warning.Accepted = true;
+        warning.Ignored = false;
+    }
+
+    private static void IgnoreWarning(EditableDuplicateWarning warning)
+    {
+        warning.Ignored = true;
+        warning.Accepted = false;
+    }
+
+    private static void ResetWarning(EditableDuplicateWarning warning)
+    {
+        warning.Ignored = false;
+        warning.Accepted = false;
+    }
+
+    private void Reset()
+    {
+        candidates = null;
+        detectionMessage = null;
+        errorMessage = null;
+        employerSuggestions = [];
+    }
+}

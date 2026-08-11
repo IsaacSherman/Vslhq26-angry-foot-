@@ -1,0 +1,17 @@
+MILDRED WAFFLE
+Boring Springs, ZZ · mildred.waffle@totally-real-mail.invalid · 555-010-3030
+
+SUMMARY
+Platform engineer with nine years building developer tooling for sprawling monorepos.
+
+WORK HISTORY
+
+Clocktower Logistics
+Principal Platform Engineer
+1. Rebuilt the continuous integration pipeline on self-hosted runners, taking the median build
+   from 24 minutes down to 7.
+2. Introduced a monorepo release train that let 12 teams ship independently on the same day.
+
+Parachute Sandwich Labs
+o Owned the migration from Jenkins to hosted build agents across 160 repositories.
+o Wrote the incident response runbook still used by the on-call rotation today.

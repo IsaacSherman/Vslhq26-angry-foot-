@@ -432,3 +432,4 @@ FodyWeavers.xsd
 **/angryfoot.db
 **/angryfoot.db-shm
 **/angryfoot.db-wal
+/work

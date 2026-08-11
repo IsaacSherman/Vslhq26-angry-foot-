@@ -1,0 +1,15 @@
+PENNY WOBBLESTONE
+penny.wobblestone@totally-real-mail.invalid | (555) 010-1111 | linkedin.com/in/pennywobblestone
+
+PROFESSIONAL EXPERIENCE
+
+Clockwork Cabbage Corporation — Senior Software Engineer
+Jan 2020 – Present
+• Rebuilt a brittle invoice scheduler into nine independently deployable services, cutting
+  median deploy time from 38 minutes to under 5.
+• Reduced annual cloud spend by 29% by rightsizing overeager instances and teaching
+  non-production environments to sleep at night.
+
+Teacup Dynamics — Software Engineer
+2018 – 2020
+• Built an internal analytics dashboard adopted by more than 180 employees each week.

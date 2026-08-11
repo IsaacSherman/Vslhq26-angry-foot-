@@ -1,0 +1,8 @@
+Reviewed adjacent research in delightfully niche problem domains to develop prototype solutions
+Performed large-scale data cleanup before testing ranking approaches against deeply inconsistent records
+Developed framework for rapid deployment of anomaly-hunting classifiers
+Regularly explained technical tradeoffs and statistical caveats both individually and in groups
+Standardized a loose export pile into a rigorously analyzable dataset with actual column meanings
+Assisted and mentored students with calculus 1-3, physics, and general math panic
+Automated recurring compliance reminders; reduced accidental non-compliance to nearly zero
+Maintained squadron workstation compliance; 115 computers, zero missing baselines

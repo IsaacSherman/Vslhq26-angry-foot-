@@ -96,6 +96,20 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return result?.IndexedCount ?? 0;
     }
 
+    public async Task<ResumeImportPreviewResponse> PreviewResumeImportAsync(string resumeText, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/import/resume/preview", new ResumeImportPreviewRequest(resumeText), cancellationToken);
+        await EnsureImportSucceededAsync(response, "Resume import", cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ResumeImportPreviewResponse>(cancellationToken))!;
+    }
+
+    public async Task<ResumeImportResultDto> ConfirmResumeImportAsync(IReadOnlyList<ImportBulletItem> bullets, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/import/resume", new ConfirmResumeImportRequest(bullets), cancellationToken);
+        await EnsureImportSucceededAsync(response, "Resume import", cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ResumeImportResultDto>(cancellationToken))!;
+    }
+
     public async Task<ProfileDto> GetProfileAsync(CancellationToken cancellationToken = default)
     {
         return (await httpClient.GetFromJsonAsync<ProfileDto>("/api/profile", cancellationToken))!;
@@ -115,16 +129,39 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         content.Add(fileContent, "file", fileName);
 
         var response = await httpClient.PostAsync("/api/profile/import/linkedin", content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            // Results.BadRequest(string) serializes the message as a JSON string literal.
-            var message = await response.Content.ReadFromJsonAsync<string>(cancellationToken);
-            throw new InvalidOperationException(string.IsNullOrWhiteSpace(message)
-                ? $"LinkedIn import failed with status {(int)response.StatusCode}."
-                : message);
-        }
+        await EnsureImportSucceededAsync(response, "LinkedIn import", cancellationToken);
 
         return (await response.Content.ReadFromJsonAsync<LinkedInImportResultDto>(cancellationToken))!;
+    }
+
+    /// <summary>
+    /// Surfaces the endpoint's own message for a failed import, which the import pages show
+    /// verbatim. Results.BadRequest(string) serializes the message as a JSON string literal.
+    /// </summary>
+    private static async Task EnsureImportSucceededAsync(HttpResponseMessage response, string operation, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        string? message = null;
+        try
+        {
+            message = await response.Content.ReadFromJsonAsync<string>(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Not a plain-string body (e.g. ProblemDetails from an unhandled failure); fall through.
+        }
+
+        throw new InvalidOperationException(string.IsNullOrWhiteSpace(message)
+            ? $"{operation} failed with status {(int)response.StatusCode}."
+            : message);
     }
 
     public async Task<JobFitAnalysisDto> AnalyzeJobAsync(string jobDescription, CancellationToken cancellationToken = default)
