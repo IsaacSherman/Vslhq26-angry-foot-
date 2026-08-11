@@ -112,7 +112,8 @@ public class ResumeBulletParserTests
             "Analyzed existing research in relevant problem domains to develop prototype solutions",
             "Ensured the squadron's compliance with Air Force standards across 115 computers");
         result[0].SuggestedEmployer.Should().Be("Emerson Process Management", "the employer follows the role");
-        result[1].SuggestedEmployer.Should().Be("Client Support Administrator", "a bare title is the only heading available");
+        result[1].SuggestedEmployer.Should().BeNull(
+            "the only heading is a job title, and a title posing as a company is worse than a blank");
     }
 
     [Fact]

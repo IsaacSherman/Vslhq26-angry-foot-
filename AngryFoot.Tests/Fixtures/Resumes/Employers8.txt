@@ -1,0 +1,13 @@
+Nebula Cartography Media	Program owner for a content-routing modernization effort, coordinating planning, execution, and release across media pipeline changes that cut archive handoff lag by 68%.
+Nebula Cartography Media	Led delivery for broad initiatives spanning four teams, improving release predictability and turning executive status updates into something less theatrical.
+Nebula Cartography Media	Improved planning accuracy by comparing historical delivery patterns, scope churn, and estimate drift before roadmap promises escaped into slide decks.
+Nebula Cartography Media	Used system-architecture knowledge to surface integration and sequencing risks earlier, preventing several late-stage surprises from graduating into official emergencies.
+Nebula Cartography Media	Identified leaner process paths and coached the TPM group on adjustments that increased planning confidence and reduced self-inflicted constraints on engineering teams.
+Nebula Cartography Media	Built browser, service, and data-layer test frameworks adopted by dozens of engineers to exercise cloud infrastructure across the test pyramid without copy-pasting everything into oblivion.
+Nebula Cartography Media	Coached QA engineers on multi-tier debugging, event-driven integration checks, and migrating brittle endpoint tests into more maintainable automation suites.
+Nebula Cartography Media	Reduced severe post-launch defects by validating feature ideas through incremental experiments, sharper regression coverage, and tighter release-readiness reviews.
+Nebula Cartography Media	Worked with business, product, and engineering teams to design, test, and release features in captioning and transcoding automation systems, helping consolidate legacy tooling while maintaining strict uptime targets.
+Paperclip Galaxy LLC	Coached a 20-plus-person engineering group on code review habits, automation conventions, and defect prevention, materially reducing production bug volume.
+Paperclip Galaxy LLC	Migrated scattered test suites into a shared JUnit-based approach, improving reliability and making maintenance less dependent on individual folklore.
+Paperclip Galaxy LLC	Created a data-validation harness between Java tests and Postgres stores, automating a month-end manual checklist that had become a recurring morale event.
+Paperclip Galaxy LLC	Defined the quality process for a distributed CQRS platform intended to improve client communications and throughput without multiplying operational confusion.

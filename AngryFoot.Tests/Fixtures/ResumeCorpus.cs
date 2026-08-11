@@ -2,7 +2,14 @@ using System.Text.RegularExpressions;
 
 namespace AngryFoot.Tests.Fixtures;
 
-public sealed record ResumeCase(string Name, string ResumeText, IReadOnlyList<string> ExpectedBullets);
+/// <summary>One expected bullet and the employer it belongs to; null when the resume names only a
+/// position and no employer for it.</summary>
+public sealed record ExpectedBullet(string Text, string? Employer);
+
+public sealed record ResumeCase(string Name, string ResumeText, IReadOnlyList<ExpectedBullet> Expected)
+{
+    public IReadOnlyList<string> ExpectedBullets => Expected.Select(x => x.Text).ToArray();
+}
 
 /// <summary>
 /// Pairs each <c>ResumeN.txt</c> in Fixtures/Resumes with its expected <c>BulletsN.txt</c> output so
@@ -11,6 +18,9 @@ public sealed record ResumeCase(string Name, string ResumeText, IReadOnlyList<st
 public static class ResumeCorpus
 {
     private static readonly Regex ResumeFileName = new(@"^Resume(\d+)\.txt$", RegexOptions.IgnoreCase);
+
+    /// <summary>Marks a bullet the resume gives no employer for, only a position title.</summary>
+    public const string NoEmployer = "(none)";
 
     public static string Directory => Path.Combine(AppContext.BaseDirectory, "Fixtures", "Resumes");
 
@@ -30,6 +40,22 @@ public static class ResumeCorpus
         return EnumerateCases().Single(x => x.Name == name);
     }
 
+    /// <summary>Loud rather than skipped: a half-added fixture must not look like a passing suite.</summary>
+    private static IReadOnlyList<string> ReadLines(string number, string prefix, string describes)
+    {
+        var path = Path.Combine(Directory, $"{prefix}{number}.txt");
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException(
+                $"Resume{number}.txt has no matching {prefix}{number}.txt. Every corpus resume needs {describes}.");
+        }
+
+        return File.ReadAllLines(path)
+            .Select(line => line.TrimEnd())
+            .Where(line => line.Trim().Length > 0)
+            .ToArray();
+    }
+
     private static IEnumerable<ResumeCase> EnumerateCases()
     {
         var resumeFiles = System.IO.Directory
@@ -40,19 +66,34 @@ public static class ResumeCorpus
         foreach (var resumePath in resumeFiles)
         {
             var number = ResumeFileName.Match(Path.GetFileName(resumePath)).Groups[1].Value;
-            var bulletsPath = Path.Combine(Directory, $"Bullets{number}.txt");
 
-            // Loud rather than skipped: a half-added fixture must not look like a passing suite.
-            if (!File.Exists(bulletsPath))
+            var bullets = ReadLines(number, "Bullets", "its expected bullets");
+            var pairs = ReadLines(number, "Employers", "the employer each bullet belongs to");
+
+            var expected = new List<ExpectedBullet>(pairs.Count);
+            for (var i = 0; i < pairs.Count; i++)
             {
-                throw new InvalidOperationException(
-                    $"Resume{number}.txt has no matching Bullets{number}.txt. Every corpus resume needs its expected bullets.");
+                var columns = pairs[i].Split('\t', 2);
+                if (columns.Length != 2)
+                {
+                    throw new InvalidOperationException(
+                        $"Employers{number}.txt line {i + 1} is not a tab-separated 'employer<TAB>bullet' pair: {pairs[i]}");
+                }
+
+                var employer = columns[0].Trim();
+                expected.Add(new ExpectedBullet(
+                    columns[1].Trim(),
+                    employer == NoEmployer ? null : employer));
             }
 
-            var expected = File.ReadAllLines(bulletsPath)
-                .Select(line => line.Trim())
-                .Where(line => line.Length > 0)
-                .ToArray();
+            // The two files restate the same bullets, so drift between them has to be loud or the
+            // employer expectations would quietly stop lining up with the bullet expectations.
+            var restated = expected.Select(x => x.Text).ToArray();
+            if (!restated.SequenceEqual(bullets.Select(x => x.Trim())))
+            {
+                throw new InvalidOperationException(
+                    $"Employers{number}.txt and Bullets{number}.txt disagree. Their bullets must match exactly, in order.");
+            }
 
             yield return new ResumeCase($"Resume{number}", File.ReadAllText(resumePath), expected);
         }

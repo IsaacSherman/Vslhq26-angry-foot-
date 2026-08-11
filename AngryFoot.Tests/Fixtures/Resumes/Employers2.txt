@@ -1,0 +1,4 @@
+Marmot Signal Works	Designed a streaming ingestion pipeline handling 1.9 billion events per day with a p99 end-to-end latency under 950 milliseconds.
+Marmot Signal Works	Cut warehouse costs by $280,000 per year by migrating sleepy partitions to object storage.
+Plausible Peculiar Labs	Automated the nightly reconciliation job, eliminating roughly 12 hours of manual work each week.
+Plausible Peculiar Labs	Mentored five junior engineers, four of whom were trusted with on-call duties within a year.

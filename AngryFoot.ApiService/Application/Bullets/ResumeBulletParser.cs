@@ -38,8 +38,47 @@ public static class ResumeBulletParser
     private static readonly Regex YearOnlyPattern = new(@"^\d{4}$", RegexOptions.Compiled);
 
     private static readonly Regex TrailingDateRange = new(
-        @"[,\s–—-]*\(?(?:[A-Za-z]{3,9}\.?\s+)?\d{4}\s*(?:[-–—]|to)\s*(?:present|current|(?:[A-Za-z]{3,9}\.?\s+)?\d{4})\)?\s*$",
+        @"[,\s–—-]*\(?(?:[A-Za-z]{3,9}\.?\s+|\d{1,2}/)?(?<start>\d{4})\s*(?:[-–—]|to)\s*(?:(?<open>present|current)|(?:[A-Za-z]{3,9}\.?\s+|\d{1,2}/)?(?<end>\d{4}))\)?\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>Stands in for "Present" so an open-ended role still compares as a range.</summary>
+    private const int OpenEndedYear = 9999;
+
+    /// <summary>
+    /// Words that mark a name as an organization. Used as positive evidence only: without one (or a
+    /// "Role at Employer" phrasing) a dated heading is assumed to be a job title, and the employer is
+    /// left blank rather than guessed. Deliberately excludes title-adjacent words like "Systems",
+    /// which appear in roles such as "Client Systems Custodian".
+    /// </summary>
+    private static readonly HashSet<string> OrganizationWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "inc", "llc", "ltd", "corp", "corporation", "company", "co", "group", "labs", "laboratories",
+        "works", "industries", "partners", "associates", "technologies", "media", "analytics",
+        "metrics", "studios", "ventures", "holdings", "enterprises", "consulting", "university",
+        "college", "institute", "school", "foundation", "agency", "bureau", "patrol", "squadron",
+        "command", "dynamics", "logistics", "communications"
+    };
+
+    private sealed record YearRange(int Start, int End)
+    {
+        /// <summary>True when <paramref name="other"/> sits strictly inside this range, which is how a
+        /// employer heading ("Interstate Compliance Patrol (2005-2011)") is told apart from the roles
+        /// held under it ("Client Systems Custodian (2005-2009)").</summary>
+        public bool Surrounds(YearRange other)
+            => other.Start >= Start && other.End <= End && other.End - other.Start < End - Start;
+    }
+
+    /// <summary>How confidently the current employer applies to the bullets that follow.</summary>
+    private enum EmployerScope
+    {
+        None,
+
+        /// <summary>Named by its own dateless heading, so it spans every role listed beneath it.</summary>
+        Company,
+
+        /// <summary>Read off a single dated role heading, so the next role replaces it.</summary>
+        Job
+    }
 
     private static readonly Regex AnyYear = new(@"\d{4}", RegexOptions.Compiled);
 
@@ -48,6 +87,8 @@ public static class ResumeBulletParser
     private static readonly Regex WhitespaceRun = new(@"\s+", RegexOptions.Compiled);
 
     private static readonly char[] EmployerSeparators = ['—', '–', '|', ',', '/'];
+
+    private static readonly char[] NameWordSeparators = [' ', '\t', ',', '.', '/', '&', '-'];
 
     // Institution and office lines ("North Central University, Castle Pines, NM") sit among the
     // achievements but describe where, not what. The state code keeps this from firing on a bullet
@@ -113,15 +154,18 @@ public static class ResumeBulletParser
         // marked, or the fallback would re-emit those lines with their glyphs attached. Two markers
         // are required so a lone hyphenated line can't reinterpret a marker-less resume.
         var markerLines = lines.Count(x => MarkerPattern.IsMatch(x.Trim()));
+        var employerHeadings = FindEmployerHeadings(lines);
 
-        return markerLines >= 2 ? ExtractMarkedBullets(lines) : ExtractUnmarkedBullets(lines);
+        return markerLines >= 2
+            ? ExtractMarkedBullets(lines, employerHeadings)
+            : ExtractUnmarkedBullets(lines, employerHeadings);
     }
 
-    private static List<ParsedCandidate> ExtractMarkedBullets(string[] lines)
+    private static List<ParsedCandidate> ExtractMarkedBullets(string[] lines, IReadOnlySet<string> employerHeadings)
     {
         var candidates = new List<ParsedCandidate>();
         var current = new System.Text.StringBuilder();
-        var context = new ResumeContext();
+        var context = new ResumeContext(employerHeadings);
         string? candidateEmployer = null;
         var candidateSection = SectionKind.Achievements;
 
@@ -136,7 +180,7 @@ public static class ResumeBulletParser
             if (candidateSection == SectionKind.Achievements && IsPlausibleBullet(text, MinimumBulletLength))
             {
                 candidates.Add(new ParsedCandidate(text, candidateEmployer));
-                context.StartNewBlock();
+                context.RecordBullet();
             }
 
             current.Clear();
@@ -149,7 +193,6 @@ public static class ResumeBulletParser
             if (trimmed.Length == 0)
             {
                 Flush();
-                context.StartNewBlock();
                 continue;
             }
 
@@ -185,9 +228,11 @@ public static class ResumeBulletParser
     /// line or an emitted bullet opens the next block, which is what lets back-to-back roles with no
     /// blank line between them ("Client Support Administrator (2006-2010)") still register.
     /// </summary>
-    private sealed class ResumeContext
+    private sealed class ResumeContext(IReadOnlySet<string> employerHeadings)
     {
-        private bool _employerSetInBlock;
+        private EmployerScope _scope = EmployerScope.None;
+        private YearRange? _jobRange;
+        private int _bulletsSinceHeading;
 
         public string? Employer { get; private set; }
 
@@ -195,40 +240,176 @@ public static class ResumeBulletParser
         /// headings at all still yields candidates.</summary>
         public SectionKind Section { get; private set; } = SectionKind.Achievements;
 
-        public void StartNewBlock() => _employerSetInBlock = false;
+        /// <summary>
+        /// Whether any achievement has been listed under the heading in force. It is what separates
+        /// a line that refines the current job from one that introduces the next: an institution
+        /// line follows its role heading immediately, a new employer follows that role's bullets.
+        /// Counting bullets rather than blank lines keeps this working on double-spaced resumes.
+        /// </summary>
+        public void RecordBullet() => _bulletsSinceHeading++;
 
         public void Observe(string line)
         {
+            if (ObserveSectionHeading(line))
+            {
+                return;
+            }
+
+            var range = TryReadYearRange(line);
+            if (range is not null)
+            {
+                ObserveDatedHeading(line, range);
+                return;
+            }
+
+            ObserveDatelessHeading(line);
+        }
+
+        private bool ObserveSectionHeading(string line)
+        {
             if (TryClassifySection(line, out var kind))
             {
-                // A sub-heading inside the experience section ("Significant Achievements:") keeps
-                // the job it belongs to; anything else starts fresh.
-                if (kind == SectionKind.Excluded || Section != SectionKind.Achievements)
+                // A sub-heading inside a job ("Significant Achievements:") belongs to the job above
+                // it, which is only true once that job has listed some. Without that check the
+                // top-level "Experience" heading would keep whatever the header line left behind.
+                if (kind == SectionKind.Excluded || Section != SectionKind.Achievements || _bulletsSinceHeading == 0)
                 {
-                    Employer = null;
+                    Reset();
                 }
 
                 Section = kind;
-                _employerSetInBlock = false;
-                return;
+                return true;
             }
 
-            if (IsSectionHeading(line))
+            if (!IsSectionHeading(line))
             {
-                Employer = null;
-                Section = SectionKind.Achievements;
-                _employerSetInBlock = false;
+                return false;
+            }
+
+            Reset();
+            Section = SectionKind.Achievements;
+            return true;
+        }
+
+        private void ObserveDatedHeading(string line, YearRange range)
+        {
+            // Roles listed under a company that named itself, and roles whose dates sit inside the
+            // organization's own span, are positions — they don't rename the employer.
+            if (_scope == EmployerScope.Company || (_jobRange?.Surrounds(range) ?? false))
+            {
+                _bulletsSinceHeading = 0;
                 return;
             }
 
-            if (_employerSetInBlock || !TryReadEmployer(line, out var employer))
+            Employer = ReadEmployerFromDatedHeading(line, employerHeadings);
+            _scope = EmployerScope.Job;
+            _jobRange = range;
+            _bulletsSinceHeading = 0;
+        }
+
+        private void ObserveDatelessHeading(string line)
+        {
+            // The institution line under a role heading ("Tutor at Math Department", then the
+            // university on the next line) names the actual employer.
+            if (_scope == EmployerScope.Job && _bulletsSinceHeading == 0)
+            {
+                if (TryReadEmployer(line, out var refined))
+                {
+                    Employer = refined;
+                }
+
+                return;
+            }
+
+            // A second heading before any bullets is the job title under the company just named.
+            if (_scope != EmployerScope.None && _bulletsSinceHeading == 0)
+            {
+                return;
+            }
+
+            if (!TryReadEmployer(line, out var employer))
             {
                 return;
             }
 
             Employer = employer;
-            _employerSetInBlock = true;
+            _scope = EmployerScope.Company;
+            _jobRange = null;
+            _bulletsSinceHeading = 0;
         }
+
+        private void Reset()
+        {
+            Employer = null;
+            _scope = EmployerScope.None;
+            _jobRange = null;
+            _bulletsSinceHeading = 0;
+        }
+    }
+
+    /// <summary>
+    /// A dated heading names an employer only with positive evidence — "Role at Employer" phrasing,
+    /// an organization word, or dates that span the roles beneath it. Otherwise it is taken for a
+    /// job title and no employer is suggested, because a title posing as a company is worse than a
+    /// blank the user can fill in.
+    /// </summary>
+    private static string? ReadEmployerFromDatedHeading(string line, IReadOnlySet<string> employerHeadings)
+    {
+        if (!TryReadEmployer(line, out var name) || name is null)
+        {
+            return null;
+        }
+
+        if (line.Contains(" at ", StringComparison.OrdinalIgnoreCase) || employerHeadings.Contains(line.Trim()))
+        {
+            return name;
+        }
+
+        return name.Split(NameWordSeparators, StringSplitOptions.RemoveEmptyEntries)
+            .Any(OrganizationWords.Contains)
+            ? name
+            : null;
+    }
+
+    private static YearRange? TryReadYearRange(string line)
+    {
+        var match = TrailingDateRange.Match(line);
+        if (!match.Success || !int.TryParse(match.Groups["start"].Value, out var start))
+        {
+            return null;
+        }
+
+        if (match.Groups["open"].Success)
+        {
+            return new YearRange(start, OpenEndedYear);
+        }
+
+        return int.TryParse(match.Groups["end"].Value, out var end) ? new YearRange(start, end) : null;
+    }
+
+    /// <summary>
+    /// Finds headings whose dates span another heading's, e.g. an organization listed above the
+    /// individual roles held there. Done as a pre-pass because the giveaway only appears later.
+    /// </summary>
+    private static IReadOnlySet<string> FindEmployerHeadings(string[] lines)
+    {
+        var dated = new List<(string Line, YearRange Range)>();
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            var range = TryReadYearRange(trimmed);
+
+            // Skip bare date lines: they label a role rather than name anything.
+            if (range is not null && TrailingDateRange.Replace(trimmed, string.Empty).Trim().Length > 0)
+            {
+                dated.Add((trimmed, range));
+            }
+        }
+
+        return dated
+            .Where(outer => dated.Any(inner => outer.Range.Surrounds(inner.Range)))
+            .Select(x => x.Line)
+            .ToHashSet();
     }
 
     /// <summary>
@@ -279,11 +460,11 @@ public static class ResumeBulletParser
         return false;
     }
 
-    private static List<ParsedCandidate> ExtractUnmarkedBullets(string[] lines)
+    private static List<ParsedCandidate> ExtractUnmarkedBullets(string[] lines, IReadOnlySet<string> employerHeadings)
     {
         var candidates = new List<ParsedCandidate>();
         var current = new System.Text.StringBuilder();
-        var context = new ResumeContext();
+        var context = new ResumeContext(employerHeadings);
         string? candidateEmployer = null;
         var candidateSection = SectionKind.Achievements;
 
@@ -302,7 +483,7 @@ public static class ResumeBulletParser
             else if (candidateSection == SectionKind.Achievements)
             {
                 candidates.Add(new ParsedCandidate(text, candidateEmployer));
-                context.StartNewBlock();
+                context.RecordBullet();
             }
 
             current.Clear();
@@ -315,7 +496,6 @@ public static class ResumeBulletParser
             if (trimmed.Length == 0)
             {
                 Flush();
-                context.StartNewBlock();
                 continue;
             }
 
