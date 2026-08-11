@@ -131,6 +131,43 @@ public class BulletDuplicateDetectorTests : IDisposable
     }
 
     [Fact]
+    public async Task DetectAsync_WhenAnExistingBulletIsNotIndexed_StillComparesItByText()
+    {
+        // Same words as the existing bullet, differing only in punctuation, so the text comparison
+        // catches it even though the vector search returns nothing.
+        const string candidate = "Reduced deployment time from forty minutes to under four minutes";
+
+        // In the DB but never indexed, so the vector search cannot see it.
+        var existingId = await SeedBulletAsync(ExistingText);
+        _vectorStore.Embeddings[candidate] = [1f, 0f];
+        _vectorStore.SearchResults = [];
+        var sut = CreateSut();
+
+        var result = await sut.DetectAsync(
+            [new DuplicateSubject(0, null, candidate)],
+            TestContext.Current.CancellationToken);
+
+        result.Mode.Should().Be(DuplicateDetectionModeDto.Semantic);
+        result.WarningsByIndex[0].Should().ContainSingle()
+            .Which.ExistingBulletId.Should().Be(existingId);
+        result.Message.Should().Contain("Index All Missing", "the user needs to know coverage was incomplete");
+    }
+
+    [Fact]
+    public async Task DetectAsync_WhenEveryExistingBulletIsIndexed_ReportsNoIndexGap()
+    {
+        var existingId = await SeedBulletAsync(ExistingText);
+        await _vectorStore.UpsertAsync(new Bullet { Id = existingId, BulletText = ExistingText }, TestContext.Current.CancellationToken);
+        _vectorStore.Embeddings[SimilarText] = [1f, 0f];
+        var sut = CreateSut();
+
+        var result = await sut.DetectAsync([new DuplicateSubject(0, null, SimilarText)], TestContext.Current.CancellationToken);
+
+        result.Mode.Should().Be(DuplicateDetectionModeDto.Semantic);
+        result.Message.Should().BeNull();
+    }
+
+    [Fact]
     public async Task DetectAsync_WhenPairIsIgnored_OmitsTheWarning()
     {
         var existingId = await SeedBulletAsync(ExistingText);

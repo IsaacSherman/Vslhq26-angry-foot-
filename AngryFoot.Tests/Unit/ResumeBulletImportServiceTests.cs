@@ -61,7 +61,7 @@ public class ResumeBulletImportServiceTests : IDisposable
 
         var selected = preview.Candidates[0];
         var result = await sut.ConfirmAsync(
-            new ConfirmResumeImportRequest([new ImportBulletItem(selected.Index, selected.BulletText, "Contoso Ltd", [])]),
+            new ConfirmResumeImportRequest([new ImportBulletItem(selected.Index, selected.BulletText, "Contoso Ltd", selected.BulletText, [])]),
             TestContext.Current.CancellationToken);
 
         result.Created.Should().ContainSingle();
@@ -78,13 +78,14 @@ public class ResumeBulletImportServiceTests : IDisposable
     {
         var sut = CreateSut();
         var existing = await sut.ConfirmAsync(
-            new ConfirmResumeImportRequest([new ImportBulletItem(0, "An earlier bullet about deployment automation.", null, [])]),
+            new ConfirmResumeImportRequest([new ImportBulletItem(0, "An earlier bullet about deployment automation.", null, "An earlier bullet about deployment automation.", [])]),
             TestContext.Current.CancellationToken);
         var existingId = existing.Created[0].Id;
 
         var result = await sut.ConfirmAsync(
             new ConfirmResumeImportRequest([
                 new ImportBulletItem(0, "A newly imported bullet about deployment automation.", null,
+                    "A newly imported bullet about deployment automation.",
                     [new IgnoredDuplicateDecision(existingId, null, 0.93)])
             ]),
             TestContext.Current.CancellationToken);
@@ -107,8 +108,10 @@ public class ResumeBulletImportServiceTests : IDisposable
         var result = await sut.ConfirmAsync(
             new ConfirmResumeImportRequest([
                 new ImportBulletItem(0, "Led the rollout of the new billing platform.", null,
+                    "Led the rollout of the new billing platform.",
                     [new IgnoredDuplicateDecision(null, 1, 0.92)]),
-                new ImportBulletItem(1, "Led the rollout of the replacement billing system.", null, [])
+                new ImportBulletItem(1, "Led the rollout of the replacement billing system.", null,
+                    "Led the rollout of the replacement billing system.", [])
             ]),
             TestContext.Current.CancellationToken);
 
@@ -127,12 +130,56 @@ public class ResumeBulletImportServiceTests : IDisposable
         var result = await sut.ConfirmAsync(
             new ConfirmResumeImportRequest([
                 new ImportBulletItem(0, "Led the rollout of the new billing platform.", null,
+                    "Led the rollout of the new billing platform.",
                     [new IgnoredDuplicateDecision(null, 1, 0.92)])
             ]),
             TestContext.Current.CancellationToken);
 
         result.IgnoredPairCount.Should().Be(0, "there is no second bullet for the pair to reference");
         _database.CreateContext().IgnoredBulletDuplicatePairs.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WhenTheBulletWasEditedAfterReview_DoesNotRecordTheIgnoredPair()
+    {
+        var sut = CreateSut();
+        var existing = await sut.ConfirmAsync(
+            new ConfirmResumeImportRequest([
+                new ImportBulletItem(0, "An earlier bullet about deployment automation.", null,
+                    "An earlier bullet about deployment automation.", [])
+            ]),
+            TestContext.Current.CancellationToken);
+        var existingId = existing.Created[0].Id;
+
+        var result = await sut.ConfirmAsync(
+            new ConfirmResumeImportRequest([
+                new ImportBulletItem(0, "Rewritten after the duplicate warning was reviewed.", null,
+                    "The wording the duplicate warning was actually about.",
+                    [new IgnoredDuplicateDecision(existingId, null, 0.93)])
+            ]),
+            TestContext.Current.CancellationToken);
+
+        result.Created.Should().ContainSingle("the edited bullet is still imported");
+        result.IgnoredPairCount.Should().Be(0, "the decision was made about wording that is not being imported");
+        _database.CreateContext().IgnoredBulletDuplicatePairs.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithoutStatingWhatWasReviewed_DoesNotRecordTheIgnoredPair()
+    {
+        var sut = CreateSut();
+        var existing = await sut.ConfirmAsync(
+            new ConfirmResumeImportRequest([new ImportBulletItem(0, "An earlier bullet.", null, "An earlier bullet.", [])]),
+            TestContext.Current.CancellationToken);
+
+        var result = await sut.ConfirmAsync(
+            new ConfirmResumeImportRequest([
+                new ImportBulletItem(0, "A newly imported bullet.", null, null,
+                    [new IgnoredDuplicateDecision(existing.Created[0].Id, null, 0.93)])
+            ]),
+            TestContext.Current.CancellationToken);
+
+        result.IgnoredPairCount.Should().Be(0, "a caller has to state what was reviewed before a pair is recorded");
     }
 
     [Fact]

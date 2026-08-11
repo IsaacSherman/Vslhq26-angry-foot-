@@ -90,9 +90,11 @@ public static class BulletEndpoints
             IResumeBulletImportService importService,
             CancellationToken cancellationToken) =>
         {
-            if (request.Bullets.Count == 0)
+            // Blank texts are dropped during import, so counting the raw request would report
+            // success for a request that creates nothing.
+            if (!request.Bullets.Any(x => !string.IsNullOrWhiteSpace(x.BulletText)))
             {
-                return Results.BadRequest("Select at least one bullet to import.");
+                return Results.BadRequest("Select at least one bullet with text to import.");
             }
 
             var result = await importService.ConfirmAsync(request, cancellationToken);

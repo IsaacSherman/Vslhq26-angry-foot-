@@ -16,15 +16,39 @@ public sealed class EditableCandidateBullet
     public string? SourceEmployer { get; set; }
     public List<EditableDuplicateWarning> Duplicates { get; set; } = [];
 
+    /// <summary>The text the duplicate warnings were computed against.</summary>
+    public string ReviewedText { get; private set; } = string.Empty;
+
+    /// <summary>Set once the text is edited away from what was scanned, so the UI can say the
+    /// warnings no longer describe this bullet.</summary>
+    public bool DuplicatesAreStale { get; private set; }
+
     public static EditableCandidateBullet FromDto(CandidateBulletDto dto)
     {
         return new EditableCandidateBullet
         {
             Index = dto.Index,
             BulletText = dto.BulletText,
+            ReviewedText = dto.BulletText,
             SourceEmployer = dto.SuggestedEmployer,
             Duplicates = dto.Duplicates.Select(EditableDuplicateWarning.FromDto).ToList()
         };
+    }
+
+    /// <summary>
+    /// Editing the text invalidates the scan it was based on. The warnings and any decision on them
+    /// are dropped rather than carried over, so an "ignore" made about the original wording can't
+    /// silently record an ignored pair for wording nobody reviewed.
+    /// </summary>
+    public void OnTextChanged()
+    {
+        if (string.Equals(BulletText?.Trim(), ReviewedText.Trim(), StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DuplicatesAreStale = true;
+        Duplicates.Clear();
     }
 
     public ImportBulletItem ToItem()
@@ -33,6 +57,7 @@ public sealed class EditableCandidateBullet
             Index,
             BulletText.Trim(),
             string.IsNullOrWhiteSpace(SourceEmployer) ? null : SourceEmployer.Trim(),
+            ReviewedText.Trim(),
             Duplicates
                 .Where(x => x.Ignored)
                 .Select(x => new IgnoredDuplicateDecision(x.ExistingBulletId, x.CandidateIndex, x.Similarity))

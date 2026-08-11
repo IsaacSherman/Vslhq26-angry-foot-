@@ -70,6 +70,17 @@ public sealed class ResumeBulletImportService(
         return new ResumeImportResultDto(created, ignoredCount);
     }
 
+    /// <summary>
+    /// Whether the bullet being imported is the one the duplicate warnings were raised against. An
+    /// omitted <see cref="ImportBulletItem.ReviewedBulletText"/> is treated as unreviewed, so a
+    /// caller has to state what was reviewed before an ignored pair is recorded on its behalf.
+    /// </summary>
+    private static bool WasReviewedAsImported(ImportBulletItem item)
+    {
+        return !string.IsNullOrWhiteSpace(item.ReviewedBulletText)
+            && string.Equals(item.ReviewedBulletText.Trim(), item.BulletText.Trim(), StringComparison.Ordinal);
+    }
+
     private async Task<int> PersistIgnoredPairsAsync(
         IReadOnlyList<ImportBulletItem> items,
         IReadOnlyDictionary<int, Guid> createdIdsByIndex,
@@ -79,6 +90,14 @@ public sealed class ResumeBulletImportService(
 
         foreach (var item in items)
         {
+            // The warnings were raised against the previewed wording. If the user edited the bullet
+            // afterwards, those decisions were never made about the text being imported, and
+            // recording them would suppress warnings nobody actually reviewed.
+            if (!WasReviewedAsImported(item))
+            {
+                continue;
+            }
+
             var bulletId = createdIdsByIndex[item.Index];
 
             foreach (var decision in item.IgnoredDuplicates)

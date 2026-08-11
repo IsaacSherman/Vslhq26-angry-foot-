@@ -89,7 +89,14 @@ public sealed class BulletDuplicateDetector(
             {
                 await AddSemanticExistingMatchesAsync(collector, subjects, existing, cancellationToken);
                 AddSemanticBatchMatches(collector, subjects, vectors);
-                return (DuplicateDetectionModeDto.Semantic, null);
+
+                // A bullet can sit in SQLite without a point in Qdrant — indexing fails silently and
+                // the Bullets page offers a backfill for exactly that. Those are invisible to the
+                // vector search, so compare them by text rather than let them go unchecked.
+                var unindexed = await FindUnindexedAsync(existing, cancellationToken);
+                AddLexicalExistingMatches(collector, subjects, unindexed);
+
+                return (DuplicateDetectionModeDto.Semantic, DescribeIndexGap(unindexed.Count));
             }
 
             AddLexicalMatches(collector, subjects, existing);
@@ -173,6 +180,32 @@ public sealed class BulletDuplicateDetector(
         IReadOnlyList<DuplicateSubject> subjects,
         IReadOnlyList<ExistingBullet> existing)
     {
+        AddLexicalExistingMatches(collector, subjects, existing);
+
+        var subjectTokens = subjects.Select(x => Tokenize(x.Text)).ToArray();
+        for (var i = 0; i < subjects.Count; i++)
+        {
+            for (var j = i + 1; j < subjects.Count; j++)
+            {
+                var similarity = JaccardSimilarity(subjectTokens[i], subjectTokens[j]);
+                if (similarity > DuplicateThreshold)
+                {
+                    collector.AddPair(subjects[i], subjects[j], similarity);
+                }
+            }
+        }
+    }
+
+    private static void AddLexicalExistingMatches(
+        WarningCollector collector,
+        IReadOnlyList<DuplicateSubject> subjects,
+        IReadOnlyList<ExistingBullet> existing)
+    {
+        if (existing.Count == 0)
+        {
+            return;
+        }
+
         var subjectTokens = subjects.Select(x => Tokenize(x.Text)).ToArray();
         var existingTokens = existing.Select(x => Tokenize(x.Text)).ToArray();
 
@@ -186,16 +219,36 @@ public sealed class BulletDuplicateDetector(
                     collector.AddExisting(subjects[i], existing[e].Id, existing[e].Text, similarity);
                 }
             }
-
-            for (var j = i + 1; j < subjects.Count; j++)
-            {
-                var similarity = JaccardSimilarity(subjectTokens[i], subjectTokens[j]);
-                if (similarity > DuplicateThreshold)
-                {
-                    collector.AddPair(subjects[i], subjects[j], similarity);
-                }
-            }
         }
+    }
+
+    /// <summary>
+    /// The existing bullets with no point in the vector index. A failed lookup reports every bullet
+    /// as missing, which costs an extra text pass but never hides a duplicate.
+    /// </summary>
+    private async Task<IReadOnlyList<ExistingBullet>> FindUnindexedAsync(
+        IReadOnlyList<ExistingBullet> existing,
+        CancellationToken cancellationToken)
+    {
+        if (existing.Count == 0)
+        {
+            return [];
+        }
+
+        var indexed = await vectorStore.GetIndexedIdsAsync(existing.Select(x => x.Id).ToArray(), cancellationToken);
+        return existing.Where(x => !indexed.Contains(x.Id)).ToArray();
+    }
+
+    private static string? DescribeIndexGap(int unindexedCount)
+    {
+        if (unindexedCount == 0)
+        {
+            return null;
+        }
+
+        return $"{unindexedCount} existing bullet{(unindexedCount == 1 ? " is" : "s are")} missing from the semantic "
+            + "index and could only be compared by text. Use \"Index All Missing\" on the Bullets page for full "
+            + "duplicate detection.";
     }
 
     private async Task<HashSet<(Guid, Guid)>> LoadIgnoredPairsAsync(CancellationToken cancellationToken)

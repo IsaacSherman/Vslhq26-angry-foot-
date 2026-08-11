@@ -55,11 +55,17 @@ public sealed record IgnoredDuplicateDecision(
 /// <summary>
 /// One candidate the user chose to import. <paramref name="Index"/> is the candidate's index from
 /// the preview, which the ignore decisions reference.
+///
+/// <paramref name="ReviewedBulletText"/> is the text the duplicate warnings were raised against. It
+/// differs from <paramref name="BulletText"/> when the user edited the bullet after reviewing it, in
+/// which case the ignore decisions describe wording that is no longer being imported and are
+/// discarded rather than recorded.
 /// </summary>
 public sealed record ImportBulletItem(
     int Index,
     string BulletText,
     string? SourceEmployer,
+    string? ReviewedBulletText,
     IReadOnlyList<IgnoredDuplicateDecision> IgnoredDuplicates);
 
 public sealed record ConfirmResumeImportRequest(IReadOnlyList<ImportBulletItem> Bullets);

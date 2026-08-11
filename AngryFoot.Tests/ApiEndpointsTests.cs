@@ -170,7 +170,9 @@ public class ApiEndpointsTests
         var chosen = preview.Candidates[0];
         var confirmResponse = await apiClient.PostAsJsonAsync(
             "/api/bullets/import/resume",
-            new ConfirmResumeImportRequest([new ImportBulletItem(chosen.Index, chosen.BulletText, chosen.SuggestedEmployer, [])]),
+            new ConfirmResumeImportRequest([
+                new ImportBulletItem(chosen.Index, chosen.BulletText, chosen.SuggestedEmployer, chosen.BulletText, [])
+            ]),
             cancellationToken);
         Assert.Equal(HttpStatusCode.OK, confirmResponse.StatusCode);
 
@@ -183,6 +185,18 @@ public class ApiEndpointsTests
         Assert.NotNull(bulletsAfterImport);
         Assert.Equal(bulletsBefore.Count + 1, bulletsAfterImport!.Count);
         Assert.Contains(bulletsAfterImport, x => x.BulletText == chosen.BulletText);
+
+        // Blank texts are dropped during import, so a request made only of them creates nothing and
+        // must be rejected rather than reported as a successful import of zero bullets.
+        var blankResponse = await apiClient.PostAsJsonAsync(
+            "/api/bullets/import/resume",
+            new ConfirmResumeImportRequest([new ImportBulletItem(0, "   ", null, "   ", [])]),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, blankResponse.StatusCode);
+
+        var bulletsAfterBlank = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.NotNull(bulletsAfterBlank);
+        Assert.Equal(bulletsAfterImport.Count, bulletsAfterBlank!.Count);
     }
 
     [Fact]

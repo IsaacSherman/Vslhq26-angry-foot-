@@ -45,6 +45,11 @@ else
             @(detectionMessage ?? "Semantic duplicate detection is unavailable, so duplicates were compared by text only.")
         </div>
     }
+    else if (!string.IsNullOrWhiteSpace(detectionMessage))
+    {
+        @* Semantic detection ran, but it couldn't see all of the library. *@
+        <div class="alert alert-info">@detectionMessage</div>
+    }
 
     <p>
         Found <strong>@candidates.Count</strong> candidate bullet@(candidates.Count == 1 ? "" : "s").
@@ -66,8 +71,18 @@ else
                 </div>
 
                 <div class="mb-2">
-                    <textarea class="form-control" rows="3" @bind="candidate.BulletText"></textarea>
+                    <textarea class="form-control" rows="3"
+                              @bind="candidate.BulletText"
+                              @bind:after="candidate.OnTextChanged"></textarea>
                 </div>
+
+                @if (candidate.DuplicatesAreStale)
+                {
+                    <div class="alert alert-secondary mt-2 mb-0">
+                        You edited this bullet, so its duplicate warnings no longer apply and were cleared.
+                        Preview again if you want it re-checked.
+                    </div>
+                }
 
                 <div class="row g-2 align-items-center">
                     <div class="col-md-6">
