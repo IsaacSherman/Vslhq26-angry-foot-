@@ -119,7 +119,7 @@ public class ResumeBulletParserTests
     public void DropsFragmentsTooShortToBeAchievements()
     {
         const string text = """
-            SKILLS
+            EXPERIENCE
             • C#
             • SQL
             • Built a self-service reporting portal now used by every regional office.
@@ -129,6 +129,40 @@ public class ResumeBulletParserTests
 
         result.Should().ContainSingle()
             .Which.Text.Should().Be("Built a self-service reporting portal now used by every regional office.");
+    }
+
+    [Fact]
+    public void SkipsBiographicalSections()
+    {
+        const string text = """
+            Education
+            North Central University of Questionable Science, Castle Pines NM
+            Master of Science in Computational Folklore   GPA: 4.0
+            Skills/Expertise
+            Languages: Java, C#, JavaScript, TypeScript, T-SQL, and several regrettable dialects
+            Experience
+            Consolidated three reporting tools into one, saving the team six hours per week
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Select(x => x.Text).Should().Equal(
+            "Consolidated three reporting tools into one, saving the team six hours per week");
+    }
+
+    [Fact]
+    public void KeepsMarkedResumeInMarkedModeEvenWhenEverySectionIsSkipped()
+    {
+        const string text = """
+            SKILLS
+            • Proficient in C# and the surrounding .NET ecosystem across many years
+            • Comfortable with SQL, schema design, and query tuning under load
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Should().BeEmpty("skills entries are not achievements, and the marker glyphs must "
+            + "never leak into candidates via the marker-less fallback");
     }
 
     [Theory]

@@ -49,6 +49,56 @@ public static class ResumeBulletParser
 
     private static readonly char[] EmployerSeparators = ['—', '–', '|', ',', '/'];
 
+    // Institution and office lines ("North Central University, Castle Pines, NM") sit among the
+    // achievements but describe where, not what. The state code keeps this from firing on a bullet
+    // that happens to end in an acronym.
+    private static readonly Regex TrailingLocation = new(@",[^,]{0,40}\b([A-Z]{2})$", RegexOptions.Compiled);
+
+    private static readonly HashSet<string> StateCodes = new(StringComparer.Ordinal)
+    {
+        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA",
+        "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+        "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT",
+        "VA", "WA", "WV", "WI", "WY", "DC", "PR", "GU", "VI", "AE", "AP", "AA", "ZZ"
+    };
+
+    private const int MaximumSectionHeadingLength = 60;
+    private const int MaximumSectionHeadingWords = 6;
+
+    /// <summary>Sections whose contents are biographical or list-like rather than achievements.</summary>
+    private static readonly HashSet<string> ExcludedSectionWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "education", "academics", "academic", "degree", "degrees", "coursework", "course", "courses",
+        "skills", "skill", "expertise", "competencies", "proficiencies", "languages", "technologies",
+        "technology", "methodologies", "tools", "frameworks", "certifications", "certification",
+        "certificates", "certificate", "licenses", "awards", "honors", "honours", "scholarships",
+        "publications", "papers", "patents", "presentations", "interests", "hobbies", "references",
+        "affiliations", "memberships", "summary", "objective", "profile", "contact"
+    };
+
+    /// <summary>Sections that introduce achievements, including sub-headings inside a job.</summary>
+    private static readonly HashSet<string> AchievementSectionWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "experience", "employment", "history", "work", "career", "positions", "roles", "projects",
+        "project", "achievements", "accomplishments", "highlights", "military", "service"
+    };
+
+    private static readonly HashSet<string> PrepositionWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "with", "in", "of", "for", "at", "on", "to", "from", "by", "using", "across", "into"
+    };
+
+    private static readonly Regex Parenthetical = new(@"\([^)]*\)", RegexOptions.Compiled);
+
+    private enum SectionKind
+    {
+        /// <summary>Bullets found here are candidate achievements.</summary>
+        Achievements,
+
+        /// <summary>Degrees, skill lists, and the like — never candidate achievements.</summary>
+        Excluded
+    }
+
     public static IReadOnlyList<ParsedCandidate> Parse(string? resumeText)
     {
         if (string.IsNullOrWhiteSpace(resumeText))
@@ -57,17 +107,23 @@ public static class ResumeBulletParser
         }
 
         var lines = resumeText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var candidates = ExtractMarkedBullets(lines);
 
-        return candidates.Count > 0 ? candidates : ExtractUnmarkedBullets(lines);
+        // Decide by whether the resume is written with markers, not by whether the marked pass found
+        // anything: a marked resume whose bullets all sit in skipped sections must still be read as
+        // marked, or the fallback would re-emit those lines with their glyphs attached. Two markers
+        // are required so a lone hyphenated line can't reinterpret a marker-less resume.
+        var markerLines = lines.Count(x => MarkerPattern.IsMatch(x.Trim()));
+
+        return markerLines >= 2 ? ExtractMarkedBullets(lines) : ExtractUnmarkedBullets(lines);
     }
 
     private static List<ParsedCandidate> ExtractMarkedBullets(string[] lines)
     {
         var candidates = new List<ParsedCandidate>();
         var current = new System.Text.StringBuilder();
-        var employer = new EmployerTracker();
+        var context = new ResumeContext();
         string? candidateEmployer = null;
+        var candidateSection = SectionKind.Achievements;
 
         void Flush()
         {
@@ -77,9 +133,10 @@ public static class ResumeBulletParser
             }
 
             var text = Normalize(current.ToString());
-            if (IsPlausibleBullet(text, MinimumBulletLength))
+            if (candidateSection == SectionKind.Achievements && IsPlausibleBullet(text, MinimumBulletLength))
             {
                 candidates.Add(new ParsedCandidate(text, candidateEmployer));
+                context.StartNewBlock();
             }
 
             current.Clear();
@@ -92,7 +149,7 @@ public static class ResumeBulletParser
             if (trimmed.Length == 0)
             {
                 Flush();
-                employer.EndBlock();
+                context.StartNewBlock();
                 continue;
             }
 
@@ -101,7 +158,8 @@ public static class ResumeBulletParser
             {
                 Flush();
                 current.Append(trimmed[marker.Length..]);
-                candidateEmployer = employer.Current;
+                candidateEmployer = context.Employer;
+                candidateSection = context.Section;
                 continue;
             }
 
@@ -112,7 +170,7 @@ public static class ResumeBulletParser
             }
 
             Flush();
-            employer.Observe(trimmed);
+            context.Observe(trimmed);
         }
 
         Flush();
@@ -120,45 +178,114 @@ public static class ResumeBulletParser
     }
 
     /// <summary>
-    /// Follows the employer heading above each block of bullets. Only the first heading-shaped line
-    /// in a block wins, so the job title or date line that usually follows the employer
-    /// ("Staff Engineer, 2021 - Present") doesn't overwrite it. A blank line or an emitted bullet
-    /// opens the next block, which is what lets back-to-back roles with no blank line between them
-    /// ("Client Support Administrator (2006-2010)") still register.
+    /// Tracks where in the resume we are: which section, and which employer the bullets belong to.
+    ///
+    /// Only the first heading-shaped line in a block sets the employer, so the job title or date
+    /// line that usually follows it ("Staff Engineer, 2021 - Present") doesn't overwrite it. A blank
+    /// line or an emitted bullet opens the next block, which is what lets back-to-back roles with no
+    /// blank line between them ("Client Support Administrator (2006-2010)") still register.
     /// </summary>
-    private sealed class EmployerTracker
+    private sealed class ResumeContext
     {
-        private bool _setInBlock;
+        private bool _employerSetInBlock;
 
-        public string? Current { get; private set; }
+        public string? Employer { get; private set; }
 
-        public void StartNewBlock() => _setInBlock = false;
+        /// <summary>Assume achievements until a heading says otherwise, so a pasted fragment with no
+        /// headings at all still yields candidates.</summary>
+        public SectionKind Section { get; private set; } = SectionKind.Achievements;
+
+        public void StartNewBlock() => _employerSetInBlock = false;
 
         public void Observe(string line)
         {
+            if (TryClassifySection(line, out var kind))
+            {
+                // A sub-heading inside the experience section ("Significant Achievements:") keeps
+                // the job it belongs to; anything else starts fresh.
+                if (kind == SectionKind.Excluded || Section != SectionKind.Achievements)
+                {
+                    Employer = null;
+                }
+
+                Section = kind;
+                _employerSetInBlock = false;
+                return;
+            }
+
             if (IsSectionHeading(line))
             {
-                Current = null;
-                _setInBlock = false;
+                Employer = null;
+                Section = SectionKind.Achievements;
+                _employerSetInBlock = false;
                 return;
             }
 
-            if (_setInBlock || !TryReadEmployer(line, out var employer))
+            if (_employerSetInBlock || !TryReadEmployer(line, out var employer))
             {
                 return;
             }
 
-            Current = employer;
-            _setInBlock = true;
+            Employer = employer;
+            _employerSetInBlock = true;
         }
+    }
+
+    /// <summary>
+    /// Recognizes a section label by its vocabulary rather than its casing, since plenty of resumes
+    /// write "Education" and "Experience" in ordinary title case. Kept to short, few-word lines so a
+    /// long achievement that merely mentions one of these words isn't mistaken for a heading.
+    /// </summary>
+    private static bool TryClassifySection(string line, out SectionKind kind)
+    {
+        kind = SectionKind.Achievements;
+
+        // "(In Progress)" and "(2009-2011)" qualify a heading without changing what it is.
+        var text = Parenthetical.Replace(line, " ").TrimEnd(':').Trim();
+        if (text.Length == 0 || text.Length > MaximumSectionHeadingLength || EndsSentence(text))
+        {
+            return false;
+        }
+
+        var words = text.Split(
+            [' ', '\t', ',', '/', '&', '(', ')', '.', '-', '–', '—', '|', ':'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (words.Length == 0 || words.Length > MaximumSectionHeadingWords)
+        {
+            return false;
+        }
+
+        // A preposition means it is a phrase about something ("Experience with Python",
+        // "Master of Science in Computer Science"), not a label for the section itself.
+        if (words.Any(PrepositionWords.Contains))
+        {
+            return false;
+        }
+
+        // Excluded wins ties so "Relevant Course Work" is coursework, not work history.
+        if (words.Any(ExcludedSectionWords.Contains))
+        {
+            kind = SectionKind.Excluded;
+            return true;
+        }
+
+        if (words.Any(AchievementSectionWords.Contains))
+        {
+            kind = SectionKind.Achievements;
+            return true;
+        }
+
+        return false;
     }
 
     private static List<ParsedCandidate> ExtractUnmarkedBullets(string[] lines)
     {
         var candidates = new List<ParsedCandidate>();
         var current = new System.Text.StringBuilder();
-        var employer = new EmployerTracker();
+        var context = new ResumeContext();
         string? candidateEmployer = null;
+        var candidateSection = SectionKind.Achievements;
 
         void Flush()
         {
@@ -168,13 +295,14 @@ public static class ResumeBulletParser
             }
 
             var text = Normalize(current.ToString());
-            if (LooksLikeJobHeading(text) || !IsPlausibleBullet(text, MinimumUnmarkedBulletLength))
+            if (LooksLikeJobHeading(text) || LooksLikeLocation(text) || !IsPlausibleBullet(text, MinimumUnmarkedBulletLength))
             {
-                employer.Observe(text);
+                context.Observe(text);
             }
-            else
+            else if (candidateSection == SectionKind.Achievements)
             {
                 candidates.Add(new ParsedCandidate(text, candidateEmployer));
+                context.StartNewBlock();
             }
 
             current.Clear();
@@ -187,14 +315,22 @@ public static class ResumeBulletParser
             if (trimmed.Length == 0)
             {
                 Flush();
-                employer.EndBlock();
+                context.StartNewBlock();
                 continue;
+            }
+
+            // A resume with a single marked line lands here; strip it so the glyph never survives
+            // into a candidate.
+            var marker = MarkerPattern.Match(trimmed);
+            if (marker.Success)
+            {
+                trimmed = trimmed[marker.Length..];
             }
 
             if (IsSectionHeading(trimmed) || IsContactLine(trimmed) || IsDateLine(trimmed))
             {
                 Flush();
-                employer.Observe(trimmed);
+                context.Observe(trimmed);
                 continue;
             }
 
@@ -209,7 +345,8 @@ public static class ResumeBulletParser
 
             Flush();
             current.Append(trimmed);
-            candidateEmployer = employer.Current;
+            candidateEmployer = context.Employer;
+            candidateSection = context.Section;
         }
 
         Flush();
@@ -251,6 +388,16 @@ public static class ResumeBulletParser
     /// "Client Support Administrator (2006-2010)".
     /// </summary>
     private static bool LooksLikeJobHeading(string line) => TrailingDateRange.IsMatch(line);
+
+    /// <summary>
+    /// An institution or office line ("North Central University, Castle Pines, NM") — it sits among
+    /// the achievements but says where the job was, not what was accomplished.
+    /// </summary>
+    private static bool LooksLikeLocation(string line)
+    {
+        var match = TrailingLocation.Match(line);
+        return match.Success && StateCodes.Contains(match.Groups[1].Value);
+    }
 
     private static bool TryReadEmployer(string line, out string? employer)
     {
@@ -295,13 +442,24 @@ public static class ResumeBulletParser
 
     private static bool IsSectionHeading(string line)
     {
+        // "Education" / "Languages, Technologies, and Methodologies" are headings by vocabulary
+        // even though they are neither all-caps nor colon-terminated.
+        if (TryClassifySection(line, out _))
+        {
+            return true;
+        }
+
         var letters = line.Where(char.IsLetter).ToArray();
         if (letters.Length == 0)
         {
             return false;
         }
 
-        if (line.Length <= MaximumHeadingLength && letters.All(char.IsUpper))
+        // An all-caps line is a heading, but a bare acronym on its own line ("SQL", "AWS") is a
+        // skills-list entry and must not be mistaken for the start of a new section.
+        if (line.Length <= MaximumHeadingLength
+            && letters.All(char.IsUpper)
+            && (letters.Length >= 5 || line.Contains(' ', StringComparison.Ordinal)))
         {
             return true;
         }

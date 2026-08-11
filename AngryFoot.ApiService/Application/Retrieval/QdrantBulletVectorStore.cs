@@ -84,7 +84,6 @@ internal sealed class QdrantBulletVectorStore(
                 vector,
                 limit: (ulong)Math.Max(1, topK),
                 cancellationToken: cancellationToken);
-
             return results
                 .Where(x => x.Id.HasUuid && Guid.TryParse(x.Id.Uuid, out _))
                 .Select(x => new BulletSimilarityMatch(Guid.Parse(x.Id.Uuid), x.Score))

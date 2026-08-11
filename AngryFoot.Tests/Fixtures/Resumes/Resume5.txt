@@ -1,0 +1,55 @@
+Nom De Plume  
+8896 Streetroad Way * Knoxville, TN 37923 * 865-123-4567 * name@email.com  
+Education:  
+
+
+The State University of State, Townsvillington Village, ST
+    Master of Science in Computer Science   GPA: 8/10
+
+May 2017
+    Bachelor of Science in Computer Science   GPA: 5 fish sticks
+August 2015
+Community College of the Air Force, Maxwell AFB AL  
+    Associates of Applied Science in Criminal Justice   GPA: N/A
+
+August 2010
+
+Relevant Course Work (In Progress):  
+Autonomous Mobile Robots 
+Bio-Inspired Computing
+Computational Cognitive Neuroscience
+Computer Systems Organizations
+Software Systems 
+Thesis
+Unconventional Computing
+Visualization
+
+ 
+Experience:  
+
+
+Experience:  
+Intern at Fingler Chicken Licken 	May 2014 – September 2016
+Analyzed existing research in relevant or similar problem domains to develop prototype solutions
+Performed extensive data scrubbing before implementing novel biologically inspired algorithms
+Developed framework for rapid deployment of evolutionarily optimized classifiers
+Regularly explained technical approach and statistical indications both individually and in groups
+Standardized a loose database into a rigorously analyzable one at a novel level of granularity
+ 
+Tutor at Math Department / Math Tutorial Center 	August 2013 – August 2015
+      State University of State   
+Assists and mentors students with calculus 1-3, physics, and general math  
+         
+Standards and Evaluations Compliance Administrator (2010-2012)  
+Automated notification system; brought accidental non-compliance rate to nearly zero  
+Client Support Administrator (2006-2010)  
+Ensured squadron's compliance w/ Air Force standards; 115 computers, zero discrepancies
+
+Programming Languages:
+Proficient in C/C++
+Proficient in C#
+Proficient in Java
+Experience with Python
+Experience with JavaScript
+Experience with MATLAB
+
