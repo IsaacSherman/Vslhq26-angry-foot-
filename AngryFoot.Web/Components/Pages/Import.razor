@@ -1,0 +1,148 @@
+@page "/profile/import"
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>Import from LinkedIn</PageTitle>
+
+<h1>Import from LinkedIn</h1>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title">How to get your LinkedIn export</h5>
+        <ol class="mb-2">
+            <li>On LinkedIn, go to <strong>Profile &rarr; Settings &amp; Privacy &rarr; Data Privacy &rarr; Get a copy of your data</strong>.</li>
+            <li>
+                Choose <strong>"Download larger data archive"</strong> despite the longer wait.  The 
+                "Want something in particular?" option with the Profile box checked only includes name, 
+                contact info, and headline; it leaves out work history, education, and certifications
+                entirely.
+            </li>
+            <li>Click <strong>Request archive</strong>. LinkedIn says it can take up to 24 hours, but it's often ready in just a few minutes &#8212; check your email.</li>
+            <li>Download the <code>.zip</code> LinkedIn emails you and upload it below.</li>
+        </ol>
+        <p class="mb-0">We'll prefill your profile from it so you can review and edit before saving &#8212; nothing is saved until you confirm.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (missingSections.Count > 0)
+{
+    <div class="alert alert-warning">
+        <p class="mb-2">
+            We imported what we could, but didn't find the following in this export:
+        </p>
+        <ul class="mb-2">
+            @foreach (var section in missingSections)
+            {
+                <li>@section</li>
+            }
+        </ul>
+        <p class="mb-0">
+            LinkedIn's Profile-only download leaves these out. To get them, request a fresh export and choose
+            <strong>"Download larger data archive"</strong> instead of the Profile-only option, then re-import.
+        </p>
+    </div>
+}
+
+@if (model is null)
+{
+    <div class="mb-3">
+        <InputFile OnChange="HandleFileSelectedAsync" accept=".zip" disabled="@isImporting" />
+    </div>
+    @if (isImporting)
+    {
+        <p>Importing&hellip;</p>
+    }
+}
+else
+{
+    <ProfileEditor Model="model" />
+
+    <div>
+        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Confirm &amp; Save</button>
+        <button class="btn btn-outline-secondary" @onclick="Reset" disabled="@isSaving">Start Over</button>
+    </div>
+}
+
+@code {
+    private const long MaxFileSizeBytes = 25 * 1024 * 1024;
+
+    private EditableProfile? model;
+    private bool isImporting;
+    private bool isSaving;
+    private string? errorMessage;
+    private List<string> missingSections = [];
+
+    private async Task HandleFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        missingSections = [];
+        isImporting = true;
+
+        try
+        {
+            await using var stream = e.File.OpenReadStream(MaxFileSizeBytes);
+            var imported = await ApiClient.ImportLinkedInProfileAsync(stream, e.File.Name);
+            model = EditableProfile.FromDto(imported.Profile);
+
+            if (!imported.WorkHistoryFound)
+            {
+                missingSections.Add("Work History");
+            }
+
+            if (!imported.EducationFound)
+            {
+                missingSections.Add("Education");
+            }
+
+            if (!imported.CertificationsFound)
+            {
+                missingSections.Add("Certifications");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isImporting = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isSaving = true;
+
+        try
+        {
+            await ApiClient.SaveProfileAsync(model.ToDto());
+            Navigation.NavigateTo("/profile");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Reset()
+    {
+        model = null;
+        errorMessage = null;
+        missingSections = [];
+    }
+}

@@ -1,0 +1,110 @@
+@* Shared review/edit form for a profile draft, used by both the manual Profile page
+   and the LinkedIn import review page so the two don't duplicate ~90 lines of markup. *@
+
+@if (Model is not null)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="Model.Name" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input class="form-control" @bind="Model.Email" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Phone</label>
+                    <input class="form-control" @bind="Model.Phone" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">LinkedIn</label>
+                    <input class="form-control" @bind="Model.LinkedIn" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">GitHub</label>
+                    <input class="form-control" @bind="Model.GitHub" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Professional Summary</label>
+                    <textarea class="form-control" rows="4" @bind="Model.ProfessionalSummary"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h3>Work History</h3>
+    @for (var i = 0; i < Model.WorkHistory.Count; i++)
+    {
+        var item = Model.WorkHistory[i];
+        var index = i;
+        <div class="card mb-2">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4"><input class="form-control" placeholder="Employer" @bind="item.Employer" /></div>
+                    <div class="col-md-4"><input class="form-control" placeholder="Title" @bind="item.Title" /></div>
+                    <div class="col-md-4"><input class="form-control" placeholder="Location" @bind="item.Location" /></div>
+                    <div class="col-md-3"><input class="form-control" placeholder="Start" @bind="item.StartDate" /></div>
+                    <div class="col-md-3"><input class="form-control" placeholder="End" @bind="item.EndDate" /></div>
+                    <div class="col-md-2"><input class="form-control" type="number" placeholder="Sort" @bind="item.SortOrder" /></div>
+                    <div class="col-md-4"><button class="btn btn-outline-danger" @onclick="() => RemoveWorkHistory(index)">Remove</button></div>
+                </div>
+            </div>
+        </div>
+    }
+    <button class="btn btn-outline-secondary mb-3" @onclick="AddWorkHistory">Add Work History</button>
+
+    <h3>Education</h3>
+    @for (var i = 0; i < Model.Education.Count; i++)
+    {
+        var item = Model.Education[i];
+        var index = i;
+        <div class="card mb-2">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4"><input class="form-control" placeholder="Institution" @bind="item.Institution" /></div>
+                    <div class="col-md-3"><input class="form-control" placeholder="Credential" @bind="item.Credential" /></div>
+                    <div class="col-md-3"><input class="form-control" placeholder="Field" @bind="item.Field" /></div>
+                    <div class="col-md-2"><input class="form-control" placeholder="Graduation" @bind="item.GraduationDate" /></div>
+                    <div class="col-md-2"><input class="form-control" type="number" placeholder="Sort" @bind="item.SortOrder" /></div>
+                    <div class="col-md-4"><button class="btn btn-outline-danger" @onclick="() => RemoveEducation(index)">Remove</button></div>
+                </div>
+            </div>
+        </div>
+    }
+    <button class="btn btn-outline-secondary mb-3" @onclick="AddEducation">Add Education</button>
+
+    <h3>Certifications</h3>
+    @for (var i = 0; i < Model.Certifications.Count; i++)
+    {
+        var item = Model.Certifications[i];
+        var index = i;
+        <div class="card mb-2">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4"><input class="form-control" placeholder="Name" @bind="item.Name" /></div>
+                    <div class="col-md-4"><input class="form-control" placeholder="Issuer" @bind="item.Issuer" /></div>
+                    <div class="col-md-2"><input class="form-control" placeholder="Issue Date" @bind="item.IssueDate" /></div>
+                    <div class="col-md-2"><input class="form-control" type="number" placeholder="Sort" @bind="item.SortOrder" /></div>
+                    <div class="col-md-4"><button class="btn btn-outline-danger" @onclick="() => RemoveCertification(index)">Remove</button></div>
+                </div>
+            </div>
+        </div>
+    }
+    <button class="btn btn-outline-secondary mb-3" @onclick="AddCertification">Add Certification</button>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public EditableProfile Model { get; set; } = null!;
+
+    private void AddWorkHistory() => Model.WorkHistory.Add(new EditableWorkHistory { SortOrder = Model.WorkHistory.Count });
+    private void RemoveWorkHistory(int index) => Model.WorkHistory.RemoveAt(index);
+
+    private void AddEducation() => Model.Education.Add(new EditableEducation { SortOrder = Model.Education.Count });
+    private void RemoveEducation(int index) => Model.Education.RemoveAt(index);
+
+    private void AddCertification() => Model.Certifications.Add(new EditableCertification { SortOrder = Model.Certifications.Count });
+    private void RemoveCertification(int index) => Model.Certifications.RemoveAt(index);
+}
