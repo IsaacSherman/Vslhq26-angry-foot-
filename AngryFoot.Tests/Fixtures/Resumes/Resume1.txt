@@ -1,0 +1,15 @@
+JANE DOE
+jane.doe@example.com | (555) 123-4567 | linkedin.com/in/janedoe
+
+PROFESSIONAL EXPERIENCE
+
+Acme Corporation — Senior Software Engineer
+Jan 2020 – Present
+• Led the migration of a monolithic billing service into eleven independently deployable
+  services, cutting median deploy time from 40 minutes to under 4.
+• Reduced annual AWS spend by 32% by rightsizing over-provisioned instances and introducing
+  scheduled scale-down for non-production environments.
+
+Beta Industries — Software Engineer
+2018 – 2020
+• Built an internal analytics dashboard adopted by more than 200 employees daily.

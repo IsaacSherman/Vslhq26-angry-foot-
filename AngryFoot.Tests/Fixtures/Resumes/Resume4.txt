@@ -1,0 +1,25 @@
+Experience:  
+Intern at Emerson Process Management 	May 2014 – September 2016
+Analyzed existing research in relevant or similar problem domains to develop prototype solutions
+Performed extensive data scrubbing before implementing novel biologically inspired algorithms
+Developed framework for rapid deployment of evolutionarily optimized classifiers
+Regularly explained technical approach and statistical indications both individually and in groups
+Standardized a loose database into a rigorously analyzable one at a novel level of granularity
+ 
+Tutor at Math Department / Math Tutorial Center 	August 2013 – August 2015
+      Some College, TN   
+Assists and mentors students with calculus 1-3, physics, and general math  
+ 	 	 
+Standards and Evaluations Compliance Administrator (2010-2012)  
+Automated notification system; brought accidental non-compliance rate to nearly zero  
+Client Support Administrator (2006-2010)  
+Ensured squadron's compliance w/ Air Force standards; 115 computers, zero discrepancies
+
+Programming Languages:
+Proficient in C
+Proficient in C#
+Proficient in Java
+Experience with Python
+Experience with JavaScript
+Experience with MATLAB
+

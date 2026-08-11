@@ -101,6 +101,24 @@ internal sealed class QdrantBulletVectorStore(
         }
     }
 
+    public async Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var vector = await embeddingGenerator.GenerateVectorAsync(text, cancellationToken: cancellationToken);
+            return vector.ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to embed text for comparison. Callers fall back to lexical comparison.");
+            return null;
+        }
+    }
+
     public async Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
     {
         if (bulletIds.Count == 0)

@@ -1,0 +1,17 @@
+EXPERIENCE
+
+Globex Corporation
+Staff Data Engineer, 2021 - Present
+- Designed a streaming ingestion pipeline handling 2.4 billion events per day with a p99
+  end-to-end latency under 900 milliseconds.
+- Cut data warehouse costs by $310,000 per year by migrating cold partitions to object storage.
+
+Initech
+Data Engineer, 2019 - 2021
+* Automated the nightly reconciliation job, eliminating roughly 15 hours of manual work each week.
+* Mentored four junior engineers, three of whom were promoted within eighteen months.
+
+EDUCATION
+
+State University
+BS, Computer Science

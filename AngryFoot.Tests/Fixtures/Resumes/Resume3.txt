@@ -1,0 +1,17 @@
+Marcus Chen
+Portland, OR · marcus.chen@example.com · 503-555-0177
+
+SUMMARY
+Platform engineer with nine years building developer tooling for large monorepos.
+
+WORK HISTORY
+
+Initrode Systems
+Principal Platform Engineer
+1. Rebuilt the continuous integration pipeline on self-hosted runners, taking the median build
+   from 22 minutes down to 6.
+2. Introduced a monorepo release train that let 14 teams ship independently on the same day.
+
+Umbrella Analytics
+o Owned the migration from Jenkins to hosted build agents across 180 repositories.
+o Wrote the incident response runbook still used by the on-call rotation today.
