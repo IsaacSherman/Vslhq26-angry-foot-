@@ -1,8 +1,8 @@
-Analyzed existing research in relevant or similar problem domains to develop prototype solutions
-Performed extensive data scrubbing before implementing novel biologically inspired algorithms
-Developed framework for rapid deployment of evolutionarily optimized classifiers
-Regularly explained technical approach and statistical indications both individually and in groups
-Standardized a loose database into a rigorously analyzable one at a novel level of granularity
-Assists and mentors students with calculus 1-3, physics, and general math  
-Automated notification system; brought accidental non-compliance rate to nearly zero  
-Ensured squadron's compliance w/ Air Force standards; 115 computers, zero discrepancies
+Reviewed adjacent research in delightfully niche problem domains to develop prototype solutions
+Performed extensive data cleanup before testing anomaly-hunting algorithms against contradictory inputs
+Developed a framework for rapid deployment of optimization experiments
+Regularly explained technical tradeoffs and statistical caveats both individually and in groups
+Standardized a loose export pile into a rigorously analyzable dataset with fewer mysteries
+Assists and mentors students with calculus 1-3, physics, and general math panic
+Automated notification rituals; brought accidental non-compliance to nearly zero
+Ensured the unit's standards compliance across 115 computers with zero discrepancies

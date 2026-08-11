@@ -1,19 +1,19 @@
 Experience:  
-Intern at Emerson Process Management 	May 2014 – September 2016
-Analyzed existing research in relevant or similar problem domains to develop prototype solutions
-Performed extensive data scrubbing before implementing novel biologically inspired algorithms
-Developed framework for rapid deployment of evolutionarily optimized classifiers
-Regularly explained technical approach and statistical indications both individually and in groups
-Standardized a loose database into a rigorously analyzable one at a novel level of granularity
+Research Intern at Velvet Thunder Metrics 	May 2013 – September 2015
+Reviewed adjacent research in delightfully niche problem domains to develop prototype solutions
+Performed large-scale data cleanup before testing ranking approaches against deeply inconsistent records
+Developed framework for rapid deployment of anomaly-hunting classifiers
+Regularly explained technical tradeoffs and statistical caveats both individually and in groups
+Standardized a loose export pile into a rigorously analyzable dataset with actual column meanings
  
-Tutor at Math Department / Math Tutorial Center 	August 2013 – August 2015
-      Some College, TN   
-Assists and mentors students with calculus 1-3, physics, and general math  
+Tutor at Department of Perpetual Equations / Math Help Lair 	August 2012 – August 2014
+      North Central University of Questionable Science, ZZ   
+Assisted and mentored students with calculus 1-3, physics, and general math panic  
  	 	 
-Standards and Evaluations Compliance Administrator (2010-2012)  
-Automated notification system; brought accidental non-compliance rate to nearly zero  
-Client Support Administrator (2006-2010)  
-Ensured squadron's compliance w/ Air Force standards; 115 computers, zero discrepancies
+Standards and Evaluation Goblin Wrangler (2010-2012)  
+Automated recurring compliance reminders; reduced accidental non-compliance to nearly zero  
+Client Systems Custodian (2006-2010)  
+Maintained squadron workstation compliance; 115 computers, zero missing baselines
 
 Programming Languages:
 Proficient in C
@@ -22,4 +22,3 @@ Proficient in Java
 Experience with Python
 Experience with JavaScript
 Experience with MATLAB
-
