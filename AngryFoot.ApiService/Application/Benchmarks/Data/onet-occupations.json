@@ -8,9 +8,10 @@
     "Skill and knowledge importance values are O*NET's published 0-100 Importance ratings for the occupation, transcribed unchanged.",
     "O*NET publishes no importance rating for technologies. AngryFoot assigns 45 to technologies O*NET flags as In-Demand Hot and 35 to those flagged Hot. These bands are AngryFoot's, not O*NET's, and sit below skill importance because an occupation's technology list holds many interchangeable alternatives no single practitioner would use all of.",
     "Only technologies O*NET flags In-Demand Hot for the occupation are kept; where fewer than five carry that flag, Hot-flagged technologies top the list up to five. O*NET lists dozens to hundreds of technologies per occupation, and benchmarking against all of them would report an unrealistically poor coverage figure for any real practitioner.",
-    "Technology names shorter than three characters (C, R, Go) are omitted: the substring matcher used to find supporting bullets cannot distinguish them from letters inside other words.",
+    "Technology names shorter than three characters (C, R, Go) are omitted: matched case-insensitively they are indistinguishable from ordinary English words.",
     "A few newer occupations (Data Scientists, Project Management Specialists, Web and Digital Interface Designers) do not yet publish skill or knowledge ratings; those entries carry technology data only.",
-    "evidenceTerms maps each descriptor to the bullet-text keywords that count as supporting evidence for it. Those keyword lists are AngryFoot's, not O*NET's: O*NET names the requirement, AngryFoot decides what in a resume bullet demonstrates it."
+    "evidenceTerms maps each descriptor to the bullet-text keywords that count as supporting evidence for it. Those keyword lists are AngryFoot's, not O*NET's: O*NET names the requirement, AngryFoot decides what in a resume bullet demonstrates it.",
+    "Technology terms are matched as whole words, because they are product names and acronyms where a partial match is a false one ('AWS' must not be found inside 'laws'). Skill and knowledge terms are matched at word starts only, so the clipped stems here reach the inflected forms bullets use ('analyz' covers 'analyzed') without matching word interiors."
   ],
   "evidenceTerms": {
     "Active Learning": [
@@ -449,7 +450,6 @@
       "Speaking",
       "communicat",
       "briefed",
-      "demo",
       "spoke at",
       "conference",
       "presentation"

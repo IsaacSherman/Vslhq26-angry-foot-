@@ -68,6 +68,59 @@ public class OccupationBenchmarkServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildAsync_DoesNotCreditTechnologyAcronymsFoundInsideOtherWords()
+    {
+        var occupation = new BenchmarkOccupation("15-1252.00", "Software Developers", ["Software Engineer"],
+            [new BenchmarkItem("Amazon Web Services AWS software", "Technology", 45, ["Amazon Web Services AWS software", "AWS"])]);
+        SeedBullets(Bullet("Reviewed contracts against state and federal laws before each release."));
+        var sut = CreateSut(Dataset(occupation));
+
+        var result = await sut.BuildAsync("Software Engineer", Analysis(), CancellationToken.None);
+
+        result!.CoverageScore.Should().Be(0, "'laws' is not evidence of AWS experience");
+        result.Missing.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task BuildAsync_CreditsTechnologyAcronymsUsedAsWords()
+    {
+        var occupation = new BenchmarkOccupation("15-1252.00", "Software Developers", ["Software Engineer"],
+            [new BenchmarkItem("Amazon Web Services AWS software", "Technology", 45, ["Amazon Web Services AWS software", "AWS"])]);
+        SeedBullets(Bullet("Migrated the billing service to AWS, cutting hosting spend by 30%."));
+        var sut = CreateSut(Dataset(occupation));
+
+        var result = await sut.BuildAsync("Software Engineer", Analysis(), CancellationToken.None);
+
+        result!.CoverageScore.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task BuildAsync_StillMatchesClippedSkillStemsAgainstInflectedWords()
+    {
+        var occupation = new BenchmarkOccupation("15-1252.00", "Software Developers", ["Software Engineer"],
+            [new BenchmarkItem("Critical Thinking", "Skill", 72, ["Critical Thinking", "analyz"])]);
+        SeedBullets(Bullet("Analyzed query plans and cut p99 latency in half."));
+        var sut = CreateSut(Dataset(occupation));
+
+        var result = await sut.BuildAsync("Software Engineer", Analysis(), CancellationToken.None);
+
+        result!.CoverageScore.Should().Be(100, "skill terms are clipped stems and must reach the words they were clipped from");
+    }
+
+    [Fact]
+    public async Task BuildAsync_DoesNotCreditSkillStemsFoundInsideOtherWords()
+    {
+        var occupation = new BenchmarkOccupation("15-1252.00", "Software Developers", ["Software Engineer"],
+            [new BenchmarkItem("Quality Control Analysis", "Skill", 60, ["Quality Control Analysis", "testing"])]);
+        SeedBullets(Bullet("Shipped the greatest, latest release of the quarter."));
+        var sut = CreateSut(Dataset(occupation));
+
+        var result = await sut.BuildAsync("Software Engineer", Analysis(), CancellationToken.None);
+
+        result!.CoverageScore.Should().Be(0, "a stem has to start a word, not sit inside one");
+    }
+
+    [Fact]
     public async Task BuildAsync_RanksListsByImportance()
     {
         SeedBullets(Bullet("Developed and debugged services.", technologies: ["Git", "Kubernetes"]));

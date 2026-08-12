@@ -196,6 +196,10 @@
             return;
         }
 
+        // Same reasoning as GenerateAsync: a resume drafted for the previous job must not sit
+        // under an assessment of this one.
+        result = null;
+
         isAnalyzing = true;
         try
         {
@@ -223,6 +227,11 @@
             errorMessage = "Job description is required.";
             return;
         }
+
+        // Generation re-analyzes the job but produces no fit or benchmark, so anything on screen
+        // from a previous Analyze belongs to whatever job was in the form then - not this one.
+        fit = null;
+        benchmark = null;
 
         isGenerating = true;
         try

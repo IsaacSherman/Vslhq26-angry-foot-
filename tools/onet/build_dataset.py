@@ -12,9 +12,13 @@ import sys
 RAW = "raw-occupations.json"
 
 # Bullet-text keywords that count as evidence for an O*NET descriptor. The descriptor names
-# are standardised across occupations, so one map covers the whole dataset. Terms are matched
-# as case-insensitive substrings, so each one is chosen to avoid matching unrelated words
-# ("testing" rather than "test", which is a substring of "latest").
+# are standardised across occupations, so one map covers the whole dataset.
+#
+# Skill and knowledge terms are matched with EvidenceMatch.WordStart: the term has to start a
+# word but may be followed by the rest of it, which is what lets the clipped stems here reach
+# the inflected forms bullets actually use ("analyz" -> "analyzed"). So each term must be chosen
+# so that no *unrelated* word starts with it - "demo" is not usable, because it would claim
+# every "demonstrated" in the library as evidence of public speaking.
 EVIDENCE_TERMS = {
     "Active Learning": ["self-taught", "upskill", "certification", "training", "new technology", "adopted", "learned"],
     "Active Listening": ["stakeholder", "gathered requirements", "user research", "interview", "feedback"],
@@ -42,7 +46,7 @@ EVIDENCE_TERMS = {
     "Reading Comprehension": ["specification", "documentation", "requirement", "standard", "rfc"],
     "Service Orientation": ["customer", "client", "end user", "support", "help desk"],
     "Social Perceptiveness": ["stakeholder", "cross-functional", "collaborat", "mentor", "team"],
-    "Speaking": ["communicat", "briefed", "demo", "spoke at", "conference", "presentation"],
+    "Speaking": ["communicat", "briefed", "spoke at", "conference", "presentation"],
     "Systems Analysis": ["system", "architect", "workflow", "process", "integration"],
     "Systems Evaluation": ["performance", "benchmark", "optimiz", "profil", "latency", "throughput"],
     "Technology Design": ["design", "architect", "prototype", "framework", "platform", "built"],
@@ -52,8 +56,8 @@ EVIDENCE_TERMS = {
     "Writing": ["documentation", "wrote", "authored", "specification", "runbook", "report"],
 }
 
-# The matcher works on case-insensitive substrings, which cannot tell the language "C" or "R"
-# apart from an ordinary letter inside another word. Technology names this short are dropped.
+# Technology names this short - "C", "R", "Go" - are indistinguishable from ordinary English
+# words once matched case-insensitively, so they are dropped rather than counted wrongly.
 MIN_TECHNOLOGY_NAME = 3
 
 IN_DEMAND_HOT = 45
@@ -83,14 +87,18 @@ METADATA = {
         "five carry that flag, Hot-flagged technologies top the list up to five. O*NET lists dozens "
         "to hundreds of technologies per occupation, and benchmarking against all of them would "
         "report an unrealistically poor coverage figure for any real practitioner.",
-        "Technology names shorter than three characters (C, R, Go) are omitted: the substring matcher "
-        "used to find supporting bullets cannot distinguish them from letters inside other words.",
+        "Technology names shorter than three characters (C, R, Go) are omitted: matched "
+        "case-insensitively they are indistinguishable from ordinary English words.",
         "A few newer occupations (Data Scientists, Project Management Specialists, Web and Digital "
         "Interface Designers) do not yet publish skill or knowledge ratings; those entries carry "
         "technology data only.",
         "evidenceTerms maps each descriptor to the bullet-text keywords that count as supporting "
         "evidence for it. Those keyword lists are AngryFoot's, not O*NET's: O*NET names the "
         "requirement, AngryFoot decides what in a resume bullet demonstrates it.",
+        "Technology terms are matched as whole words, because they are product names and acronyms "
+        "where a partial match is a false one ('AWS' must not be found inside 'laws'). Skill and "
+        "knowledge terms are matched at word starts only, so the clipped stems here reach the "
+        "inflected forms bullets use ('analyz' covers 'analyzed') without matching word interiors.",
     ],
 }
 

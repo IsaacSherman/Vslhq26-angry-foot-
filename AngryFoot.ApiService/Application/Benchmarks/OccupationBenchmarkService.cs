@@ -30,6 +30,7 @@ internal sealed class OccupationBenchmarkService(
     ILogger<OccupationBenchmarkService> logger) : IOccupationBenchmarkService
 {
     private const int MaxListItems = 8;
+    private const string TechnologyKind = "Technology";
 
     public async Task<OccupationBenchmarkDto?> BuildAsync(
         string? jobTitle, JobAnalysisDto analysis, CancellationToken cancellationToken)
@@ -64,8 +65,13 @@ internal sealed class OccupationBenchmarkService(
 
         foreach (var item in occupation.Items)
         {
+            // Technology terms are product names and acronyms, so they have to match whole words.
+            // Skill and knowledge terms are deliberately clipped stems that need to reach the
+            // inflected forms a bullet actually uses.
+            var evidenceMatch = item.Kind == TechnologyKind ? EvidenceMatch.WholeWord : EvidenceMatch.WordStart;
+
             var dto = new BenchmarkItemDto(item.Name, item.Kind, item.Importance);
-            if (bullets.Any(bullet => BulletEvidence.SupportsAny(bullet, item.EvidenceTerms)))
+            if (bullets.Any(bullet => BulletEvidence.SupportsAny(bullet, item.EvidenceTerms, evidenceMatch)))
             {
                 covered.Add(dto);
             }
