@@ -433,3 +433,4 @@ FodyWeavers.xsd
 **/angryfoot.db-shm
 **/angryfoot.db-wal
 /work
+/.dotnet-cli/.dotnet

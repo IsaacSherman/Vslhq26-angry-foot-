@@ -1,3 +1,4 @@
+using AngryFoot.ApiService.Application.Benchmarks;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.Contracts;
 
@@ -5,7 +6,7 @@ namespace AngryFoot.ApiService.Api;
 
 public static class GenerationEndpoints
 {
-    private sealed record AnalyzeRequest(string JobDescription);
+    private sealed record AnalyzeRequest(string JobDescription, string? JobTitle = null);
 
     public static RouteGroupBuilder MapGenerationEndpoints(this RouteGroupBuilder apiGroup)
     {
@@ -22,7 +23,12 @@ public static class GenerationEndpoints
             return Results.Ok(result);
         });
 
-        generations.MapPost("/analyze", async (AnalyzeRequest request, IJobAnalyzer analyzer, IFitAssessor fitAssessor, CancellationToken cancellationToken) =>
+        generations.MapPost("/analyze", async (
+            AnalyzeRequest request,
+            IJobAnalyzer analyzer,
+            IFitAssessor fitAssessor,
+            IOccupationBenchmarkService benchmarkService,
+            CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.JobDescription))
             {
@@ -31,7 +37,8 @@ public static class GenerationEndpoints
 
             var job = await analyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
             var fit = await fitAssessor.AssessAsync(request.JobDescription, job, cancellationToken);
-            return Results.Ok(new JobFitAnalysisDto(job, fit));
+            var benchmark = await benchmarkService.BuildAsync(request.JobTitle, job, cancellationToken);
+            return Results.Ok(new JobFitAnalysisDto(job, fit, benchmark));
         });
 
         return apiGroup;

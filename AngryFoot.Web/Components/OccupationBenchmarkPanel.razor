@@ -1,0 +1,115 @@
+@using AngryFoot.Contracts
+
+@*
+    Shows the bullet library against aggregate occupational data. The copy here is deliberate:
+    this is a comparison against published occupation-level statistics, and it must never read
+    as a comparison against specific people or a named employer's staff (issue #5).
+*@
+
+@if (Benchmark is not null)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Typical Requirements for This Occupation</span>
+            @if (IsMatched)
+            {
+                <span class="badge @BadgeClass(Benchmark.CoverageScore)">Coverage: @Benchmark.CoverageScore / 100</span>
+            }
+        </div>
+        <div class="card-body">
+            @if (!IsMatched)
+            {
+                <p class="text-muted mb-0">@Benchmark.Summary</p>
+            }
+            else
+            {
+                <p class="text-muted small mb-2">
+                    Compared against aggregate occupational data for
+                    <strong>@Benchmark.OccupationTitle</strong> (@Benchmark.SocCode)@MatchedOnSuffix.
+                </p>
+
+                <div class="progress mb-3" role="progressbar" aria-label="Occupational coverage"
+                     aria-valuenow="@Benchmark.CoverageScore" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar @BarClass(Benchmark.CoverageScore)" style="width: @(Benchmark.CoverageScore)%"></div>
+                </div>
+
+                <p class="lead">@Benchmark.Summary</p>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="text-success">
+                            Typical requirements you evidence
+                            <span class="text-muted small fw-normal">@Showing(Benchmark.Covered.Count, Benchmark.CoveredCount)</span>
+                        </h6>
+                        @if (Benchmark.Covered.Count == 0)
+                        {
+                            <p class="text-muted">None of this occupation's typical requirements have a supporting bullet yet.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var item in Benchmark.Covered)
+                                {
+                                    <li class="mb-1">&#10003; @item.Name <span class="text-muted small">(@item.Kind)</span></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-danger">
+                            Typical requirements without a bullet
+                            <span class="text-muted small fw-normal">@Showing(Benchmark.Missing.Count, Benchmark.RequirementCount - Benchmark.CoveredCount)</span>
+                        </h6>
+                        @if (Benchmark.Missing.Count == 0)
+                        {
+                            <p class="text-muted">Every requirement in this occupation's profile has a supporting bullet.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var item in Benchmark.Missing)
+                                {
+                                    <li class="mb-1">&#10007; @item.Name <span class="text-muted small">(@item.Kind)</span></li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Benchmark.SourceAttribution))
+            {
+                <hr />
+                <p class="text-muted small mb-0">@Benchmark.SourceAttribution</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public OccupationBenchmarkDto? Benchmark { get; set; }
+
+    private bool IsMatched => Benchmark is not null && !string.Equals(Benchmark.MatchConfidence, "None", StringComparison.Ordinal);
+
+    private string MatchedOnSuffix => string.Equals(Benchmark?.MatchConfidence, "Fuzzy", StringComparison.Ordinal)
+        ? $", the closest occupational match to \"{Benchmark!.MatchedOn}\""
+        : string.Empty;
+
+    /// <summary>Only the highest-importance items are listed, so say so when some are held back.</summary>
+    private static string Showing(int listed, int total) => total > listed ? $"(top {listed} of {total})" : string.Empty;
+
+    private static string BadgeClass(int score) => score switch
+    {
+        >= 75 => "text-bg-success",
+        >= 50 => "text-bg-warning",
+        _ => "text-bg-danger"
+    };
+
+    private static string BarClass(int score) => score switch
+    {
+        >= 75 => "bg-success",
+        >= 50 => "bg-warning",
+        _ => "bg-danger"
+    };
+}

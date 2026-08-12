@@ -84,14 +84,41 @@ Force re-enriches metadata for an existing bullet. Returns `200` with `BulletDto
 ## Generations
 
 ### POST `/api/generations/analyze`
-Analyzes a job description and returns structured metadata used for ranking and tailoring.
+Analyzes a job description and returns structured metadata used for ranking and tailoring, the fit
+assessment against the bullet library, and the occupational benchmark.
 
 Request:
 ```json
-{ "jobDescription": "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure." }
+{
+  "jobDescription": "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure.",
+  "jobTitle": "Senior Software Engineer"
+}
 ```
 
-Response: `JobAnalysisDto`
+`jobTitle` is optional. It maps the role to an occupation for the benchmark; when omitted, the
+title inferred from the job description is used instead.
+
+Response: `JobFitAnalysisDto` — `job` (`JobAnalysisDto`), `fit` (`FitAssessmentDto`), and
+`benchmark` (`OccupationBenchmarkDto`, nullable).
+
+`benchmark` compares the bullet library against aggregate O\*NET occupational data for the mapped
+occupation. It is null only when the bundled dataset could not be loaded. `matchConfidence` is
+`"Exact"`, `"Fuzzy"`, or `"None"`; on `"None"` the title mapped to no occupation, `socCode` and
+`occupationTitle` are null, and `summary` explains why.
+
+```json
+{
+  "socCode": "15-1252.00",
+  "occupationTitle": "Software Developers",
+  "matchConfidence": "Exact",
+  "matchedOn": "Software Engineer",
+  "coverageScore": 46,
+  "summary": "Your bullets evidence 9 of the 28 requirements typical of this occupation ...",
+  "covered": [{ "name": "Programming", "kind": "Skill", "importance": 75 }],
+  "missing": [{ "name": "Troubleshooting", "kind": "Skill", "importance": 60 }],
+  "sourceAttribution": "This product uses information from O*NET OnLine ..."
+}
+```
 
 ### POST `/api/generations`
 Runs the A2 pipeline: analyze job description, rank bullets, rewrite selected bullets, generate resume markdown, generate cover letter markdown, and persist a generation artifact.

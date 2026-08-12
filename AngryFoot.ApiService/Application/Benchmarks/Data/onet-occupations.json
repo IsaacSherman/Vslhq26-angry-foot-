@@ -1,0 +1,3484 @@
+{
+  "source": "O*NET OnLine (https://www.onetonline.org)",
+  "sourceVersion": "O*NET 30.3 Database",
+  "retrievedOn": "2026-08-11",
+  "attribution": "This product uses information from O*NET OnLine by the U.S. Department of Labor, Employment and Training Administration (USDOL/ETA), used under the CC BY 4.0 license. AngryFoot has modified the data by selecting a subset of occupations and descriptors. USDOL/ETA has not approved, endorsed, or tested these modifications. O*NET(R) is a trademark of USDOL/ETA.",
+  "notes": [
+    "Aggregate occupational data only. This dataset describes occupations, never individuals, and contains no information about any identifiable person or any specific employer's staff.",
+    "Skill and knowledge importance values are O*NET's published 0-100 Importance ratings for the occupation, transcribed unchanged.",
+    "O*NET publishes no importance rating for technologies. AngryFoot assigns 45 to technologies O*NET flags as In-Demand Hot and 35 to those flagged Hot. These bands are AngryFoot's, not O*NET's, and sit below skill importance because an occupation's technology list holds many interchangeable alternatives no single practitioner would use all of.",
+    "Only technologies O*NET flags In-Demand Hot for the occupation are kept; where fewer than five carry that flag, Hot-flagged technologies top the list up to five. O*NET lists dozens to hundreds of technologies per occupation, and benchmarking against all of them would report an unrealistically poor coverage figure for any real practitioner.",
+    "Technology names shorter than three characters (C, R, Go) are omitted: matched case-insensitively they are indistinguishable from ordinary English words.",
+    "A few newer occupations (Data Scientists, Project Management Specialists, Web and Digital Interface Designers) do not yet publish skill or knowledge ratings; those entries carry technology data only.",
+    "evidenceTerms maps each descriptor to the bullet-text keywords that count as supporting evidence for it. Those keyword lists are AngryFoot's, not O*NET's: O*NET names the requirement, AngryFoot decides what in a resume bullet demonstrates it.",
+    "Technology terms are matched as whole words, because they are product names and acronyms where a partial match is a false one ('AWS' must not be found inside 'laws'). Skill and knowledge terms are matched at word starts only, so the clipped stems here reach the inflected forms bullets use ('analyz' covers 'analyzed') without matching word interiors."
+  ],
+  "evidenceTerms": {
+    "Active Learning": [
+      "Active Learning",
+      "self-taught",
+      "upskill",
+      "certification",
+      "training",
+      "new technology",
+      "adopted",
+      "learned"
+    ],
+    "Active Listening": [
+      "Active Listening",
+      "stakeholder",
+      "gathered requirements",
+      "user research",
+      "interview",
+      "feedback"
+    ],
+    "Administration and Management": [
+      "Administration and Management",
+      "managed",
+      "budget",
+      "roadmap",
+      "strategy",
+      "resourcing",
+      "operations"
+    ],
+    "Adobe Creative Cloud software": [
+      "Adobe Creative Cloud software",
+      "Adobe Creative Cloud"
+    ],
+    "Adobe Illustrator": [
+      "Adobe Illustrator"
+    ],
+    "Amazon Web Services AWS CloudFormation": [
+      "Amazon Web Services AWS CloudFormation",
+      "AWS"
+    ],
+    "Amazon Web Services AWS software": [
+      "Amazon Web Services AWS software",
+      "Amazon Web Services AWS",
+      "AWS"
+    ],
+    "Ansible software": [
+      "Ansible software",
+      "Ansible"
+    ],
+    "Apache Airflow": [
+      "Apache Airflow"
+    ],
+    "Apache Cassandra": [
+      "Apache Cassandra"
+    ],
+    "Apache Kafka": [
+      "Apache Kafka"
+    ],
+    "Apache Maven": [
+      "Apache Maven"
+    ],
+    "Apache Spark": [
+      "Apache Spark"
+    ],
+    "Apache Tomcat": [
+      "Apache Tomcat"
+    ],
+    "Apple iOS": [
+      "Apple iOS"
+    ],
+    "Apple macOS": [
+      "Apple macOS"
+    ],
+    "Atlassian Confluence": [
+      "Atlassian Confluence"
+    ],
+    "Atlassian JIRA": [
+      "Atlassian JIRA",
+      "JIRA"
+    ],
+    "Bash": [
+      "Bash"
+    ],
+    "Border Gateway Protocol BGP": [
+      "Border Gateway Protocol BGP",
+      "BGP"
+    ],
+    "C++": [
+      "C++"
+    ],
+    "Communications and Media": [
+      "Communications and Media",
+      "documentation",
+      "published",
+      "content",
+      "blog",
+      "newsletter",
+      "wrote"
+    ],
+    "Complex Problem Solving": [
+      "Complex Problem Solving",
+      "root cause",
+      "solved",
+      "resolved",
+      "debugg",
+      "diagnos",
+      "troubleshoot"
+    ],
+    "Computers and Electronics": [
+      "Computers and Electronics",
+      "software",
+      "hardware",
+      "system",
+      "application",
+      "server",
+      "network",
+      "comput"
+    ],
+    "Coordination": [
+      "Coordination",
+      "coordinat",
+      "cross-functional",
+      "collaborat",
+      "partnered",
+      "aligned"
+    ],
+    "Critical Thinking": [
+      "Critical Thinking",
+      "analyz",
+      "analys",
+      "evaluat",
+      "assess",
+      "trade-off",
+      "tradeoff"
+    ],
+    "Customer and Personal Service": [
+      "Customer and Personal Service",
+      "customer",
+      "client",
+      "end user",
+      "support ticket",
+      "help desk",
+      "service level"
+    ],
+    "Design": [
+      "Design",
+      "design",
+      "prototype",
+      "wireframe",
+      "user experience",
+      "user interface",
+      "mockup"
+    ],
+    "Docker": [
+      "Docker"
+    ],
+    "Education and Training": [
+      "Education and Training",
+      "trained",
+      "training",
+      "mentor",
+      "onboard",
+      "workshop",
+      "coach"
+    ],
+    "Engineering and Technology": [
+      "Engineering and Technology",
+      "engineer",
+      "architect",
+      "built",
+      "implement",
+      "deploy"
+    ],
+    "English Language": [
+      "English Language",
+      "documentation",
+      "wrote",
+      "authored",
+      "specification",
+      "runbook",
+      "report"
+    ],
+    "Extensible markup language XML": [
+      "Extensible markup language XML",
+      "XML"
+    ],
+    "Figma": [
+      "Figma"
+    ],
+    "Git": [
+      "Git"
+    ],
+    "GitHub": [
+      "GitHub"
+    ],
+    "Grafana Labs Grafana Cloud": [
+      "Grafana Labs Grafana Cloud"
+    ],
+    "GraphQL": [
+      "GraphQL"
+    ],
+    "IBM SPSS Statistics": [
+      "IBM SPSS Statistics",
+      "IBM",
+      "SPSS"
+    ],
+    "IBM Terraform": [
+      "IBM Terraform",
+      "IBM"
+    ],
+    "Informatica software": [
+      "Informatica software",
+      "Informatica"
+    ],
+    "Instructing": [
+      "Instructing",
+      "trained",
+      "training",
+      "mentor",
+      "onboard",
+      "workshop",
+      "taught"
+    ],
+    "JavaScript": [
+      "JavaScript"
+    ],
+    "Jenkins CI": [
+      "Jenkins CI"
+    ],
+    "Judgment and Decision Making": [
+      "Judgment and Decision Making",
+      "decision",
+      "prioriti",
+      "recommend",
+      "selected",
+      "trade-off",
+      "tradeoff"
+    ],
+    "Kubernetes": [
+      "Kubernetes"
+    ],
+    "Linux": [
+      "Linux"
+    ],
+    "Management of Personnel Resources": [
+      "Management of Personnel Resources",
+      "led a team",
+      "led the team",
+      "direct report",
+      "hiring",
+      "staffing",
+      "supervis",
+      "managed a team"
+    ],
+    "Mathematics": [
+      "Mathematics",
+      "algorithm",
+      "statistic",
+      "quantitat",
+      "calculat",
+      "model",
+      "forecast"
+    ],
+    "Microsoft Active Directory": [
+      "Microsoft Active Directory"
+    ],
+    "Microsoft Azure software": [
+      "Microsoft Azure software",
+      "Microsoft Azure"
+    ],
+    "Microsoft Excel": [
+      "Microsoft Excel"
+    ],
+    "Microsoft Office software": [
+      "Microsoft Office software",
+      "Microsoft Office"
+    ],
+    "Microsoft Outlook": [
+      "Microsoft Outlook"
+    ],
+    "Microsoft Power BI": [
+      "Microsoft Power BI"
+    ],
+    "Microsoft PowerPoint": [
+      "Microsoft PowerPoint"
+    ],
+    "Microsoft PowerShell": [
+      "Microsoft PowerShell"
+    ],
+    "Microsoft SQL Server Integration Services SSIS": [
+      "Microsoft SQL Server Integration Services SSIS",
+      "SQL",
+      "SSIS"
+    ],
+    "Microsoft SharePoint": [
+      "Microsoft SharePoint"
+    ],
+    "Microsoft Windows Server": [
+      "Microsoft Windows Server"
+    ],
+    "MongoDB": [
+      "MongoDB"
+    ],
+    "Monitoring": [
+      "Monitoring",
+      "monitor",
+      "dashboard",
+      "alerting",
+      "observability",
+      "telemetry",
+      "tracked"
+    ],
+    "MySQL": [
+      "MySQL"
+    ],
+    "Negotiation": [
+      "Negotiation",
+      "negotiat",
+      "vendor",
+      "contract",
+      "consensus",
+      "buy-in"
+    ],
+    "Operations Analysis": [
+      "Operations Analysis",
+      "requirement",
+      "specification",
+      "scoping",
+      "discovery",
+      "analysis"
+    ],
+    "Operations Monitoring": [
+      "Operations Monitoring",
+      "monitor",
+      "uptime",
+      "alerting",
+      "health check",
+      "observability",
+      "service level"
+    ],
+    "Oracle Java": [
+      "Oracle Java"
+    ],
+    "Oracle PL/SQL": [
+      "Oracle PL/SQL",
+      "SQL"
+    ],
+    "Perl": [
+      "Perl"
+    ],
+    "PostgreSQL": [
+      "PostgreSQL"
+    ],
+    "Programming": [
+      "Programming",
+      "develop",
+      "program",
+      "cod",
+      "script",
+      "implement",
+      "refactor"
+    ],
+    "Prometheus": [
+      "Prometheus"
+    ],
+    "PyTorch": [
+      "PyTorch"
+    ],
+    "Python": [
+      "Python"
+    ],
+    "Quality Control Analysis": [
+      "Quality Control Analysis",
+      "testing",
+      "tested",
+      "unit test",
+      "code review",
+      "quality",
+      "regression",
+      "validat"
+    ],
+    "React": [
+      "React"
+    ],
+    "Reading Comprehension": [
+      "Reading Comprehension",
+      "specification",
+      "documentation",
+      "requirement",
+      "standard",
+      "rfc"
+    ],
+    "Red Hat Enterprise Linux": [
+      "Red Hat Enterprise Linux"
+    ],
+    "SAP software": [
+      "SAP software",
+      "SAP"
+    ],
+    "SAS": [
+      "SAS"
+    ],
+    "Salesforce software": [
+      "Salesforce software",
+      "Salesforce"
+    ],
+    "Scala": [
+      "Scala"
+    ],
+    "Selenium": [
+      "Selenium"
+    ],
+    "Service Orientation": [
+      "Service Orientation",
+      "customer",
+      "client",
+      "end user",
+      "support",
+      "help desk"
+    ],
+    "ServiceNow": [
+      "ServiceNow"
+    ],
+    "Snowflake": [
+      "Snowflake"
+    ],
+    "Social Perceptiveness": [
+      "Social Perceptiveness",
+      "stakeholder",
+      "cross-functional",
+      "collaborat",
+      "mentor",
+      "team"
+    ],
+    "Speaking": [
+      "Speaking",
+      "communicat",
+      "briefed",
+      "spoke at",
+      "conference",
+      "presentation"
+    ],
+    "Splunk Enterprise": [
+      "Splunk Enterprise"
+    ],
+    "Spring Boot": [
+      "Spring Boot"
+    ],
+    "Spring Framework": [
+      "Spring Framework"
+    ],
+    "Systems Analysis": [
+      "Systems Analysis",
+      "system",
+      "architect",
+      "workflow",
+      "process",
+      "integration"
+    ],
+    "Systems Evaluation": [
+      "Systems Evaluation",
+      "performance",
+      "benchmark",
+      "optimiz",
+      "profil",
+      "latency",
+      "throughput"
+    ],
+    "Tableau": [
+      "Tableau"
+    ],
+    "Technology Design": [
+      "Technology Design",
+      "design",
+      "architect",
+      "prototype",
+      "framework",
+      "platform",
+      "built"
+    ],
+    "Telecommunications": [
+      "Telecommunications",
+      "network",
+      "tcp",
+      "vpn",
+      "dns",
+      "bandwidth",
+      "routing",
+      "firewall"
+    ],
+    "TensorFlow": [
+      "TensorFlow"
+    ],
+    "The MathWorks MATLAB": [
+      "The MathWorks MATLAB",
+      "MATLAB"
+    ],
+    "Time Management": [
+      "Time Management",
+      "deadline",
+      "on time",
+      "sprint",
+      "delivered",
+      "schedule",
+      "ahead of"
+    ],
+    "Transact-SQL": [
+      "Transact-SQL",
+      "SQL"
+    ],
+    "Troubleshooting": [
+      "Troubleshooting",
+      "troubleshoot",
+      "debug",
+      "diagnos",
+      "root cause",
+      "incident",
+      "outage",
+      "hotfix"
+    ],
+    "TypeScript": [
+      "TypeScript"
+    ],
+    "Vue.js": [
+      "Vue.js"
+    ],
+    "WordPress": [
+      "WordPress"
+    ],
+    "Writing": [
+      "Writing",
+      "documentation",
+      "wrote",
+      "authored",
+      "specification",
+      "runbook",
+      "report"
+    ],
+    "jQuery": [
+      "jQuery"
+    ]
+  },
+  "occupations": [
+    {
+      "socCode": "15-1252.00",
+      "title": "Software Developers",
+      "alternateTitles": [
+        "Application Developer",
+        "Application Integration Engineer",
+        "Developer",
+        "DevOps Engineer (Development Operations Engineer)",
+        "DevOps Engineer",
+        "Development Operations Engineer",
+        "Infrastructure Engineer",
+        "Software Architect",
+        "Software Developer",
+        "Software Development Engineer",
+        "Software Engineer",
+        "Systems Engineer"
+      ],
+      "items": [
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Technology Design",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 94
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 64
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 64
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 57
+        },
+        {
+          "name": "Education and Training",
+          "kind": "Knowledge",
+          "importance": 46
+        },
+        {
+          "name": "Apache Kafka",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "IBM Terraform",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Jenkins CI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "PostgreSQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "React",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Spring Boot",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Spring Framework",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "TypeScript",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1251.00",
+      "title": "Computer Programmers",
+      "alternateTitles": [
+        "Analyst Programmer",
+        "Application Programmer Analyst",
+        "Computer Programmer",
+        "Computer Programmer Analyst",
+        "Internet Programmer",
+        "Java Developer",
+        "Programmer",
+        "Programmer Analyst",
+        "Web Applications Programmer",
+        "Web Programmer"
+      ],
+      "items": [
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 94
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Social Perceptiveness",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 97
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 63
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 62
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 60
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 58
+        },
+        {
+          "name": "Extensible markup language XML",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "SAS",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1253.00",
+      "title": "Software Quality Assurance Analysts and Testers",
+      "alternateTitles": [
+        "Automation Tester",
+        "Information Technology Analyst (IT Analyst)",
+        "Information Technology Analyst",
+        "IT Analyst",
+        "Quality Assurance Analyst (QA Analyst)",
+        "Quality Assurance Analyst",
+        "QA Analyst",
+        "Quality Assurance Engineer (QA Engineer)",
+        "Quality Assurance Engineer",
+        "QA Engineer",
+        "Quality Engineer",
+        "Software Quality Assurance Analyst (SQA Analyst)",
+        "Software Quality Assurance Analyst",
+        "SQA Analyst",
+        "Software Quality Assurance Engineer (SQA Engineer)",
+        "Software Quality Assurance Engineer",
+        "SQA Engineer",
+        "Software Quality Engineer",
+        "Software Test Engineer",
+        "Test Engineer"
+      ],
+      "items": [
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 85
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 70
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 57
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 57
+        },
+        {
+          "name": "Design",
+          "kind": "Knowledge",
+          "importance": 50
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Jenkins CI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Selenium",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1254.00",
+      "title": "Web Developers",
+      "alternateTitles": [
+        "Technology Applications Engineer",
+        "Web Architect",
+        "Web Design Specialist",
+        "Web Developer",
+        "Webmaster"
+      ],
+      "items": [
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 78
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 85
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 64
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 59
+        },
+        {
+          "name": "Communications and Media",
+          "kind": "Knowledge",
+          "importance": 55
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 49
+        },
+        {
+          "name": "Apache Kafka",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "GraphQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Jenkins CI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Kubernetes",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "PostgreSQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "React",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Spring Boot",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Spring Framework",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "TypeScript",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Vue.js",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "WordPress",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "jQuery",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1255.00",
+      "title": "Web and Digital Interface Designers",
+      "alternateTitles": [
+        "Technology Applications Engineer",
+        "Web Architect",
+        "Web Design Specialist",
+        "Web Designer",
+        "Webmaster"
+      ],
+      "items": [
+        {
+          "name": "Adobe Creative Cloud software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Adobe Illustrator",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Figma",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "React",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "TypeScript",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1211.00",
+      "title": "Computer Systems Analysts",
+      "alternateTitles": [
+        "Applications Analyst",
+        "Business Systems Analyst",
+        "Computer Analyst",
+        "Computer Systems Analyst",
+        "Computer Systems Consultant",
+        "Information Systems Analyst (ISA)",
+        "Information Systems Analyst",
+        "ISA",
+        "IT Analyst (Information Technology Analyst)",
+        "IT Analyst",
+        "Information Technology Analyst",
+        "IT Systems Analyst (Information Technology Systems Analyst)",
+        "IT Systems Analyst",
+        "Information Technology Systems Analyst",
+        "Programmer Analyst",
+        "Systems Analyst"
+      ],
+      "items": [
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Social Perceptiveness",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 91
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 68
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 62
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 56
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 55
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Power BI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft SharePoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "SAP software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "ServiceNow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1212.00",
+      "title": "Information Security Analysts",
+      "alternateTitles": [
+        "Information Security Officer",
+        "Information Security Specialist",
+        "Information Systems Security Analyst",
+        "Information Systems Security Officer (ISSO)",
+        "Information Systems Security Officer",
+        "ISSO",
+        "Information Technology Security Analyst (IT Security Analyst)",
+        "Information Technology Security Analyst",
+        "IT Security Analyst",
+        "Network Security Analyst",
+        "Security Analyst",
+        "Systems Analyst"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Operations Monitoring",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 84
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 82
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 67
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 66
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 66
+        },
+        {
+          "name": "Amazon Web Services AWS software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerShell",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Splunk Enterprise",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1221.00",
+      "title": "Computer and Information Research Scientists",
+      "alternateTitles": [
+        "Computer Scientist",
+        "Computer Specialist",
+        "Control System Computer Scientist",
+        "Research Scientist",
+        "Scientific Programmer Analyst"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Technology Design",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 89
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 77
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 74
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 72
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 58
+        },
+        {
+          "name": "Ansible software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Kafka",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Spark",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Bash",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Docker",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "GitHub",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Grafana Labs Grafana Cloud",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "IBM Terraform",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "JavaScript",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Jenkins CI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Kubernetes",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Oracle Java",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Prometheus",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "PyTorch",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Scala",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Snowflake",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "TensorFlow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1231.00",
+      "title": "Computer Network Support Specialists",
+      "alternateTitles": [
+        "Computer Network Specialist",
+        "IT Consultant (Information Technology Consultant)",
+        "IT Consultant",
+        "Information Technology Consultant",
+        "Network Specialist",
+        "Network Support Specialist",
+        "Network Technical Analyst",
+        "Network Technician",
+        "Personal Computer Network Analyst",
+        "Systems Specialist"
+      ],
+      "items": [
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Troubleshooting",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Operations Monitoring",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 47
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Monitoring",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 99
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 70
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 61
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 60
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 58
+        },
+        {
+          "name": "Microsoft Active Directory",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Outlook",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Windows Server",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "ServiceNow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1232.00",
+      "title": "Computer User Support Specialists",
+      "alternateTitles": [
+        "Computer Support Specialist",
+        "Computer Tech (Computer Technician)",
+        "Computer Tech",
+        "Computer Technician",
+        "Desktop Support Technician (Desktop Support Tech)",
+        "Desktop Support Technician",
+        "Desktop Support Tech",
+        "Help Desk Analyst",
+        "Help Desk Tech (Help Desk Technician)",
+        "Help Desk Tech",
+        "Help Desk Technician",
+        "IS Tech (Information Systems Technician)",
+        "IS Tech",
+        "Information Systems Technician",
+        "IT Specialist (Information Technology Specialist)",
+        "IT Specialist",
+        "Information Technology Specialist",
+        "IT Support Specialist (Information Technology Support Specialist)",
+        "IT Support Specialist",
+        "Information Technology Support Specialist",
+        "IT Tech (Information Technology Technician)",
+        "IT Tech",
+        "Information Technology Technician",
+        "Technical Support Specialist"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Service Orientation",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Social Perceptiveness",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Instructing",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Operations Monitoring",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 98
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 78
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 71
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 70
+        },
+        {
+          "name": "Education and Training",
+          "kind": "Knowledge",
+          "importance": 68
+        },
+        {
+          "name": "Apple iOS",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Active Directory",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Outlook",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "ServiceNow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1241.00",
+      "title": "Computer Network Architects",
+      "alternateTitles": [
+        "Computer Network Technologist",
+        "Network Analyst",
+        "Network Consultant",
+        "Network Systems Consultant",
+        "Networking Systems Engineer",
+        "Solutions Architect",
+        "System Programmer",
+        "Systems Engineer",
+        "WAN Engineer (Wide Area Network Engineer)",
+        "WAN Engineer",
+        "Wide Area Network Engineer",
+        "Wireless Network Engineer"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Technology Design",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 78
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 92
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 81
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 81
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 70
+        },
+        {
+          "name": "Education and Training",
+          "kind": "Knowledge",
+          "importance": 58
+        },
+        {
+          "name": "Amazon Web Services AWS software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Ansible software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Border Gateway Protocol BGP",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "IBM Terraform",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerShell",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1242.00",
+      "title": "Database Administrators",
+      "alternateTitles": [
+        "Database Administration Manager",
+        "Database Administrator (DBA)",
+        "Database Administrator",
+        "DBA",
+        "Database Analyst",
+        "Database Coordinator",
+        "Database Engineer",
+        "Database Manager",
+        "Development and Database Administration Manager",
+        "IS Admin (Information Systems Administrator)",
+        "IS Admin",
+        "Information Systems Administrator",
+        "Systems Administrator (Systems Admin)",
+        "Systems Administrator",
+        "Systems Admin"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Instructing",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 95
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 74
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 73
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 64
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 64
+        },
+        {
+          "name": "Apache Airflow",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Kafka",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Spark",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "IBM Terraform",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Informatica software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Kubernetes",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Power BI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft SQL Server Integration Services SSIS",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "MongoDB",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "MySQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Oracle PL/SQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "PostgreSQL",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Salesforce software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Scala",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Snowflake",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Tableau",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Transact-SQL",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1243.00",
+      "title": "Database Architects",
+      "alternateTitles": [
+        "Data Architect",
+        "Data Engineer",
+        "Data Officer",
+        "Database Analyst",
+        "Database Architect",
+        "Database Consultant",
+        "Database Developer",
+        "Database Programmer",
+        "Enterprise Architect",
+        "Information Architect"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Service Orientation",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Active Learning",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 83
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 74
+        },
+        {
+          "name": "Design",
+          "kind": "Knowledge",
+          "importance": 68
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 67
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 54
+        },
+        {
+          "name": "Apache Kafka",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Spark",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Power BI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Snowflake",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Tableau",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1244.00",
+      "title": "Network and Computer Systems Administrators",
+      "alternateTitles": [
+        "Information Analyst",
+        "Information Technology Specialist (IT Specialist)",
+        "Information Technology Specialist",
+        "IT Specialist",
+        "LAN Specialist (Local Area Network Specialist)",
+        "LAN Specialist",
+        "Local Area Network Specialist",
+        "Local Area Network Administrator (LAN Administrator)",
+        "Local Area Network Administrator",
+        "LAN Administrator",
+        "Network Administrator",
+        "Network Coordinator",
+        "Network Manager",
+        "Systems Administrator (Systems Admin)",
+        "Systems Administrator",
+        "Systems Admin"
+      ],
+      "items": [
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Troubleshooting",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Operations Monitoring",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 56
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Monitoring",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 98
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 71
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 66
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 65
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 55
+        },
+        {
+          "name": "Ansible software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Bash",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Active Directory",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Outlook",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerShell",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft SharePoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Windows Server",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Red Hat Enterprise Linux",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "ServiceNow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1299.08",
+      "title": "Computer Systems Engineers/Architects",
+      "alternateTitles": [
+        "Infrastructure Engineer",
+        "IT Architect (Information Technology Architect)",
+        "IT Architect",
+        "Information Technology Architect",
+        "IT Engineer (Information Technology Engineer)",
+        "IT Engineer",
+        "Information Technology Engineer",
+        "Network and Infrastructure Engineer",
+        "Solutions Architect",
+        "Systems Application Engineer",
+        "Systems Architect",
+        "Systems Consultant",
+        "Systems Engineer",
+        "Web Architect"
+      ],
+      "items": [
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Quality Control Analysis",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 98
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 77
+        },
+        {
+          "name": "Telecommunications",
+          "kind": "Knowledge",
+          "importance": 74
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 72
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 69
+        },
+        {
+          "name": "Amazon Web Services AWS CloudFormation",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Ansible software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Bash",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "IBM Terraform",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Jenkins CI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Active Directory",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-1299.09",
+      "title": "Information Technology Project Managers",
+      "alternateTitles": [
+        "Cloud Product Director",
+        "Cybersecurity Project Manager",
+        "Data Center Product Director",
+        "Information Systems Project Manager (IS Project Manager)",
+        "Information Systems Project Manager",
+        "IS Project Manager",
+        "IT Manager (Information Technology Manager)",
+        "IT Manager",
+        "Information Technology Manager",
+        "IT Program Manager (Information Technology Program Manager)",
+        "IT Program Manager",
+        "Information Technology Program Manager",
+        "IT Project Manager (Information Technology Project Manager)",
+        "IT Project Manager",
+        "Information Technology Project Manager",
+        "Scrum Master",
+        "Transition Program Manager"
+      ],
+      "items": [
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Management of Personnel Resources",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 63
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Negotiation",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 78
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 82
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 81
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 80
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 75
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 65
+        },
+        {
+          "name": "Atlassian Confluence",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "SAP software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "ServiceNow",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-2051.00",
+      "title": "Data Scientists",
+      "alternateTitles": [],
+      "items": [
+        {
+          "name": "Amazon Web Services AWS software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Spark",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Git",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Azure software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Power BI",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "PyTorch",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "SAS",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Snowflake",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "TensorFlow",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "The MathWorks MATLAB",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "15-2041.00",
+      "title": "Statisticians",
+      "alternateTitles": [
+        "Database Analyst",
+        "Demographer",
+        "Education Research Analyst",
+        "Mathematical Statistician",
+        "Psychometric Consultant",
+        "Quantitative Methodologist",
+        "Statistical Analyst",
+        "Statistical Consultant",
+        "Statistical Reporting Analyst",
+        "Statistician"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Programming",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 47
+        },
+        {
+          "name": "Instructing",
+          "kind": "Skill",
+          "importance": 47
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Skill",
+          "importance": 97
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 92
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 80
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 73
+        },
+        {
+          "name": "Education and Training",
+          "kind": "Knowledge",
+          "importance": 48
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 45
+        },
+        {
+          "name": "IBM SPSS Statistics",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Python",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "SAS",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Tableau",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "11-3021.00",
+      "title": "Computer and Information Systems Managers",
+      "alternateTitles": [
+        "Application Development Director",
+        "Computing Services Director",
+        "Data Processing Manager",
+        "Information Systems Director (IS Director)",
+        "Information Systems Director",
+        "IS Director",
+        "Information Systems Manager (IS Manager)",
+        "Information Systems Manager",
+        "IS Manager",
+        "Information Systems Supervisor (IS Supervisor)",
+        "Information Systems Supervisor",
+        "IS Supervisor",
+        "Information Technology Director (IT Director)",
+        "Information Technology Director",
+        "IT Director",
+        "Information Technology Manager (IT Manager)",
+        "Information Technology Manager",
+        "IT Manager",
+        "MIS Director (Management Information Systems Director)",
+        "MIS Director",
+        "Management Information Systems Director",
+        "Technical Services Manager"
+      ],
+      "items": [
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 69
+        },
+        {
+          "name": "Management of Personnel Resources",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Social Perceptiveness",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 78
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Monitoring",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 94
+        },
+        {
+          "name": "Customer and Personal Service",
+          "kind": "Knowledge",
+          "importance": 76
+        },
+        {
+          "name": "Administration and Management",
+          "kind": "Knowledge",
+          "importance": 68
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 63
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 62
+        },
+        {
+          "name": "Amazon Web Services AWS software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Apache Cassandra",
+          "kind": "Technology",
+          "importance": 35
+        },
+        {
+          "name": "Apache Maven",
+          "kind": "Technology",
+          "importance": 35
+        },
+        {
+          "name": "Apache Tomcat",
+          "kind": "Technology",
+          "importance": 35
+        },
+        {
+          "name": "Apple macOS",
+          "kind": "Technology",
+          "importance": 35
+        }
+      ]
+    },
+    {
+      "socCode": "17-2061.00",
+      "title": "Computer Hardware Engineers",
+      "alternateTitles": [
+        "Design Engineer",
+        "Engineer",
+        "Field Service Engineer",
+        "Hardware Design Engineer",
+        "Hardware Engineer",
+        "Physical Design Engineer",
+        "Project Engineer",
+        "Staff Engineer",
+        "Systems Integration Engineer"
+      ],
+      "items": [
+        {
+          "name": "Complex Problem Solving",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Judgment and Decision Making",
+          "kind": "Skill",
+          "importance": 66
+        },
+        {
+          "name": "Operations Analysis",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Analysis",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Systems Evaluation",
+          "kind": "Skill",
+          "importance": 60
+        },
+        {
+          "name": "Coordination",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Time Management",
+          "kind": "Skill",
+          "importance": 53
+        },
+        {
+          "name": "Instructing",
+          "kind": "Skill",
+          "importance": 50
+        },
+        {
+          "name": "Critical Thinking",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Reading Comprehension",
+          "kind": "Skill",
+          "importance": 75
+        },
+        {
+          "name": "Active Listening",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Speaking",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Writing",
+          "kind": "Skill",
+          "importance": 72
+        },
+        {
+          "name": "Computers and Electronics",
+          "kind": "Knowledge",
+          "importance": 93
+        },
+        {
+          "name": "Engineering and Technology",
+          "kind": "Knowledge",
+          "importance": 92
+        },
+        {
+          "name": "Design",
+          "kind": "Knowledge",
+          "importance": 79
+        },
+        {
+          "name": "Mathematics",
+          "kind": "Knowledge",
+          "importance": 79
+        },
+        {
+          "name": "English Language",
+          "kind": "Knowledge",
+          "importance": 70
+        },
+        {
+          "name": "C++",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Linux",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Perl",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Python",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "The MathWorks MATLAB",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    },
+    {
+      "socCode": "13-1082.00",
+      "title": "Project Management Specialists",
+      "alternateTitles": [],
+      "items": [
+        {
+          "name": "Atlassian JIRA",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Excel",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Office software",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft Outlook",
+          "kind": "Technology",
+          "importance": 45
+        },
+        {
+          "name": "Microsoft PowerPoint",
+          "kind": "Technology",
+          "importance": 45
+        }
+      ]
+    }
+  ]
+}
