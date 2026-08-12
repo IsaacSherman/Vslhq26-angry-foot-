@@ -303,7 +303,11 @@ public class ApiEndpointsTests
 
         await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest("Implemented automated validation workflows that reduced manual review effort by 75%."), cancellationToken);
 
-        var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new { JobDescription = "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure." }, cancellationToken);
+        var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new
+        {
+            JobDescription = "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure.",
+            JobTitle = "Senior Software Engineer"
+        }, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
         var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken);
         Assert.NotNull(analysis);
@@ -311,6 +315,14 @@ public class ApiEndpointsTests
         Assert.NotNull(analysis.Fit);
         Assert.InRange(analysis.Fit.FitScore, 0, 100);
         Assert.False(string.IsNullOrWhiteSpace(analysis.Fit.Verdict));
+
+        // The occupational benchmark ships as bundled data, so it is available with no configuration.
+        Assert.NotNull(analysis.Benchmark);
+        Assert.Equal("15-1252.00", analysis.Benchmark!.SocCode);
+        Assert.Equal("Exact", analysis.Benchmark.MatchConfidence);
+        Assert.InRange(analysis.Benchmark.CoverageScore, 0, 100);
+        Assert.NotEmpty(analysis.Benchmark.Missing);
+        Assert.Contains("O*NET", analysis.Benchmark.SourceAttribution);
 
         var generationResponse = await apiClient.PostAsJsonAsync("/api/generations", new GenerationRequest(
             "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure. Drive architecture and automation.",

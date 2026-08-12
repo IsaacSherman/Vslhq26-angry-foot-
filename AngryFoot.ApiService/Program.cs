@@ -1,6 +1,7 @@
 using AngryFoot.ApiService.Ai;
 using AngryFoot.ApiService.Api;
 using AngryFoot.ApiService.Application.Artifacts;
+using AngryFoot.ApiService.Application.Benchmarks;
 using AngryFoot.ApiService.Application.Bullets;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
@@ -44,6 +45,8 @@ builder.Services.AddScoped<ILinkedInProfileImportService, LinkedInImportService>
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
 builder.Services.AddScoped<IFitAssessor, FitAssessmentService>();
+builder.Services.AddSingleton<IOccupationBenchmarkDataset, OccupationBenchmarkDataset>();
+builder.Services.AddScoped<IOccupationBenchmarkService, OccupationBenchmarkService>();
 builder.Services.AddScoped<BulletRetrievalService>();
 builder.Services.AddScoped<BulletRankingService>();
 builder.Services.AddScoped<BulletRewriteService>();

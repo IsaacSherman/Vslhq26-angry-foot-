@@ -145,6 +145,22 @@ Without a usable embedding deployment, Qdrant still starts (it's harmless and id
 
 `dotnet test`'s Aspire integration tests always disable Qdrant for themselves regardless of this setting, so running the test suite never requires Docker.
 
+### Occupational benchmark
+
+Alongside the fit score — which measures how well your bullets cover *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
+
+The comparison set is aggregate labor-market data from the [O\*NET occupational database](https://www.onetonline.org) (U.S. Department of Labor/ETA), bundled at [`AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json`](AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json). No configuration, API key, or network access is required — it works offline on first run.
+
+**This is deliberately occupation-level and never individual-level.** The feature compares your bullets against published statistics about an occupation. It does not — and by design will not — scrape, collect, aggregate, or display data attributable to any real person, any specific employer, or that employer's actual employees. See [issue #5](https://github.com/IsaacSherman/Vslhq26-angry-foot-/issues/5) for the reasoning.
+
+How it works:
+
+- The **Job Title** field on `/generate` is mapped to an O\*NET occupation by exact match against the occupation's title and its published reported job titles, then by word-overlap for a fuzzy match. Seniority and ladder markers (`Senior`, `Staff`, `II`) are stripped first, since O\*NET occupations are not ladder-specific. If no title is entered, the title inferred from the job description is used.
+- Each requirement in the occupation's profile is checked against your bullets using the same evidence rule as the fit heuristic (`BulletEvidence`), weighted by O\*NET's published importance rating.
+- No mapping is reported rather than guessed: an unrecognized title gets an explanatory message, not a wrong occupation.
+
+To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tools/onet/) — `extract_onet.py` then `build_dataset.py` — and copy the regenerated `onet-occupations.json` over the bundled copy. Their comments document every transformation applied to the published data, and `onet-occupations.json` carries a `notes` block recording which values are O\*NET's and which are ours.
+
 ## Demo
 
 - Video file in this repo: `./demo/demo.mp4`
@@ -157,6 +173,7 @@ Without a usable embedding deployment, Qdrant still starts (it's harmless and id
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
 - **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI.
 - **Fit assessment only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
+- **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, but there is no verification pass — generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.
@@ -173,6 +190,14 @@ AngryFoot is built on the following open-source packages. Versions and licenses 
 | .NET / ASP.NET Core / Blazor | net10.0 | MIT | <https://github.com/dotnet> |
 | Aspire (AppHost SDK, orchestration) | 13.4.6 | MIT | <https://github.com/microsoft/aspire> |
 | Aspire.Hosting.Qdrant | 13.4.6 | MIT | Aspire container resource that runs Qdrant automatically (`Qdrant:Enabled=false` to disable) |
+
+### Bundled data
+
+| Dataset | Version | License | Purpose |
+|---|---|---|---|
+| [O\*NET Database](https://www.onetcenter.org/database.html) | 30.3 (retrieved 2026-08-11) | CC BY 4.0 | Aggregate occupational skill, knowledge, and technology profiles behind the occupational benchmark |
+
+> This product uses information from O\*NET OnLine by the U.S. Department of Labor, Employment and Training Administration (USDOL/ETA), used under the [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) license. AngryFoot has modified the data by selecting a subset of occupations and descriptors. USDOL/ETA has not approved, endorsed, or tested these modifications. O\*NET® is a trademark of USDOL/ETA.
 
 ### API Service (`AngryFoot.ApiService`)
 

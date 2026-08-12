@@ -146,7 +146,7 @@ internal sealed class FitAssessmentService(
 
         foreach (var (term, weight) in requirements)
         {
-            var supportCount = bullets.Count(b => BulletSupports(b, term));
+            var supportCount = bullets.Count(b => BulletEvidence.Supports(b, term));
             if (supportCount > 0)
             {
                 covered.Add((term, weight, supportCount));
@@ -188,13 +188,6 @@ internal sealed class FitAssessmentService(
         };
 
         return new FitAssessmentDto(score, verdict, strengths, gaps, suggestions);
-    }
-
-    private static bool BulletSupports(Bullet bullet, string term)
-    {
-        return bullet.BulletText.Contains(term, StringComparison.OrdinalIgnoreCase)
-            || bullet.Skills.Any(s => s.Contains(term, StringComparison.OrdinalIgnoreCase))
-            || bullet.Technologies.Any(t => t.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     private static IReadOnlyList<string> NormalizeValues(IReadOnlyList<string>? values)

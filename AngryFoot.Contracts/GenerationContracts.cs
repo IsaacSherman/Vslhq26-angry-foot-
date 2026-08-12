@@ -26,9 +26,14 @@ public sealed record FitAssessmentDto(
     IReadOnlyList<string> Gaps,
     IReadOnlyList<string> BulletSuggestions);
 
+/// <param name="Benchmark">
+/// How the library compares against aggregate occupational data for the mapped occupation.
+/// Null when no benchmark dataset is available.
+/// </param>
 public sealed record JobFitAnalysisDto(
     JobAnalysisDto Job,
-    FitAssessmentDto Fit);
+    FitAssessmentDto Fit,
+    OccupationBenchmarkDto? Benchmark = null);
 
 public sealed record GenerationResultDto(
     Guid ArtifactId,

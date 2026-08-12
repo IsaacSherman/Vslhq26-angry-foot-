@@ -17,6 +17,7 @@
             <div class="col-md-6">
                 <label class="form-label">Job Title (optional)</label>
                 <input class="form-control" @bind="jobTitle" />
+                <div class="form-text">Used to map the role to an occupation for the benchmark below.</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Company (optional)</label>
@@ -118,6 +119,8 @@
     </div>
 }
 
+<OccupationBenchmarkPanel Benchmark="@benchmark" />
+
 @if (analysis is not null)
 {
     <details class="card mb-3">
@@ -166,6 +169,7 @@
 
     private AngryFoot.Contracts.JobAnalysisDto? analysis;
     private AngryFoot.Contracts.FitAssessmentDto? fit;
+    private AngryFoot.Contracts.OccupationBenchmarkDto? benchmark;
     private AngryFoot.Contracts.GenerationResultDto? result;
 
     private static string FitBadgeClass(int score) => score switch
@@ -195,9 +199,10 @@
         isAnalyzing = true;
         try
         {
-            var fitAnalysis = await ApiClient.AnalyzeJobAsync(jobDescription.Trim());
+            var fitAnalysis = await ApiClient.AnalyzeJobAsync(jobDescription.Trim(), jobTitle?.Trim());
             analysis = fitAnalysis.Job;
             fit = fitAnalysis.Fit;
+            benchmark = fitAnalysis.Benchmark;
         }
         catch (Exception ex)
         {
