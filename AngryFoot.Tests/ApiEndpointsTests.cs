@@ -277,6 +277,58 @@ public class ApiEndpointsTests
 
         var deleteMissing = await apiClient.DeleteAsync($"/api/artifacts/{missingId}", cancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, deleteMissing.StatusCode);
+
+        var selectMissing = await apiClient.PutAsJsonAsync(
+            $"/api/artifacts/{missingId}/selection",
+            new SelectArtifactVersionsRequest("synthesis", null),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, selectMissing.StatusCode);
+    }
+
+    [Fact]
+    public async Task ArtifactSelectionRejectsAVersionTheGenerationDoesNotHave()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        var generateResponse = await apiClient.PostAsJsonAsync(
+            "/api/generations",
+            new GenerationRequest("Backend engineer role using C# and Azure.", "Engineer", "Contoso", 3),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, generateResponse.StatusCode);
+        var result = await generateResponse.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken);
+        Assert.NotNull(result);
+
+        // Integration tests run without AI configured, so the generation has no deep-review
+        // versions at all and every label is unknown to it.
+        var selectResponse = await apiClient.PutAsJsonAsync(
+            $"/api/artifacts/{result!.ArtifactId}/selection",
+            new SelectArtifactVersionsRequest("synthesis", null),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, selectResponse.StatusCode);
+
+        // A request that selects nothing is a no-op rather than an error.
+        var noOpResponse = await apiClient.PutAsJsonAsync(
+            $"/api/artifacts/{result.ArtifactId}/selection",
+            new SelectArtifactVersionsRequest(null, null),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, noOpResponse.StatusCode);
+        var artifact = await noOpResponse.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+        Assert.NotNull(artifact);
+        Assert.Equal(result.ResumeMarkdown, artifact!.ResumeMarkdown);
     }
 
     [Fact]

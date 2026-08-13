@@ -59,9 +59,19 @@ else
 
                 <div class="row g-3">
                     <div class="col-md-6">
+                        <DraftVersionPicker Refinement="@selectedArtifact.ResumeRefinement"
+                                            Title="Deep review: pick a resume"
+                                            SelectedLabel="@selectedArtifact.ResumeRefinement?.RecommendedLabel"
+                                            Disabled="@isSavingSelection"
+                                            SelectedLabelChanged="OnResumeVersionSelected" />
                         <MarkdownPane Title="Resume" Markdown="@selectedArtifact.ResumeMarkdown" Rows="18" />
                     </div>
                     <div class="col-md-6">
+                        <DraftVersionPicker Refinement="@selectedArtifact.CoverLetterRefinement"
+                                            Title="Deep review: pick a cover letter"
+                                            SelectedLabel="@selectedArtifact.CoverLetterRefinement?.RecommendedLabel"
+                                            Disabled="@isSavingSelection"
+                                            SelectedLabelChanged="OnCoverLetterVersionSelected" />
                         <MarkdownPane Title="Cover Letter" Markdown="@selectedArtifact.CoverLetterMarkdown" Rows="18" />
                     </div>
                 </div>
@@ -76,6 +86,7 @@ else
     private Guid? selectedId;
 
     private bool isLoading;
+    private bool isSavingSelection;
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
@@ -117,6 +128,37 @@ else
     {
         selectedId = id;
         selectedArtifact = await ApiClient.GetArtifactAsync(id);
+    }
+
+    private Task OnResumeVersionSelected(string label) => SelectVersionAsync(label, null);
+
+    private Task OnCoverLetterVersionSelected(string label) => SelectVersionAsync(null, label);
+
+    private async Task SelectVersionAsync(string? resumeLabel, string? coverLetterLabel)
+    {
+        if (selectedId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isSavingSelection = true;
+
+        try
+        {
+            // The response carries the promoted markdown, so the panes update from the server's
+            // copy rather than a local guess at what it now holds.
+            selectedArtifact = await ApiClient.SelectArtifactVersionsAsync(selectedId.Value, resumeLabel, coverLetterLabel)
+                ?? selectedArtifact;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSavingSelection = false;
+        }
     }
 
     private async Task DeleteSelectedAsync()

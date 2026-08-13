@@ -1,25 +1,57 @@
 using AngryFoot.ApiService.Ai;
+using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
 using Microsoft.Extensions.AI;
 
 namespace AngryFoot.ApiService.Application.Generation;
 
-internal sealed class CoverLetterService(IChatClient chatClient, ILogger<CoverLetterService> logger)
+/// <param name="Markdown">The recommended cover letter; the template fallback when AI is unavailable.</param>
+/// <param name="Refinement">Deep-review versions, or null when the pass did not run.</param>
+internal sealed record CoverLetterOutcome(string Markdown, RefinementDto? Refinement);
+
+internal sealed class CoverLetterService(
+    IChatClient chatClient,
+    IDraftRefinementPipeline refinementPipeline,
+    ILogger<CoverLetterService> logger)
 {
-    public async Task<string> BuildCoverLetterAsync(Domain.Profile profile, CoverLetterContext context, CancellationToken cancellationToken)
+    public async Task<CoverLetterOutcome> BuildCoverLetterAsync(
+        Domain.Profile profile,
+        CoverLetterContext context,
+        bool deepReview,
+        CancellationToken cancellationToken)
     {
         var fallback = BuildFallbackCoverLetter(profile, context);
 
+        var candidate = AiJsonUtilities.ToJson(new { profile.Name, profile.ProfessionalSummary });
+        var selectedBullets = AiJsonUtilities.ToJson(context.Bullets.Select(x => x.Text));
+
         var systemPrompt = "You write concise professional cover letters in markdown. Use only provided facts. Do not fabricate experience. Keep under 350 words.";
-        var userPrompt = $"Candidate: {AiJsonUtilities.ToJson(new { profile.Name, profile.ProfessionalSummary })}\nRole: {context.JobTitle}\nCompany: {context.Company}\nAnalysis: {AiJsonUtilities.ToJson(context.Analysis)}\nSelectedBullets: {AiJsonUtilities.ToJson(context.Bullets.Select(x => x.Text))}";
+        var userPrompt = $"Candidate: {candidate}\nRole: {context.JobTitle}\nCompany: {context.Company}\nAnalysis: {AiJsonUtilities.ToJson(context.Analysis)}\nSelectedBullets: {selectedBullets}";
 
         try
         {
             var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
             if (!string.IsNullOrWhiteSpace(text))
             {
-                return text.Trim();
+                var draft = text.Trim();
+                if (!deepReview)
+                {
+                    return new CoverLetterOutcome(draft, null);
+                }
+
+                var refinement = await refinementPipeline.RefineAsync(
+                    new RefinementRequest(
+                        ArtifactKind: "cover letter",
+                        OutputContract: "a complete cover letter in markdown, under 350 words, with no commentary around it",
+                        SourceMaterial: $"Candidate: {candidate}\nRole: {context.JobTitle}\nCompany: {context.Company}\nThe candidate's selected achievements: {selectedBullets}",
+                        Draft: draft,
+                        // The letter's claims come from the selected bullets, so ground against
+                        // those rather than against the letter's own prose.
+                        GroundingQuery: string.Join(" ", context.Bullets.Select(x => x.Text))),
+                    cancellationToken);
+
+                return new CoverLetterOutcome(refinement?.Recommended?.Text ?? draft, refinement);
             }
 
             logger.LogWarning("Cover letter AI response was empty. Using template fallback.");
@@ -33,7 +65,7 @@ internal sealed class CoverLetterService(IChatClient chatClient, ILogger<CoverLe
             logger.LogWarning(ex, "Cover letter AI call failed. Using template fallback.");
         }
 
-        return fallback;
+        return new CoverLetterOutcome(fallback, null);
     }
 
     private static string BuildFallbackCoverLetter(Domain.Profile profile, CoverLetterContext context)

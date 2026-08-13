@@ -32,24 +32,37 @@
 </div>
 
 <div class="mb-3">
-    <button class="btn btn-outline-primary" @onclick="RewriteAsync" disabled="@(isRewriting || isSaving)">
+    <button class="btn btn-outline-primary me-3" @onclick="RewriteAsync" disabled="@(isRewriting || isSaving)">
         @if (isRewriting)
         {
             <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
         }
         Rewrite Suggestion
     </button>
+    <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="deep-review" @bind="deepReview" disabled="@(isRewriting || isSaving)" />
+        <label class="form-check-label" for="deep-review">Deep review</label>
+    </div>
+    <div class="form-text">
+        Deep review has a second agent critique the rewrite, lets the first agent revise it, and a third merge the results.
+        Three extra AI calls, so expect roughly four times the wait - and a choice of versions instead of one answer.
+    </div>
 </div>
 
-<WorkingIndicator Visible="@isRewriting" Message="Asking the AI for an improved rewrite and suggestions..." />
+<WorkingIndicator Visible="@isRewriting" Message="@RewriteProgressMessage" />
 <WorkingIndicator Visible="@isSaving" Message="Saving and enriching the bullet with AI-extracted skills, technologies, and tags..." />
 
 @if (rewriteResult is not null)
 {
+    <DraftVersionPicker Refinement="@rewriteResult.Refinement"
+                        Title="Deep review: pick a rewrite"
+                        SelectedLabel="@selectedVersionLabel"
+                        SelectedLabelChanged="OnVersionSelected" />
+
     <div class="card mb-3">
         <div class="card-body">
             <h5 class="card-title">Suggested Rewrite</h5>
-            <p class="card-text">@rewriteResult.RewrittenText</p>
+            <p class="card-text">@SuggestedText</p>
 
             @if (rewriteResult.Suggestions.Count > 0)
             {
@@ -87,10 +100,36 @@
     private List<string> knownEmployers = [];
     private bool isSaving;
     private bool isRewriting;
+    private bool deepReview;
     private string? errorMessage;
     private RewriteBulletResponse? rewriteResult;
+    private string? selectedVersionLabel;
 
     private bool IsCreate => !BulletId.HasValue;
+
+    /// <summary>
+    /// The text the Use button applies: the version the user picked, or the single rewrite when
+    /// deep review was off.
+    /// </summary>
+    private string SuggestedText
+    {
+        get
+        {
+            if (rewriteResult is null)
+            {
+                return string.Empty;
+            }
+
+            var version = rewriteResult.Refinement?.Versions
+                .FirstOrDefault(x => x.Label == selectedVersionLabel);
+
+            return version?.Text ?? rewriteResult.RewrittenText;
+        }
+    }
+
+    private string RewriteProgressMessage => deepReview
+        ? "Drafting a rewrite, then critiquing, revising, and merging it. Four AI calls, so this usually takes a couple of minutes."
+        : "Asking the AI for an improved rewrite and suggestions...";
 
     protected override async Task OnInitializedAsync()
     {
@@ -114,6 +153,7 @@
     {
         errorMessage = null;
         rewriteResult = null;
+        selectedVersionLabel = null;
         if (BulletId is null)
         {
             bulletText = string.Empty;
@@ -146,7 +186,8 @@
 
         try
         {
-            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim());
+            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim(), deepReview);
+            selectedVersionLabel = rewriteResult.Refinement?.RecommendedLabel;
         }
         catch (Exception ex)
         {
@@ -158,11 +199,17 @@
         }
     }
 
+    private void OnVersionSelected(string label)
+    {
+        selectedVersionLabel = label;
+    }
+
     private void ApplyRewrite()
     {
-        if (rewriteResult is not null && !string.IsNullOrWhiteSpace(rewriteResult.RewrittenText))
+        var suggested = SuggestedText;
+        if (!string.IsNullOrWhiteSpace(suggested))
         {
-            bulletText = rewriteResult.RewrittenText;
+            bulletText = suggested;
         }
     }
 

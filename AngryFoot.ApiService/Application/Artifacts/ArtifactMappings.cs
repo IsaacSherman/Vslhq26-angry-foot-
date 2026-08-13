@@ -25,6 +25,8 @@ public static class ArtifactMappings
             artifact.CoverLetterMarkdown,
             artifact.SelectedBulletIds,
             artifact.JobAnalysisJson,
-            artifact.CreatedDate);
+            artifact.CreatedDate,
+            ArtifactRefinements.FromJson(artifact.ResumeRefinementJson),
+            ArtifactRefinements.FromJson(artifact.CoverLetterRefinementJson));
     }
 }

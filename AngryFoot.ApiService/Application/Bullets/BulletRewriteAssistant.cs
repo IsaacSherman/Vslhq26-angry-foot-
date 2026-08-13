@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AngryFoot.ApiService.Ai;
+using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.Contracts;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -8,14 +9,21 @@ namespace AngryFoot.ApiService.Application.Bullets;
 
 public interface IBulletRewriteAssistant
 {
-    Task<RewriteBulletResponse> RewriteAsync(string bulletText, CancellationToken cancellationToken);
+    /// <param name="deepReview">
+    /// Run the critique-and-revise pass over the AI rewrite. Ignored when the rewrite falls back to
+    /// heuristics: there is no AI draft to critique.
+    /// </param>
+    Task<RewriteBulletResponse> RewriteAsync(string bulletText, bool deepReview, CancellationToken cancellationToken);
 }
 
-internal sealed partial class BulletRewriteAssistant(IChatClient chatClient, ILogger<BulletRewriteAssistant> logger) : IBulletRewriteAssistant
+internal sealed partial class BulletRewriteAssistant(
+    IChatClient chatClient,
+    IDraftRefinementPipeline refinementPipeline,
+    ILogger<BulletRewriteAssistant> logger) : IBulletRewriteAssistant
 {
     private sealed record RewritePayload(string RewrittenText, IReadOnlyList<string> Suggestions);
 
-    public async Task<RewriteBulletResponse> RewriteAsync(string bulletText, CancellationToken cancellationToken)
+    public async Task<RewriteBulletResponse> RewriteAsync(string bulletText, bool deepReview, CancellationToken cancellationToken)
     {
         var trimmed = bulletText.Trim();
         var fallback = CreateFallback(trimmed);
@@ -44,7 +52,28 @@ internal sealed partial class BulletRewriteAssistant(IChatClient chatClient, ILo
                 suggestions = fallback.Suggestions.ToList();
             }
 
-            return new RewriteBulletResponse(rewritten, suggestions);
+            if (!deepReview)
+            {
+                return new RewriteBulletResponse(rewritten, suggestions);
+            }
+
+            var refinement = await refinementPipeline.RefineAsync(
+                new RefinementRequest(
+                    ArtifactKind: "resume bullet",
+                    OutputContract: "a single resume bullet as plain text - one sentence or clause, no bullet marker, no markdown, no surrounding quotes",
+                    SourceMaterial: $"The bullet the candidate actually wrote: {trimmed}",
+                    Draft: rewritten,
+                    // Retrieve against what the candidate wrote, not the AI's rewrite, so the
+                    // grounding is not steered by whatever the draft embellished.
+                    GroundingQuery: trimmed),
+                cancellationToken);
+
+            // The recommended version becomes RewrittenText so callers that ignore the version
+            // list - the MCP tool, older clients - still get the benefit of the pass.
+            return new RewriteBulletResponse(
+                refinement?.Recommended?.Text ?? rewritten,
+                suggestions,
+                refinement);
         }
         catch (OperationCanceledException)
         {

@@ -41,7 +41,7 @@ public static class BulletEndpoints
                 return Results.BadRequest("Bullet text is required.");
             }
 
-            var result = await rewriteAssistant.RewriteAsync(request.BulletText, cancellationToken);
+            var result = await rewriteAssistant.RewriteAsync(request.BulletText, request.DeepReview, cancellationToken);
             return Results.Ok(result);
         });
 

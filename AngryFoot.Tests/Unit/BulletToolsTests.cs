@@ -85,10 +85,22 @@ public class BulletToolsTests
     public async Task RewriteBulletAsync_ReturnsAssistantResponse()
     {
         var expected = new RewriteBulletResponse("Better.", ["Add metrics"]);
-        _rewriteAssistant.Setup(x => x.RewriteAsync("meh", It.IsAny<CancellationToken>()))
+        _rewriteAssistant.Setup(x => x.RewriteAsync("meh", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
         var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh");
+
+        result.Should().BeSameAs(expected);
+    }
+
+    [Fact]
+    public async Task RewriteBulletAsync_PassesDeepReviewThrough()
+    {
+        var expected = new RewriteBulletResponse("Better.", []);
+        _rewriteAssistant.Setup(x => x.RewriteAsync("meh", true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh", deepReview: true);
 
         result.Should().BeSameAs(expected);
     }

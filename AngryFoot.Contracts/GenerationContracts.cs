@@ -1,10 +1,15 @@
 namespace AngryFoot.Contracts;
 
+/// <param name="DeepReview">
+/// Opt in to the critique-and-revise pass over the bullet rewrites and the cover letter. Six extra
+/// AI calls; see the README's "Deep review" section for the latency this adds.
+/// </param>
 public sealed record GenerationRequest(
     string JobDescription,
     string? JobTitle,
     string? Company,
-    int? MaxBullets);
+    int? MaxBullets,
+    bool DeepReview = false);
 
 public sealed record JobAnalysisDto(
     IReadOnlyList<string> RequiredSkills,
@@ -35,12 +40,19 @@ public sealed record JobFitAnalysisDto(
     FitAssessmentDto Fit,
     OccupationBenchmarkDto? Benchmark = null);
 
+/// <param name="ResumeMarkdown">The recommended resume version; also what the artifact stores.</param>
+/// <param name="ResumeRefinement">
+/// Deep-review versions of the whole resume, one per version of the underlying bullet rewrites.
+/// Null when deep review was not requested or not applicable.
+/// </param>
 public sealed record GenerationResultDto(
     Guid ArtifactId,
     string ResumeMarkdown,
     string CoverLetterMarkdown,
     JobAnalysisDto Analysis,
-    IReadOnlyList<Guid> SelectedBulletIds);
+    IReadOnlyList<Guid> SelectedBulletIds,
+    RefinementDto? ResumeRefinement = null,
+    RefinementDto? CoverLetterRefinement = null);
 
 public sealed record ArtifactSummaryDto(
     Guid Id,
@@ -57,4 +69,6 @@ public sealed record GenerationArtifactDto(
     string CoverLetterMarkdown,
     IReadOnlyList<Guid> SelectedBulletIds,
     string JobAnalysisJson,
-    DateTime CreatedDate);
+    DateTime CreatedDate,
+    RefinementDto? ResumeRefinement = null,
+    RefinementDto? CoverLetterRefinement = null);
