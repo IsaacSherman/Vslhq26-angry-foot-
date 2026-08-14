@@ -243,7 +243,7 @@ public class GenerationOrchestratorTests : IDisposable
     private static IChatClient DeepReviewChatClient() => new ScriptedChatClient((messages, _) =>
         string.Join("\n", messages.Select(x => x.Text)).Contains("cover letter")
             ? "Dear Team, I am thrilled."
-            : "[]");
+            : """{"bullets":[]}""");
 
     private static RefinementDto TwoVersionsOf(RefinementRequest request)
     {

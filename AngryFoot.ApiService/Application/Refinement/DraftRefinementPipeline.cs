@@ -279,8 +279,9 @@ internal sealed class DraftRefinementPipeline(
     {
         try
         {
-            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-            if (AiJsonUtilities.TryDeserialize<T>(text, out var payload) && payload is not null)
+            var response = await chatClient.GetJsonResponseAsync<T>(systemPrompt, userPrompt, cancellationToken, logger);
+            var text = response.RawText;
+            if (response.Value is { } payload)
             {
                 return payload;
             }

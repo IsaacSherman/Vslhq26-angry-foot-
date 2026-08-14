@@ -25,8 +25,9 @@ public sealed class HeuristicJobAnalyzer(IChatClient chatClient, ILogger<Heurist
 
         try
         {
-            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-            if (AiJsonUtilities.TryDeserialize<JobAnalysisDto>(text, out var aiResult) && aiResult is not null)
+            var response = await chatClient.GetJsonResponseAsync<JobAnalysisDto>(systemPrompt, userPrompt, cancellationToken, logger);
+            var text = response.RawText;
+            if (response.Value is { } aiResult)
             {
                 return Normalize(aiResult);
             }

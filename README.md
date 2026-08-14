@@ -117,6 +117,26 @@ Secrets are stored with **.NET user secrets** (never committed; there is no `.en
 
 If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instructions, and all AI features fall back to heuristics; the same response's `retrievalEnabled`/`retrievalMessage` fields report whether semantic bullet retrieval is active. Both services write rolling log files to their own `Logs/` directory in addition to the console. The MCP endpoint is served at `http://localhost:<apiservice-port>/mcp` (streamable HTTP; find the port on the Aspire dashboard).
 
+### Schema-enforced AI responses
+
+Every AI call that expects JSON sends a JSON Schema derived from the C# type it will be parsed into (`ChatResponseFormat.ForJsonSchema<T>`, via `GetJsonResponseAsync<T>` in [`AiChatClientExtensions.cs`](AngryFoot.ApiService/Ai/AiChatClientExtensions.cs)), so the model is *constrained* to the shape rather than asked for it in the prompt and checked afterwards.
+
+This was not a theoretical concern. The enrichment step used to lose whole responses to shape drift — the model would answer a bullet about batch runtime with
+
+```json
+"impact": [ { "originalRuntime": "6 hours", "newRuntime": "40 minutes", "percentReduction": 88.9 } ]
+```
+
+against a contract of `IReadOnlyList<string>`. The JSON was valid; only the shape disagreed, and because the parse is all-or-nothing the perfectly good `skills`, `technologies`, and `tags` in the same response went in the bin with it.
+
+Three things this deliberately does **not** do:
+
+- **It does not guarantee truth.** A schema constrains shape, not meaning. The refinement stages still check that every returned `bulletId` belongs to the candidate, because nothing stops a well-formed answer from citing a bullet that does not exist.
+- **It does not replace the tolerant parser.** `AiJsonUtilities` still extracts JSON from prose and code fences, because a schema only helps if the provider honours it.
+- **It does not apply to the cover letter**, which asks for markdown prose and has no shape to enforce.
+
+Support depends on the deployment and the pinned `AzureOpenAI:ServiceVersion`. If a deployment rejects the schema the call is retried without it and a warning is logged naming the payload type — the feature keeps working, but the guarantee is gone, so that warning is worth watching for. Types that cannot be expressed in a closed schema (an unbounded `Dictionary<string, object>`, a bare `object`, or a root that is not an object) are logged and sent unconstrained; this is why the bullet rewrite draft wraps its array in a `{ "bullets": [...] }` envelope.
+
 ### Semantic bullet retrieval (RAG)
 
 Picking bullets for a generation prefers semantic retrieval over the original deterministic keyword overlap (`BulletRankingService`): each bullet is embedded and indexed in Qdrant, so a generation retrieves only the bullets that are actually relevant to the job description by vector similarity — this scales better as your bullet library grows and finds matches keyword overlap misses (e.g. "led cloud migration" matching a JD asking for "cloud transformation experience").

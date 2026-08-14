@@ -6,6 +6,10 @@ internal static class AiJsonUtilities
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
+    /// <summary>The options every AI payload is read and written with, shared so a generated JSON
+    /// schema describes exactly the shape the deserializer will accept.</summary>
+    public static JsonSerializerOptions SerializerOptions => Options;
+
     /// <summary>
     /// Pulls a JSON value of type <typeparamref name="T"/> out of an AI response, which may be
     /// wrapped in a code fence, buried in prose, or both. Several readings of the response are
