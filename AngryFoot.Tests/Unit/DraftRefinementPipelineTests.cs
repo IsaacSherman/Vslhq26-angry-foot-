@@ -111,6 +111,28 @@ public class DraftRefinementPipelineTests
         script.ReviserPrompt.Should().NotContain("Shipped the billing service.");
     }
 
+    /// <summary>
+    /// Observed against real AI: given a vague bullet, the reviewer harvested achievements out of
+    /// the grounding block and attributed them to work the bullet was not about. Grounding exists
+    /// to catch overreach, so licensing it as a source of claims defeats the point of the pass.
+    /// </summary>
+    [Fact]
+    public async Task RefineAsync_ForbidsTheReviewerFromImportingOtherBulletsAchievements()
+    {
+        var grounding = new FakeRefinementGrounding("- Cut release time from 20 minutes to under 2.");
+        var script = new AgentScript();
+        var sut = CreateSut(script, grounding);
+
+        await sut.RefineAsync(Request(), CancellationToken.None);
+
+        script.CriticPrompt.Should().Contain(
+            "come from this item's own source material",
+            "claims are sourced from the item being refined, not from the library");
+        script.CriticPrompt.Should().Contain(
+            "do not copy their achievements",
+            "the grounding block has to say what it is not for, or it reads as source material");
+    }
+
     [Fact]
     public async Task RefineAsync_UsesTheGroundingQueryWhenGiven()
     {

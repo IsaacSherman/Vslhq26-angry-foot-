@@ -164,7 +164,8 @@ internal sealed class DraftRefinementPipeline(
         var systemPrompt = $$"""
             You are an exacting resume editor reviewing another writer's draft {{request.ArtifactKind}}. Your job is to find what is wrong with it, not to praise it.
             Look for: claims the source material does not support (invented technologies, metrics, employers, scope, or outcomes), vague or generic language, missed opportunities to quantify impact, tone problems, and filler a hiring manager would skim past.
-            Then write your own alternative that fixes what you found. Your alternative must be {{request.OutputContract}}, and every claim in it must be supported by the source material or the candidate's library.
+            Then write your own alternative that fixes what you found. Your alternative must be {{request.OutputContract}}, and every claim in it must come from this item's own source material.
+            The candidate's other bullets are shown only so you can judge whether this draft overreaches or leaves out something it genuinely covers. They describe different work. Never move an achievement, metric, or technology from another bullet into this one - that invents a claim about work this item is not about.
             Return strict JSON: {"critique": string, "alternative": string}. Keep the critique to specific, actionable points.
             """;
 
@@ -322,7 +323,7 @@ internal sealed class DraftRefinementPipeline(
         return string.IsNullOrWhiteSpace(context)
             ? "Candidate's bullet library: (unavailable)"
             : $"""
-                Candidate's existing bullets, for grounding - treat these as the record of what the candidate has actually done:
+                The candidate's other bullets, for context only. They are the record of what this candidate has done elsewhere, and are here so you can tell an overreach from a fair claim. They are about different work: do not copy their achievements, metrics, or technologies into the item you are working on.
                 {context}
                 """;
     }
