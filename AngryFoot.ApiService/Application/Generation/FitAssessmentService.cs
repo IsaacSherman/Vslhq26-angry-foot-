@@ -59,8 +59,9 @@ internal sealed class FitAssessmentService(
 
         try
         {
-            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-            if (AiJsonUtilities.TryDeserialize<FitPayload>(text, out var payload) && payload is not null)
+            var response = await chatClient.GetJsonResponseAsync<FitPayload>(systemPrompt, userPrompt, cancellationToken, logger);
+            var text = response.RawText;
+            if (response.Value is { } payload)
             {
                 var result = Normalize(payload, fallback);
                 if (result is not null)

@@ -124,8 +124,9 @@ internal sealed partial class BulletRewriteAssistant(
 
         try
         {
-            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-            if (!AiJsonUtilities.TryDeserialize<RewritePayload>(text, out var payload) || payload is null)
+            var response = await chatClient.GetJsonResponseAsync<RewritePayload>(systemPrompt, userPrompt, cancellationToken, logger);
+            var text = response.RawText;
+            if (response.Value is not { } payload)
             {
                 logger.LogWarning(
                     "Bullet rewrite assistant AI response could not be parsed as JSON. Using heuristic fallback. Raw response: {RawResponse}",

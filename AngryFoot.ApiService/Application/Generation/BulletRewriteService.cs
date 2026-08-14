@@ -13,6 +13,14 @@ internal sealed class BulletRewriteService(
 {
     private sealed record RewriteItem(Guid BulletId, string Rewritten);
 
+    /// <summary>
+    /// Envelope for the first draft only. A strict JSON schema has to be rooted in an object, so
+    /// the array the agents exchange between themselves gets wrapped for the one call we can
+    /// constrain. The refinement stages still pass bare arrays, because their bullet set travels
+    /// as a string inside another payload where no schema can reach it.
+    /// </summary>
+    private sealed record RewriteSet(IReadOnlyList<RewriteItem> Bullets);
+
     /// <param name="bench">
     /// Runner-up bullets the ranker did not select. Deep review may swap these in; the initial
     /// draft never sees them.
@@ -34,17 +42,17 @@ internal sealed class BulletRewriteService(
             return fallback;
         }
 
-        var systemPrompt = "You rewrite resume bullets. Preserve factual accuracy. Do not invent technologies, metrics, employers, or responsibilities. Return strict JSON array of { bulletId, rewritten }.";
+        var systemPrompt = "You rewrite resume bullets. Preserve factual accuracy. Do not invent technologies, metrics, employers, or responsibilities. Return strict JSON: { \"bullets\": [ { \"bulletId\", \"rewritten\" } ] } with one entry per bullet given.";
         var userPrompt = $"Job analysis: {AiJsonUtilities.ToJson(analysis)}\nBullets: {AiJsonUtilities.ToJson(ToPayload(selected))}{FormatGuidance(guidance)}";
 
         try
         {
-            var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
-            if (!AiJsonUtilities.TryDeserialize<List<RewriteItem>>(text, out var rewrites) || rewrites is null)
+            var response = await chatClient.GetJsonResponseAsync<RewriteSet>(systemPrompt, userPrompt, cancellationToken, logger);
+            if (response.Value?.Bullets is not { } rewrites)
             {
                 logger.LogWarning(
                     "Bullet rewrite AI response could not be parsed as JSON. Using original bullet text. Raw response: {RawResponse}",
-                    AiJsonUtilities.ForLog(text));
+                    AiJsonUtilities.ForLog(response.RawText));
                 return fallback;
             }
 
@@ -200,7 +208,7 @@ internal sealed class BulletRewriteService(
         return bullets;
     }
 
-    private static string RewrittenTextFor(List<RewriteItem> rewrites, Bullet bullet)
+    private static string RewrittenTextFor(IReadOnlyList<RewriteItem> rewrites, Bullet bullet)
     {
         // First match wins rather than keying the whole list: a repeated bulletId should not throw
         // away an otherwise good rewrite set.
