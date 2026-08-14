@@ -7,10 +7,22 @@ namespace AngryFoot.ApiService.Application.Refinement;
 internal interface IDraftRefinementPipeline
 {
     /// <summary>
-    /// Runs the critique-and-revise pass over an AI draft. Returns null when the pass produced
+    /// Runs the whole critique-and-revise pass unattended. Returns null when the pass produced
     /// nothing worth showing, in which case the caller keeps its original draft.
     /// </summary>
     Task<RefinementDto?> RefineAsync(RefinementRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs the reviewing agent only, so the caller can show the critique and the reviewer's
+    /// alternative to the user and collect their guidance before committing to the later stages.
+    /// </summary>
+    Task<RefinementCritique?> CritiqueAsync(RefinementRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs the revision and synthesis stages against an already-obtained critique, applying
+    /// <see cref="RefinementRequest.UserGuidance"/> if the user supplied any.
+    /// </summary>
+    Task<RefinementDto?> CompleteAsync(RefinementRequest request, RefinementCritique critique, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -41,14 +53,47 @@ internal sealed class DraftRefinementPipeline(
             return null;
         }
 
-        var context = await grounding.BuildContextAsync(request.GroundingQuery ?? request.Draft, cancellationToken);
+        // Unattended, both halves run against one grounding lookup. The gated entry points below
+        // each build their own, because they are separate requests with nothing to share.
+        var context = await BuildContextAsync(request, cancellationToken);
+        var critique = await RunCriticAsync(request, context, cancellationToken);
 
-        var critique = await CritiqueAsync(request, context, cancellationToken);
-        if (critique is null)
+        return critique is null ? null : await CompleteAsync(request, ToCritique(critique), context, cancellationToken);
+    }
+
+    public async Task<RefinementCritique?> CritiqueAsync(RefinementRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Draft))
         {
             return null;
         }
 
+        var context = await BuildContextAsync(request, cancellationToken);
+        var payload = await RunCriticAsync(request, context, cancellationToken);
+
+        return payload is null ? null : ToCritique(payload);
+    }
+
+    public async Task<RefinementDto?> CompleteAsync(
+        RefinementRequest request, RefinementCritique critique, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Draft) || string.IsNullOrWhiteSpace(critique.Critique))
+        {
+            return null;
+        }
+
+        return await CompleteAsync(request, critique, await BuildContextAsync(request, cancellationToken), cancellationToken);
+    }
+
+    private Task<string> BuildContextAsync(RefinementRequest request, CancellationToken cancellationToken)
+        => grounding.BuildContextAsync(request.GroundingQuery ?? request.Draft, cancellationToken);
+
+    private static RefinementCritique ToCritique(CritiquePayload payload)
+        => new(payload.Critique, payload.Alternative);
+
+    private async Task<RefinementDto?> CompleteAsync(
+        RefinementRequest request, RefinementCritique critique, string context, CancellationToken cancellationToken)
+    {
         var versions = new List<DraftVersionDto>
         {
             new(
@@ -65,6 +110,12 @@ internal sealed class DraftRefinementPipeline(
                 "Reviewer's alternative",
                 "Written from scratch by the reviewing agent after critiquing the draft.",
                 critique.Alternative.Trim()));
+        }
+        else
+        {
+            // The only way to lose a version without an accompanying failure, and so the only one
+            // that would otherwise leave a short version list looking like a bug.
+            logger.LogDebug("Deep review reviewer critiqued the draft but offered no alternative, so this pass has no v2.");
         }
 
         var revised = await ReviseAsync(request, critique.Critique, cancellationToken);
@@ -95,10 +146,20 @@ internal sealed class DraftRefinementPipeline(
                 ? DraftVersionLabels.AuthorRevision
                 : DraftVersionLabels.InitialDraft;
 
+        // Version counts vary run to run, so record what a pass actually produced. Anything short
+        // of the full four is explained either by this line plus a preceding warning, or by the
+        // debug line above.
+        logger.LogInformation(
+            "Deep review of the {ArtifactKind} produced {VersionCount} version(s) [{Labels}], recommending '{Recommended}'.",
+            request.ArtifactKind,
+            versions.Count,
+            string.Join(", ", versions.Select(x => x.Label)),
+            recommended);
+
         return new RefinementDto(recommended, critique.Critique, versions);
     }
 
-    private async Task<CritiquePayload?> CritiqueAsync(RefinementRequest request, string context, CancellationToken cancellationToken)
+    private async Task<CritiquePayload?> RunCriticAsync(RefinementRequest request, string context, CancellationToken cancellationToken)
     {
         var systemPrompt = $$"""
             You are an exacting resume editor reviewing another writer's draft {{request.ArtifactKind}}. Your job is to find what is wrong with it, not to praise it.
@@ -149,6 +210,8 @@ internal sealed class DraftRefinementPipeline(
 
             Editor's critique:
             {critique}
+
+            {FormatGuidance(request.UserGuidance)}
             """;
 
         var payload = await CallAsync<RevisionPayload>(systemPrompt, userPrompt, "revision", cancellationToken);
@@ -158,7 +221,7 @@ internal sealed class DraftRefinementPipeline(
     private async Task<(string Text, string Rationale)?> SynthesizeAsync(
         RefinementRequest request,
         string context,
-        CritiquePayload critique,
+        RefinementCritique critique,
         string? revised,
         CancellationToken cancellationToken)
     {
@@ -194,6 +257,8 @@ internal sealed class DraftRefinementPipeline(
 
             Editor's critique of v1:
             {critique.Critique}
+
+            {FormatGuidance(request.UserGuidance)}
             """;
 
         var payload = await CallAsync<SynthesisPayload>(systemPrompt, userPrompt, "synthesis", cancellationToken);
@@ -220,7 +285,10 @@ internal sealed class DraftRefinementPipeline(
                 return payload;
             }
 
-            logger.LogWarning("Deep review {Stage} response could not be parsed as JSON. Skipping that version.", stage);
+            logger.LogWarning(
+                "Deep review {Stage} response could not be parsed as JSON. Skipping that version. Raw response: {RawResponse}",
+                stage,
+                AiJsonUtilities.ForLog(text));
             return null;
         }
         catch (OperationCanceledException)
@@ -232,6 +300,20 @@ internal sealed class DraftRefinementPipeline(
             logger.LogWarning(ex, "Deep review {Stage} call failed. Skipping that version.", stage);
             return null;
         }
+    }
+
+    /// <summary>
+    /// The candidate resolving their own ambiguity beats an agent guessing at it, so guidance is
+    /// stated as binding rather than as one more opinion to weigh.
+    /// </summary>
+    private static string FormatGuidance(string? guidance)
+    {
+        return string.IsNullOrWhiteSpace(guidance)
+            ? string.Empty
+            : $"""
+                The candidate has clarified their own material. Treat this as fact and as binding - where it conflicts with the editor's critique, the candidate is right:
+                {guidance.Trim()}
+                """;
     }
 
     private static string FormatContext(string context)

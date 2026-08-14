@@ -45,7 +45,9 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
                 return HasMetadata(aiResult) ? aiResult : fallback;
             }
 
-            logger.LogWarning("Bullet enrichment AI response could not be parsed. Using heuristic fallback.");
+            logger.LogWarning(
+                "Bullet enrichment AI response could not be parsed. Using heuristic fallback. Raw response: {RawResponse}",
+                AiJsonUtilities.ForLog(responseText));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

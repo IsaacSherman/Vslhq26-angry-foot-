@@ -14,11 +14,28 @@ internal sealed class FakeRefinementPipeline(Func<RefinementRequest, RefinementD
     {
     }
 
+    /// <summary>What <see cref="CritiqueAsync"/> hands back; null makes the gate unavailable.</summary>
+    public RefinementCritique? Critique { get; init; } = new("Too vague.", "The reviewer's version.");
+
     public List<RefinementRequest> Requests { get; } = [];
+    public List<RefinementRequest> CritiqueRequests { get; } = [];
+    public List<RefinementRequest> CompleteRequests { get; } = [];
 
     public Task<RefinementDto?> RefineAsync(RefinementRequest request, CancellationToken cancellationToken)
     {
         Requests.Add(request);
+        return Task.FromResult(factory(request));
+    }
+
+    public Task<RefinementCritique?> CritiqueAsync(RefinementRequest request, CancellationToken cancellationToken)
+    {
+        CritiqueRequests.Add(request);
+        return Task.FromResult(Critique);
+    }
+
+    public Task<RefinementDto?> CompleteAsync(RefinementRequest request, RefinementCritique critique, CancellationToken cancellationToken)
+    {
+        CompleteRequests.Add(request);
         return Task.FromResult(factory(request));
     }
 }

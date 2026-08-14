@@ -161,6 +161,45 @@ How it works:
 
 To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tools/onet/) — `extract_onet.py` then `build_dataset.py` — and copy the regenerated `onet-occupations.json` over the bundled copy. Their comments document every transformation applied to the published data, and `onet-occupations.json` carries a `notes` block recording which values are O\*NET's and which are ours.
 
+### Deep review (critique-and-revise)
+
+By default every AI-backed feature returns its **first** draft. **Deep review** is an opt-in checkbox on `/bullets/edit` and `/generate` that puts that draft through three more agents before you see it, and then hands you the versions to choose between rather than picking for you.
+
+| Label | Agent | What it is |
+|---|---|---|
+| `v1` | the writer | the first draft — exactly what you get with deep review off |
+| `v2` | the reviewer | critiques `v1`, then writes its own alternative from scratch |
+| `v1a` | the writer | revises `v1` after reading **only the critique**, never the reviewer's alternative |
+| `synthesis` | the arbiter | merges the versions into one, and is what's recommended by default |
+
+The reviewer and the arbiter both get grounding from your bullet library, so "you didn't do that" is a claim they can actually make. Retrieval uses Qdrant when it's configured and falls back to term overlap against SQLite otherwise, so deep review works without an embedding deployment.
+
+The stages degrade independently: a failed reviewer abandons the pass and you keep `v1`, and a failed reviser or arbiter just drops that version. Deep review is skipped entirely whenever the draft came from a heuristic fallback rather than the AI — there is nothing to critique.
+
+**On `/generate`,** deep review also rewrites the *shape* of the resume, not just its wording. The refinement stages may reorder your bullets (strongest evidence first), drop a weak one, and swap in a stronger bullet the ranker left on the bench — it's given runner-up candidates for exactly this. It cannot invent a bullet: every id it returns is checked against your library, and the set is capped at your Max Bullets. The initial draft still only rewords, in the ranker's order.
+
+**Telling it what you meant.** The most common failure isn't bad prose, it's an agent confidently misreading an ambiguous bullet. Two places to correct it:
+
+- **`/bullets/edit`** pauses after the critique and shows you `v1`, the critique, and `v2` with a comment box. Whatever you write is treated as fact by the remaining agents and **outranks the critique** — "'systems' here means HVAC controls, not software" stops the misreading before the revision and synthesis bake it in. Leave it blank and the pass carries on unguided.
+- **`/generate`** takes the same clarification up front, in the **Guidance for the AI** box. It reaches every stage including the first draft, so it works with deep review off too.
+
+The pause is entirely client-side: phase one hands its whole payload back and phase two takes it in, so the server never holds a half-finished rewrite.
+
+**Cost and latency.** Deep review is three extra AI calls per refined artifact — and a generation refines two (the bullet set as a whole, then the cover letter), so it's six extra calls, not three per bullet. Measured against `gpt-5-mini`, 6 bullets in the library, Max Bullets 5:
+
+| `POST /api/generations` | Plain | Deep review |
+|---|---|---|
+| AI calls | 3 | 9 |
+| Wall clock | 27-34s | 122-141s (3.6-4.5×) |
+
+Ranges are across repeat runs of the same request — the spread is the model's, not the pipeline's, so treat the upper end as the planning number. Budget **two to two and a half minutes** for a deep-review generation against a small library, growing with bullet count and job-description length.
+
+Version counts vary run to run for the same reason. A stage whose reply cannot be read back is dropped rather than shown as a broken choice, so a deep review may offer three versions instead of four; the raw response is logged when that happens. The web client allows a 10 minute ceiling (`AttemptTimeout` in [`AngryFoot.Web/Program.cs`](AngryFoot.Web/Program.cs), mirrored for tests in [`TestResilience.cs`](AngryFoot.Tests/TestResilience.cs)); `DeepReviewGeneration_WithRealAi_WhenEnabled_FitsInsideItsTimeout` in [`RealAiSmokeTests.cs`](AngryFoot.Tests/RealAiSmokeTests.cs) fails if a change pushes past it. Run it with `RUN_AI_INTEGRATION=1` to re-measure on your own deployment.
+
+The bullet editor is cheaper, and feels faster despite the extra calls, because the gate splits the wait: two calls, then your turn, then two more.
+
+One rough edge worth knowing: the resume stages exchange a JSON array rather than prose, and models are less reliable at that. A version whose JSON doesn't parse back into a valid bullet set is dropped, so a deep-review generation sometimes offers three resume versions where the cover letter offers four. It degrades quietly and the remaining versions are unaffected.
+
 ## Demo
 
 - Video file in this repo: `./demo/demo.mp4`
@@ -171,10 +210,10 @@ To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tool
 - **Single user, no authentication.** The REST API and MCP endpoint are unauthenticated and the database holds exactly one profile, so the app is local-use only; anything that can reach the ports can read and write.
 - **Markdown output only.** Generated resumes and cover letters are Markdown; there is no PDF or DOCX export yet, so final formatting happens in whatever tool you paste into.
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
-- **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI.
+- **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
 - **Fit assessment only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
 - **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
-- **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, but there is no verification pass — generated content should be reviewed before sending to a real employer.
+- **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.
 - **No backfill/reindex job for semantic retrieval.** Bullets are only embedded going forward from whenever `AzureOpenAI:EmbeddingDeployment` is first configured (via `IBulletService`'s create/update/enrich paths), so bullets created before that point won't surface in semantic search until they're edited or re-enriched. Without an embedding deployment configured at all (Qdrant running or not), generation still keyword-scores the entire bullet library on every request, so cost/latency there still scale with library size.

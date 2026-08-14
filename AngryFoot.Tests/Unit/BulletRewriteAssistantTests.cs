@@ -137,6 +137,91 @@ public class BulletRewriteAssistantTests
     }
 
     [Fact]
+    public async Task CritiqueAsync_ReturnsThePhaseOnePayloadTheClientRoundTrips()
+    {
+        var pipeline = new FakeRefinementPipeline();
+        var sut = CreateSut(ChatClientMocks.ReturningText("""{"rewrittenText":"Good.","suggestions":["x"]}"""), pipeline);
+
+        var result = await sut.CritiqueAsync("  worked on stuff  ", CancellationToken.None);
+
+        result!.OriginalText.Should().Be("worked on stuff");
+        result.Draft.Should().Be("Good.");
+        result.Critique.Should().Be("Too vague.");
+        result.Alternative.Should().Be("The reviewer's version.");
+        result.Suggestions.Should().ContainSingle().Which.Should().Be("x");
+        pipeline.CompleteRequests.Should().BeEmpty("phase one stops for the user");
+    }
+
+    [Fact]
+    public async Task CritiqueAsync_OnTheHeuristicFallback_ReturnsNull()
+    {
+        var pipeline = new FakeRefinementPipeline();
+        var sut = CreateSut(ChatClientMocks.ReturningText("plain text, no json"), pipeline);
+
+        var result = await sut.CritiqueAsync("worked on stuff", CancellationToken.None);
+
+        result.Should().BeNull("there is no AI draft to critique");
+        pipeline.CritiqueRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CritiqueAsync_WhenTheReviewerProducesNothing_ReturnsNull()
+    {
+        var pipeline = new FakeRefinementPipeline { Critique = null };
+        var sut = CreateSut(ChatClientMocks.ReturningText("""{"rewrittenText":"Good.","suggestions":["x"]}"""), pipeline);
+
+        var result = await sut.CritiqueAsync("worked on stuff", CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CompleteAsync_AppliesGuidanceAndMakesNoFreshDraft()
+    {
+        var refinement = new RefinementDto(
+            DraftVersionLabels.Synthesis,
+            "Too vague.",
+            [
+                new DraftVersionDto(DraftVersionLabels.InitialDraft, "Initial draft", "", "Good."),
+                new DraftVersionDto(DraftVersionLabels.Synthesis, "Synthesis", "", "Guided best.")
+            ]);
+        var pipeline = new FakeRefinementPipeline(refinement);
+        var chatClient = ChatClientMocks.ReturningText("should never be used");
+        var sut = CreateSut(chatClient, pipeline);
+
+        var result = await sut.CompleteAsync(
+            new CompleteBulletRewriteRequest("worked on stuff", "Good.", "Too vague.", "Reviewer's.", ["x"], "  it means HVAC  "),
+            CancellationToken.None);
+
+        result.RewrittenText.Should().Be("Guided best.");
+        result.Refinement.Should().BeSameAs(refinement);
+        result.Suggestions.Should().ContainSingle().Which.Should().Be("x", "phase one's suggestions are carried through");
+
+        pipeline.CompleteRequests.Should().ContainSingle().Which.UserGuidance.Should().Be("it means HVAC");
+        chatClient.Verify(
+            x => x.GetResponseAsync(
+                Moq.It.IsAny<IEnumerable<Microsoft.Extensions.AI.ChatMessage>>(),
+                Moq.It.IsAny<Microsoft.Extensions.AI.ChatOptions?>(),
+                Moq.It.IsAny<CancellationToken>()),
+            Moq.Times.Never,
+            "phase two reuses phase one's draft rather than paying for another");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WithBlankGuidance_RunsUnguided()
+    {
+        var pipeline = new FakeRefinementPipeline();
+        var sut = CreateSut(ChatClientMocks.ReturningText("unused"), pipeline);
+
+        var result = await sut.CompleteAsync(
+            new CompleteBulletRewriteRequest("worked on stuff", "Good.", "Too vague.", null, [], "   "),
+            CancellationToken.None);
+
+        pipeline.CompleteRequests.Should().ContainSingle().Which.UserGuidance.Should().BeNull();
+        result.RewrittenText.Should().Be("Good.", "with no versions to choose from the draft stands");
+    }
+
+    [Fact]
     public async Task RewriteAsync_WithWhitespaceInput_ReturnsFallbackWithoutCallingAi()
     {
         var chatClient = ChatClientMocks.ReturningText("should never be used");

@@ -31,6 +31,15 @@
                 <label class="form-label">Job Description</label>
                 <textarea class="form-control" rows="10" @bind="jobDescription"></textarea>
             </div>
+            <div class="col-12">
+                <label class="form-label">Guidance for the AI (optional)</label>
+                <textarea class="form-control" rows="3" @bind="guidance"
+                          placeholder="Clarify anything ambiguous in your bullets - e.g. &quot;'systems' means HVAC controls, not software&quot;, or &quot;ACME was a 4-person startup, not the toy company&quot;."></textarea>
+                <div class="form-text">
+                    Treated as fact by every AI stage, with or without deep review. Use it when a bullet reads one way to you
+                    and another way to a stranger.
+                </div>
+            </div>
         </div>
 
         <div class="mt-3">
@@ -54,7 +63,8 @@
             </div>
             <div class="form-text">
                 Deep review critiques, revises, and merges both the bullet rewrites and the cover letter, then lets you
-                pick between the versions. Six extra AI calls, so generation takes several minutes instead of 30-90 seconds.
+                pick between the versions. It can also reorder your bullets and swap in stronger ones the ranker left out.
+                Six extra AI calls, so generation takes several minutes instead of 30-90 seconds.
             </div>
         </div>
     </div>
@@ -183,6 +193,7 @@
     private string? jobTitle;
     private string? company;
     private string jobDescription = string.Empty;
+    private string? guidance;
     private int maxBullets = 10;
 
     private bool isAnalyzing;
@@ -283,7 +294,8 @@
                 jobTitle?.Trim(),
                 company?.Trim(),
                 maxBullets,
-                deepReview));
+                deepReview,
+                guidance?.Trim()));
 
             analysis = result.Analysis;
             resumeVersionLabel = result.ResumeRefinement?.RecommendedLabel;

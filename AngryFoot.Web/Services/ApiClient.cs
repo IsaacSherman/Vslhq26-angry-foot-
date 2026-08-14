@@ -52,6 +52,29 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
     }
 
+    /// <summary>
+    /// Phase one of a guided deep review. Null when there was no AI draft to critique, in which
+    /// case the caller should fall back to <see cref="RewriteBulletAsync"/>.
+    /// </summary>
+    public async Task<BulletRewriteCritiqueResponse?> CritiqueBulletRewriteAsync(string bulletText, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite/critique", new RewriteBulletRequest(bulletText, DeepReview: true), cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletRewriteCritiqueResponse>(cancellationToken);
+    }
+
+    public async Task<RewriteBulletResponse> CompleteBulletRewriteAsync(CompleteBulletRewriteRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite/complete", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
+    }
+
     public async Task<bool> DeleteBulletAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.DeleteAsync($"/api/bullets/{id}", cancellationToken);

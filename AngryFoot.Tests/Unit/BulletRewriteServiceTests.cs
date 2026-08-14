@@ -20,7 +20,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText("should never be used");
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
-        var result = (await sut.RewriteAsync(EmptyAnalysis, [], deepReview: false, CancellationToken.None)).Recommended;
+        var result = (await sut.RewriteAsync(EmptyAnalysis, [], bench: [], guidance: null, deepReview: false, CancellationToken.None)).Recommended;
 
         result.Should().BeEmpty();
         chatClient.Verify(
@@ -41,7 +41,7 @@ public class BulletRewriteServiceTests
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
         var selected = new[] { Ranked(rewrittenId, "original one"), Ranked(untouchedId, "original two") };
-        var result = (await sut.RewriteAsync(EmptyAnalysis, selected, deepReview: false, CancellationToken.None)).Recommended;
+        var result = (await sut.RewriteAsync(EmptyAnalysis, selected, bench: [], guidance: null, deepReview: false, CancellationToken.None)).Recommended;
 
         result.Should().HaveCount(2);
         result[0].Text.Should().Be("Polished text.", "the AI rewrite is trimmed and applied by id");
@@ -58,7 +58,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText(json);
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
-        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], deepReview: false, CancellationToken.None)).Recommended;
+        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], bench: [], guidance: null, deepReview: false, CancellationToken.None)).Recommended;
 
         result.Should().ContainSingle().Which.Text.Should().Be("original");
     }
@@ -69,7 +69,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText("not json at all");
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
-        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], deepReview: false, CancellationToken.None)).Recommended;
+        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], bench: [], guidance: null, deepReview: false, CancellationToken.None)).Recommended;
 
         result.Should().ContainSingle().Which.Text.Should().Be("keep me");
     }
@@ -80,7 +80,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.Throwing(new HttpRequestException("boom"));
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
-        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], deepReview: false, CancellationToken.None)).Recommended;
+        var result = (await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], bench: [], guidance: null, deepReview: false, CancellationToken.None)).Recommended;
 
         result.Should().ContainSingle().Which.Text.Should().Be("keep me");
     }
@@ -99,7 +99,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText($$"""[{"bulletId":"{{id}}","rewritten":"Draft text."}]""");
         var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
 
-        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], deepReview: true, CancellationToken.None);
+        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], bench: [], guidance: null, deepReview: true, CancellationToken.None);
 
         result.Recommended.Should().ContainSingle().Which.Text.Should().Be("Merged text.");
         result.VersionBullets.Keys.Should().BeEquivalentTo([DraftVersionLabels.InitialDraft, DraftVersionLabels.Synthesis]);
@@ -122,7 +122,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText($$"""[{"bulletId":"{{id}}","rewritten":"Draft text."}]""");
         var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
 
-        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], deepReview: true, CancellationToken.None);
+        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], bench: [], guidance: null, deepReview: true, CancellationToken.None);
 
         result.Refinement!.Versions.Select(x => x.Label).Should().Equal(
             DraftVersionLabels.InitialDraft, DraftVersionLabels.AuthorRevision);
@@ -146,7 +146,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText($$"""[{"bulletId":"{{id}}","rewritten":"Draft text."}]""");
         var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
 
-        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], deepReview: true, CancellationToken.None);
+        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "original")], bench: [], guidance: null, deepReview: true, CancellationToken.None);
 
         result.Refinement.Should().BeNull("one surviving version is not a choice");
         result.Recommended[0].Text.Should().Be("Draft text.");
@@ -159,11 +159,130 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.ReturningText("not json at all");
         var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
 
-        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], deepReview: true, CancellationToken.None);
+        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "keep me")], bench: [], guidance: null, deepReview: true, CancellationToken.None);
 
         pipeline.Requests.Should().BeEmpty();
         result.Recommended.Should().ContainSingle().Which.Text.Should().Be("keep me");
     }
+
+    [Fact]
+    public async Task RewriteAsync_WithDeepReview_HonoursTheOrderAVersionComesBackIn()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var reordered = $$"""
+            [{"bulletId":"{{second}}","rewritten":"Now leading."},{"bulletId":"{{first}}","rewritten":"Now second."}]
+            """;
+        var draft = $$"""
+            [{"bulletId":"{{first}}","rewritten":"A."},{"bulletId":"{{second}}","rewritten":"B."}]
+            """;
+        var pipeline = new FakeRefinementPipeline(Versions(draft, reordered));
+        var chatClient = ChatClientMocks.ReturningText(draft);
+        var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
+
+        var selected = new[] { Ranked(first, "one"), Ranked(second, "two") };
+        var result = await sut.RewriteAsync(EmptyAnalysis, selected, bench: [], guidance: null, deepReview: true, CancellationToken.None);
+
+        result.Recommended.Select(x => x.Bullet.Id).Should().Equal(
+            new[] { second, first }, "a resume is read top-down, so sequencing is the refinement's call");
+        result.Recommended[0].Text.Should().Be("Now leading.");
+        result.VersionBullets[DraftVersionLabels.InitialDraft].Select(x => x.Bullet.Id).Should().Equal(
+            new[] { first, second }, "the initial draft keeps the ranker's order");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_WithDeepReview_CanSwapInABenchBullet()
+    {
+        var selectedId = Guid.NewGuid();
+        var benchId = Guid.NewGuid();
+        var draft = $$"""[{"bulletId":"{{selectedId}}","rewritten":"The weak one."}]""";
+        var swapped = $$"""[{"bulletId":"{{benchId}}","rewritten":"The stronger one."}]""";
+        var pipeline = new FakeRefinementPipeline(Versions(draft, swapped));
+        var chatClient = ChatClientMocks.ReturningText(draft);
+        var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
+
+        var result = await sut.RewriteAsync(
+            EmptyAnalysis,
+            [Ranked(selectedId, "weak")],
+            [Ranked(benchId, "strong")],
+            guidance: null,
+            deepReview: true,
+            CancellationToken.None);
+
+        result.Recommended.Should().ContainSingle().Which.Bullet.Id.Should().Be(benchId);
+        result.Recommended[0].Text.Should().Be("The stronger one.");
+        pipeline.Requests.Should().ContainSingle().Which.SourceMaterial.Should().Contain(
+            "strong", "the bench has to be in the prompt for the agents to swap from it");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_WithDeepReview_IgnoresBulletsOutsideTheCandidatePool()
+    {
+        var id = Guid.NewGuid();
+        var draft = $$"""[{"bulletId":"{{id}}","rewritten":"Real bullet."}]""";
+        var hallucinated = $$"""
+            [{"bulletId":"{{Guid.NewGuid()}}","rewritten":"Invented achievement."},{"bulletId":"{{id}}","rewritten":"Real bullet, polished."}]
+            """;
+        var pipeline = new FakeRefinementPipeline(Versions(draft, hallucinated));
+        var chatClient = ChatClientMocks.ReturningText(draft);
+        var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
+
+        var result = await sut.RewriteAsync(EmptyAnalysis, [Ranked(id, "real")], bench: [], guidance: null, deepReview: true, CancellationToken.None);
+
+        result.Recommended.Should().ContainSingle().Which.Text.Should().Be(
+            "Real bullet, polished.",
+            "an id the candidate does not own is a hallucination, not a bullet");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_WithDeepReview_CapsAVersionAtTheResumesBulletCount()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var draft = $$"""[{"bulletId":"{{first}}","rewritten":"A."}]""";
+        var padded = $$"""
+            [{"bulletId":"{{first}}","rewritten":"A."},{"bulletId":"{{second}}","rewritten":"B."},{"bulletId":"{{first}}","rewritten":"A again."}]
+            """;
+        var pipeline = new FakeRefinementPipeline(Versions(draft, padded));
+        var chatClient = ChatClientMocks.ReturningText(draft);
+        var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
+
+        var result = await sut.RewriteAsync(
+            EmptyAnalysis, [Ranked(first, "one")], [Ranked(second, "two")], guidance: null, deepReview: true, CancellationToken.None);
+
+        result.Recommended.Should().ContainSingle("the resume holds one bullet, so a padded version is trimmed to one");
+    }
+
+    [Fact]
+    public async Task RewriteAsync_PassesGuidanceToTheDraftAndTheRefinement()
+    {
+        var id = Guid.NewGuid();
+        var draft = $$"""[{"bulletId":"{{id}}","rewritten":"Draft."}]""";
+        var pipeline = new FakeRefinementPipeline(Versions(draft, $$"""[{"bulletId":"{{id}}","rewritten":"Merged."}]"""));
+        var chatClient = ChatClientMocks.ReturningText(draft);
+        var sut = new BulletRewriteService(chatClient.Object, pipeline, NullLogger<BulletRewriteService>.Instance);
+
+        await sut.RewriteAsync(
+            EmptyAnalysis, [Ranked(id, "one")], bench: [], guidance: "ACME was a 4-person startup", deepReview: true, CancellationToken.None);
+
+        pipeline.Requests.Should().ContainSingle().Which.UserGuidance.Should().Be("ACME was a 4-person startup");
+        chatClient.Verify(
+            x => x.GetResponseAsync(
+                Moq.It.Is<IEnumerable<Microsoft.Extensions.AI.ChatMessage>>(
+                    messages => messages.Any(m => m.Text.Contains("ACME was a 4-person startup"))),
+                Moq.It.IsAny<Microsoft.Extensions.AI.ChatOptions?>(),
+                Moq.It.IsAny<CancellationToken>()),
+            Moq.Times.Once,
+            "guidance shapes the first draft too, so it is useful without deep review");
+    }
+
+    private static RefinementDto Versions(string draftJson, string synthesisJson) => new(
+        DraftVersionLabels.Synthesis,
+        "Vague.",
+        [
+            new DraftVersionDto(DraftVersionLabels.InitialDraft, "Initial draft", "", draftJson),
+            new DraftVersionDto(DraftVersionLabels.Synthesis, "Synthesis", "", synthesisJson)
+        ]);
 
     [Fact]
     public async Task RewriteAsync_WhenCancelled_PropagatesCancellation()
@@ -173,7 +292,7 @@ public class BulletRewriteServiceTests
         var chatClient = ChatClientMocks.Throwing(new OperationCanceledException(cts.Token));
         var sut = new BulletRewriteService(chatClient.Object, new FakeRefinementPipeline(), NullLogger<BulletRewriteService>.Instance);
 
-        var act = () => sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "text")], deepReview: false, cts.Token);
+        var act = () => sut.RewriteAsync(EmptyAnalysis, [Ranked(Guid.NewGuid(), "text")], bench: [], guidance: null, deepReview: false, cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

@@ -4,12 +4,18 @@ namespace AngryFoot.Contracts;
 /// Opt in to the critique-and-revise pass over the bullet rewrites and the cover letter. Six extra
 /// AI calls; see the README's "Deep review" section for the latency this adds.
 /// </param>
+/// <param name="Guidance">
+/// The candidate's own clarification of anything ambiguous in their bullets - what an acronym
+/// means, which sense of a word applies, what a project actually was. Treated as fact by every
+/// AI stage, and applied with or without <paramref name="DeepReview"/>.
+/// </param>
 public sealed record GenerationRequest(
     string JobDescription,
     string? JobTitle,
     string? Company,
     int? MaxBullets,
-    bool DeepReview = false);
+    bool DeepReview = false,
+    string? Guidance = null);
 
 public sealed record JobAnalysisDto(
     IReadOnlyList<string> RequiredSkills,

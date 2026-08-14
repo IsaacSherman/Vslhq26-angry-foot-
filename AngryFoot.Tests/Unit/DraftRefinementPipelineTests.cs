@@ -123,6 +123,81 @@ public class DraftRefinementPipelineTests
     }
 
     [Fact]
+    public async Task CritiqueAsync_StopsAfterTheReviewer()
+    {
+        var script = new AgentScript();
+        var sut = CreateSut(script);
+
+        var critique = await sut.CritiqueAsync(Request(), CancellationToken.None);
+
+        critique!.Critique.Should().Be("No metric, and 'various systems' is vague.");
+        critique.Alternative.Should().Be("The reviewer's bullet.");
+        script.Prompts.Should().ContainSingle("the revision and synthesis stages wait for the user");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_RunsTheRemainingStagesAgainstAnExistingCritique()
+    {
+        var script = new AgentScript();
+        var sut = CreateSut(script);
+
+        var result = await sut.CompleteAsync(
+            Request(),
+            new RefinementCritique("Too vague.", "The reviewer's bullet."),
+            CancellationToken.None);
+
+        result!.Versions.Select(x => x.Label).Should().Equal(
+            DraftVersionLabels.InitialDraft,
+            DraftVersionLabels.CriticAlternative,
+            DraftVersionLabels.AuthorRevision,
+            DraftVersionLabels.Synthesis);
+        script.Prompts.Should().HaveCount(2, "the reviewer already ran");
+        script.ReviserPrompt.Should().Contain("Too vague.");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_TreatsUserGuidanceAsBindingForTheRemainingAgents()
+    {
+        var script = new AgentScript();
+        var sut = CreateSut(script);
+
+        await sut.CompleteAsync(
+            Request() with { UserGuidance = "  'systems' means HVAC controls, not software  " },
+            new RefinementCritique("Too vague.", "The reviewer's bullet."),
+            CancellationToken.None);
+
+        foreach (var prompt in new[] { script.ReviserPrompt, script.ArbiterPrompt })
+        {
+            prompt.Should().Contain("'systems' means HVAC controls, not software");
+            prompt.Should().Contain("binding", "guidance outranks the critique rather than competing with it");
+        }
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WithoutGuidance_SaysNothingAboutIt()
+    {
+        var script = new AgentScript();
+        var sut = CreateSut(script);
+
+        await sut.CompleteAsync(Request(), new RefinementCritique("Too vague.", null), CancellationToken.None);
+
+        script.ReviserPrompt.Should().NotContain("clarified");
+        script.ArbiterPrompt.Should().NotContain("clarified");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WithABlankCritique_ReturnsNullWithoutCallingAi()
+    {
+        var script = new AgentScript();
+        var sut = CreateSut(script);
+
+        var result = await sut.CompleteAsync(Request(), new RefinementCritique("   ", null), CancellationToken.None);
+
+        result.Should().BeNull();
+        script.Prompts.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task RefineAsync_WhenTheCritiqueFails_ReturnsNull()
     {
         var sut = CreateSut(new AgentScript { Critic = "not json" });

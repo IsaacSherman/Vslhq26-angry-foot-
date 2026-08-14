@@ -46,11 +46,49 @@
     <div class="form-text">
         Deep review has a second agent critique the rewrite, lets the first agent revise it, and a third merge the results.
         Three extra AI calls, so expect roughly four times the wait - and a choice of versions instead of one answer.
+        It pauses after the critique so you can correct anything the reviewer misread.
     </div>
 </div>
 
 <WorkingIndicator Visible="@isRewriting" Message="@RewriteProgressMessage" />
+<WorkingIndicator Visible="@isCompleting" Message="Revising and merging with your guidance. Two AI calls, usually under a minute." />
 <WorkingIndicator Visible="@isSaving" Message="Saving and enriching the bullet with AI-extracted skills, technologies, and tags..." />
+
+@if (critique is not null)
+{
+    <div class="card border-primary mb-3">
+        <div class="card-header">The reviewer's take &mdash; anything it got wrong?</div>
+        <div class="card-body">
+            <h6>Your bullet, rewritten (v1)</h6>
+            <p>@critique.Draft</p>
+
+            <h6>What the reviewer said</h6>
+            <p style="white-space: pre-wrap;">@critique.Critique</p>
+
+            @if (!string.IsNullOrWhiteSpace(critique.Alternative))
+            {
+                <h6>The reviewer's own attempt (v2)</h6>
+                <p>@critique.Alternative</p>
+            }
+
+            <label class="form-label" for="guidance">Your guidance (optional)</label>
+            <textarea class="form-control" id="guidance" rows="3" @bind="guidance" disabled="@isCompleting"
+                      placeholder="e.g. &quot;systems&quot; here means HVAC controls, not software - the reviewer read it wrong"></textarea>
+            <div class="form-text mb-3">
+                Anything you write here is treated as fact by the remaining agents and outranks the critique.
+                Leave it blank to carry on without it.
+            </div>
+
+            <button class="btn btn-primary" @onclick="CompleteRewriteAsync" disabled="@isCompleting">
+                @if (isCompleting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                }
+                Revise and merge
+            </button>
+        </div>
+    </div>
+}
 
 @if (rewriteResult is not null)
 {
@@ -100,9 +138,12 @@
     private List<string> knownEmployers = [];
     private bool isSaving;
     private bool isRewriting;
+    private bool isCompleting;
     private bool deepReview;
     private string? errorMessage;
     private RewriteBulletResponse? rewriteResult;
+    private BulletRewriteCritiqueResponse? critique;
+    private string? guidance;
     private string? selectedVersionLabel;
 
     private bool IsCreate => !BulletId.HasValue;
@@ -128,7 +169,7 @@
     }
 
     private string RewriteProgressMessage => deepReview
-        ? "Drafting a rewrite, then critiquing, revising, and merging it. Four AI calls, so this usually takes a couple of minutes."
+        ? "Drafting a rewrite and having it reviewed. Two AI calls, then it pauses for your input."
         : "Asking the AI for an improved rewrite and suggestions...";
 
     protected override async Task OnInitializedAsync()
@@ -153,6 +194,8 @@
     {
         errorMessage = null;
         rewriteResult = null;
+        critique = null;
+        guidance = null;
         selectedVersionLabel = null;
         if (BulletId is null)
         {
@@ -183,10 +226,25 @@
         }
 
         isRewriting = true;
+        rewriteResult = null;
+        critique = null;
+        guidance = null;
 
         try
         {
-            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim(), deepReview);
+            if (deepReview)
+            {
+                // Stop after the critique so the user can correct a misreading before the
+                // revision and synthesis stages bake it in.
+                critique = await ApiClient.CritiqueBulletRewriteAsync(bulletText.Trim());
+                if (critique is not null)
+                {
+                    return;
+                }
+                // No AI draft to critique; fall through to the plain heuristic rewrite.
+            }
+
+            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim(), deepReview: false);
             selectedVersionLabel = rewriteResult.Refinement?.RecommendedLabel;
         }
         catch (Exception ex)
@@ -196,6 +254,39 @@
         finally
         {
             isRewriting = false;
+        }
+    }
+
+    private async Task CompleteRewriteAsync()
+    {
+        if (critique is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isCompleting = true;
+
+        try
+        {
+            rewriteResult = await ApiClient.CompleteBulletRewriteAsync(new CompleteBulletRewriteRequest(
+                critique.OriginalText,
+                critique.Draft,
+                critique.Critique,
+                critique.Alternative,
+                critique.Suggestions,
+                guidance));
+
+            selectedVersionLabel = rewriteResult.Refinement?.RecommendedLabel;
+            critique = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isCompleting = false;
         }
     }
 

@@ -31,7 +31,9 @@ public sealed class HeuristicJobAnalyzer(IChatClient chatClient, ILogger<Heurist
                 return Normalize(aiResult);
             }
 
-            logger.LogWarning("Job analysis AI response could not be parsed as JSON. Using heuristic fallback. Response starts with: {ResponseStart}", Truncate(text, 200));
+            logger.LogWarning(
+                "Job analysis AI response could not be parsed as JSON. Using heuristic fallback. Raw response: {RawResponse}",
+                AiJsonUtilities.ForLog(text));
         }
         catch (OperationCanceledException)
         {

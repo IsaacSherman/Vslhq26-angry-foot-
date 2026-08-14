@@ -13,9 +13,16 @@ internal sealed class BulletRewriteService(
 {
     private sealed record RewriteItem(Guid BulletId, string Rewritten);
 
+    /// <param name="bench">
+    /// Runner-up bullets the ranker did not select. Deep review may swap these in; the initial
+    /// draft never sees them.
+    /// </param>
+    /// <param name="guidance">The candidate's clarification of their own material, if any.</param>
     public async Task<BulletRewriteOutcome> RewriteAsync(
         JobAnalysisDto analysis,
         IReadOnlyList<RankedBullet> selected,
+        IReadOnlyList<RankedBullet> bench,
+        string? guidance,
         bool deepReview,
         CancellationToken cancellationToken)
     {
@@ -28,21 +35,27 @@ internal sealed class BulletRewriteService(
         }
 
         var systemPrompt = "You rewrite resume bullets. Preserve factual accuracy. Do not invent technologies, metrics, employers, or responsibilities. Return strict JSON array of { bulletId, rewritten }.";
-        var userPrompt = $"Job analysis: {AiJsonUtilities.ToJson(analysis)}\nBullets: {AiJsonUtilities.ToJson(selected.Select(x => new { bulletId = x.Bullet.Id, bulletText = x.Bullet.BulletText }))}";
+        var userPrompt = $"Job analysis: {AiJsonUtilities.ToJson(analysis)}\nBullets: {AiJsonUtilities.ToJson(ToPayload(selected))}{FormatGuidance(guidance)}";
 
         try
         {
             var text = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, cancellationToken);
             if (!AiJsonUtilities.TryDeserialize<List<RewriteItem>>(text, out var rewrites) || rewrites is null)
             {
-                logger.LogWarning("Bullet rewrite AI response could not be parsed as JSON. Using original bullet text.");
+                logger.LogWarning(
+                    "Bullet rewrite AI response could not be parsed as JSON. Using original bullet text. Raw response: {RawResponse}",
+                    AiJsonUtilities.ForLog(text));
                 return fallback;
             }
 
-            var applied = ApplyRewrites(selected, rewrites);
+            // The first draft only rewords, in the ranker's order - the behaviour that predates
+            // deep review, and the one the no-AI fallback path has to stay compatible with.
+            var applied = selected
+                .Select(x => new RewrittenBullet(x.Bullet, RewrittenTextFor(rewrites, x.Bullet)))
+                .ToArray();
 
             return deepReview
-                ? await RefineAsync(analysis, selected, applied, cancellationToken)
+                ? await RefineAsync(analysis, selected, bench, applied, guidance, cancellationToken)
                 : BulletRewriteOutcome.WithoutRefinement(applied);
         }
         catch (OperationCanceledException)
@@ -58,23 +71,38 @@ internal sealed class BulletRewriteService(
 
     /// <summary>
     /// Refines the whole rewrite set as one draft rather than bullet by bullet, so deep review
-    /// costs three extra calls per generation instead of three per bullet.
+    /// costs three extra calls per generation instead of three per bullet. Unlike the first draft,
+    /// these stages may reorder the set and swap bench bullets in for weak ones - a resume is read
+    /// top-down, so sequencing is as much of an editorial choice as wording.
     /// </summary>
     private async Task<BulletRewriteOutcome> RefineAsync(
         JobAnalysisDto analysis,
         IReadOnlyList<RankedBullet> selected,
+        IReadOnlyList<RankedBullet> bench,
         IReadOnlyList<RewrittenBullet> applied,
+        string? guidance,
         CancellationToken cancellationToken)
     {
-        var originals = selected.Select(x => new { bulletId = x.Bullet.Id, bulletText = x.Bullet.BulletText });
+        var pool = selected.Concat(bench).ToDictionary(x => x.Bullet.Id, x => x.Bullet);
+
+        var sourceMaterial = $"""
+            Job analysis: {AiJsonUtilities.ToJson(analysis)}
+            The bullets currently on the resume, in order, as the candidate actually wrote them: {AiJsonUtilities.ToJson(ToPayload(selected))}
+            Other bullets in the candidate's library that were not selected, available to swap in: {AiJsonUtilities.ToJson(ToPayload(bench))}
+            The resume holds exactly {selected.Count} bullet(s). Every bulletId you return must come from one of the two lists above.
+            """;
 
         var refinement = await refinementPipeline.RefineAsync(
             new RefinementRequest(
-                ArtifactKind: "set of resume bullet rewrites",
-                OutputContract: "a JSON array of objects with exactly the fields bulletId and rewritten - one entry for every bullet id given, each rewritten value a single plain-text resume bullet",
-                SourceMaterial: $"Job analysis: {AiJsonUtilities.ToJson(analysis)}\nThe bullets the candidate actually wrote: {AiJsonUtilities.ToJson(originals)}",
+                ArtifactKind: "ordered set of resume bullets",
+                OutputContract:
+                    $"a JSON array of at most {selected.Count} objects with exactly the fields bulletId and rewritten, each rewritten value a single plain-text resume bullet. " +
+                    "Array order is the order the bullets appear on the resume, strongest evidence for this job first. " +
+                    "You may reorder them, and you may drop a weak bullet and swap in a stronger one from the unselected list, but only bulletIds from the lists provided",
+                SourceMaterial: sourceMaterial,
                 Draft: ToDraftJson(applied),
-                GroundingQuery: string.Join(" ", selected.Select(x => x.Bullet.BulletText))),
+                GroundingQuery: string.Join(" ", selected.Select(x => x.Bullet.BulletText)),
+                UserGuidance: guidance),
             cancellationToken);
 
         if (refinement is null)
@@ -82,26 +110,26 @@ internal sealed class BulletRewriteService(
             return BulletRewriteOutcome.WithoutRefinement(applied);
         }
 
-        // A version is only offerable if its JSON parses back into a rewrite set; the rest are
-        // dropped rather than shown as an empty choice.
+        // A version is only offerable if its JSON parses back into a usable bullet set; the rest
+        // are dropped rather than shown as an empty choice.
         var versionBullets = new Dictionary<string, IReadOnlyList<RewrittenBullet>>();
         var usableVersions = new List<DraftVersionDto>();
 
         foreach (var version in refinement.Versions)
         {
-            if (!AiJsonUtilities.TryDeserialize<List<RewriteItem>>(version.Text, out var items) || items is null)
+            var bullets = TryReadBulletSet(version, pool, selected.Count);
+            if (bullets is null)
             {
-                logger.LogWarning("Deep review version '{Label}' was not a parseable rewrite set. Dropping it.", version.Label);
                 continue;
             }
 
-            versionBullets[version.Label] = ApplyRewrites(selected, items);
+            versionBullets[version.Label] = bullets;
             usableVersions.Add(version);
         }
 
         if (usableVersions.Count < 2)
         {
-            logger.LogWarning("Deep review produced no alternative rewrite set to choose from. Using the initial draft.");
+            logger.LogWarning("Deep review produced no alternative bullet set to choose from. Using the initial draft.");
             return BulletRewriteOutcome.WithoutRefinement(applied);
         }
 
@@ -117,21 +145,76 @@ internal sealed class BulletRewriteService(
             versionBullets);
     }
 
-    private static IReadOnlyList<RewrittenBullet> ApplyRewrites(IReadOnlyList<RankedBullet> selected, List<RewriteItem> rewrites)
+    /// <summary>
+    /// Reads one refined version back into bullets, honouring the order it came in. Ids outside
+    /// the pool are hallucinations and are dropped; repeats keep their first appearance; the set
+    /// is capped at the resume's bullet count so a runaway version cannot pad the document.
+    /// </summary>
+    private IReadOnlyList<RewrittenBullet>? TryReadBulletSet(
+        DraftVersionDto version, IReadOnlyDictionary<Guid, Bullet> pool, int maxBullets)
     {
-        // Grouped rather than keyed directly: deep review parses up to four AI-authored payloads,
-        // and one repeated bulletId should cost that version, not the whole generation.
-        var rewrittenById = rewrites
-            .Where(x => x.BulletId != Guid.Empty && !string.IsNullOrWhiteSpace(x.Rewritten))
-            .GroupBy(x => x.BulletId)
-            .ToDictionary(x => x.Key, x => x.First().Rewritten.Trim());
+        if (!AiJsonUtilities.TryDeserialize<List<RewriteItem>>(version.Text, out var items) || items is null)
+        {
+            logger.LogWarning(
+                "Deep review version '{Label}' was not a parseable bullet set. Dropping it. Raw version text: {RawResponse}",
+                version.Label,
+                AiJsonUtilities.ForLog(version.Text));
+            return null;
+        }
 
-        return selected
-            .Select(x => rewrittenById.TryGetValue(x.Bullet.Id, out var rewritten)
-                ? new RewrittenBullet(x.Bullet, rewritten)
-                : new RewrittenBullet(x.Bullet, x.Bullet.BulletText))
-            .ToArray();
+        var seen = new HashSet<Guid>();
+        var bullets = new List<RewrittenBullet>();
+
+        foreach (var item in items)
+        {
+            if (!pool.TryGetValue(item.BulletId, out var bullet))
+            {
+                logger.LogWarning(
+                    "Deep review version '{Label}' referenced bullet {BulletId}, which is not in the candidate pool. Skipping it.",
+                    version.Label,
+                    item.BulletId);
+                continue;
+            }
+
+            if (!seen.Add(item.BulletId))
+            {
+                continue;
+            }
+
+            bullets.Add(new RewrittenBullet(
+                bullet,
+                string.IsNullOrWhiteSpace(item.Rewritten) ? bullet.BulletText : item.Rewritten.Trim()));
+
+            if (bullets.Count == maxBullets)
+            {
+                break;
+            }
+        }
+
+        if (bullets.Count == 0)
+        {
+            logger.LogWarning("Deep review version '{Label}' selected no usable bullets. Dropping it.", version.Label);
+            return null;
+        }
+
+        return bullets;
     }
+
+    private static string RewrittenTextFor(List<RewriteItem> rewrites, Bullet bullet)
+    {
+        // First match wins rather than keying the whole list: a repeated bulletId should not throw
+        // away an otherwise good rewrite set.
+        var match = rewrites.FirstOrDefault(x => x.BulletId == bullet.Id && !string.IsNullOrWhiteSpace(x.Rewritten));
+        return match is null ? bullet.BulletText : match.Rewritten.Trim();
+    }
+
+    private static object ToPayload(IReadOnlyList<RankedBullet> bullets)
+        => bullets.Select(x => new { bulletId = x.Bullet.Id, bulletText = x.Bullet.BulletText });
+
+    private static string FormatGuidance(string? guidance)
+        => string.IsNullOrWhiteSpace(guidance)
+            ? string.Empty
+            : $"\nThe candidate has clarified what their bullets mean. Treat this as fact: {guidance.Trim()}";
 
     private static string ToDraftJson(IReadOnlyList<RewrittenBullet> bullets)
         => AiJsonUtilities.ToJson(bullets.Select(x => new RewriteItem(x.Bullet.Id, x.Text)));

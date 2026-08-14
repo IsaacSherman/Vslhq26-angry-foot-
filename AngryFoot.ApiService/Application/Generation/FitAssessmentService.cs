@@ -69,7 +69,9 @@ internal sealed class FitAssessmentService(
                 }
             }
 
-            logger.LogWarning("Fit assessment AI response could not be parsed. Using heuristic fallback.");
+            logger.LogWarning(
+                "Fit assessment AI response could not be parsed. Using heuristic fallback. Raw response: {RawResponse}",
+                AiJsonUtilities.ForLog(text));
         }
         catch (OperationCanceledException)
         {

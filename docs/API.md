@@ -64,6 +64,75 @@ Deletes bullet. Returns `204` or `404`.
 ### POST `/api/bullets/{id}/enrich`
 Force re-enriches metadata for an existing bullet. Returns `200` with `BulletDto` or `404`.
 
+### POST `/api/bullets/rewrite`
+Suggests an improved rewrite without saving anything. Nothing is persisted.
+
+Request:
+```json
+{ "bulletText": "did the migration", "deepReview": false }
+```
+
+With `deepReview: true` the draft is run through the critique-and-revise pass start to finish (three
+extra AI calls) and the response carries a `refinement` block. `rewrittenText` is always the
+recommended version, so callers that ignore `refinement` still benefit.
+
+Response (`RewriteBulletResponse`):
+```json
+{
+  "rewrittenText": "Delivered the platform migration.",
+  "suggestions": ["Add a measurable result"],
+  "refinement": {
+    "recommendedLabel": "synthesis",
+    "critique": "No metric, and 'the migration' is vague.",
+    "versions": [
+      { "label": "v1", "title": "Initial draft", "rationale": "...", "text": "..." },
+      { "label": "v2", "title": "Reviewer's alternative", "rationale": "...", "text": "..." },
+      { "label": "v1a", "title": "Author's revision", "rationale": "...", "text": "..." },
+      { "label": "synthesis", "title": "Synthesis", "rationale": "...", "text": "..." }
+    ]
+  }
+}
+```
+
+`refinement` is `null` when deep review was not requested, or when the rewrite fell back to
+heuristics and there was no AI draft to critique.
+
+### POST `/api/bullets/rewrite/critique`
+Phase one of a **guided** deep review: drafts the rewrite, has it reviewed, and stops so the user
+can correct anything the reviewer misread. Same request shape as `/api/bullets/rewrite`.
+
+Returns `200` with `BulletRewriteCritiqueResponse`, or `204 No Content` when there was no AI draft
+to critique (the caller should fall back to `/api/bullets/rewrite`).
+
+```json
+{
+  "originalText": "did the migration",
+  "draft": "Delivered the platform migration.",
+  "critique": "No metric, and 'the migration' is vague.",
+  "alternative": "Migrated the billing platform to Azure.",
+  "suggestions": ["Add a measurable result"]
+}
+```
+
+### POST `/api/bullets/rewrite/complete`
+Phase two: runs the revision and synthesis stages over a phase-one result. The whole phase-one
+payload round-trips through the client, so the server holds no state between the two calls.
+
+Request (`CompleteBulletRewriteRequest`) is the phase-one response plus `guidance`:
+```json
+{
+  "originalText": "did the migration",
+  "draft": "Delivered the platform migration.",
+  "critique": "No metric, and 'the migration' is vague.",
+  "alternative": "Migrated the billing platform to Azure.",
+  "suggestions": ["Add a measurable result"],
+  "guidance": "\"the migration\" was the billing platform, and I led it solo."
+}
+```
+
+`guidance` is optional and is treated as fact by the remaining agents, outranking the critique.
+Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is missing.
+
 `BulletDto` shape:
 ```json
 {
@@ -129,11 +198,24 @@ Request:
   "jobDescription": "Senior .NET Engineer role requiring C#, ASP.NET Core, and Azure.",
   "jobTitle": "Senior .NET Engineer",
   "company": "Contoso",
-  "maxBullets": 8
+  "maxBullets": 8,
+  "deepReview": false,
+  "guidance": "\"systems\" in my bullets means HVAC controls, not software."
 }
 ```
 
-Response: `GenerationResultDto`
+`guidance` is optional and reaches every AI stage including the first draft, so it applies with or
+without `deepReview`.
+
+`deepReview` adds the critique-and-revise pass over both the bullet set and the cover letter — six
+extra AI calls, roughly 3.6x the wall clock (see the README's
+[Deep review](../README.md#deep-review-critique-and-revise) section). It also lets the refinement
+stages reorder bullets and swap in runner-up bullets the ranker did not select.
+
+Response: `GenerationResultDto`. With `deepReview`, `resumeRefinement` and `coverLetterRefinement`
+carry the labelled versions (same shape as `refinement` above; each resume version's `text` is a
+whole rendered resume). `resumeMarkdown` and `coverLetterMarkdown` are always the recommended
+versions, and are what the persisted artifact holds.
 
 ## Artifacts
 
@@ -141,7 +223,22 @@ Response: `GenerationResultDto`
 Returns generation artifact summaries in descending `createdDate` order.
 
 ### GET `/api/artifacts/{id}`
-Returns a full generation artifact (`200`) or `404`.
+Returns a full generation artifact (`200`) or `404`. Artifacts generated with `deepReview` also
+carry `resumeRefinement` and `coverLetterRefinement`, so the version picker still works when the
+generation is reopened from history.
+
+### PUT `/api/artifacts/{id}/selection`
+Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so history
+keeps the version the user chose rather than the one the arbiter recommended.
+
+```json
+{ "resumeVersionLabel": "v1a", "coverLetterVersionLabel": null }
+```
+
+A null or omitted label leaves that document alone; labels match case-insensitively. Returns `200`
+with the updated `GenerationArtifactDto`, `404` if the artifact does not exist, or `400` if a label
+is not among that artifact's stored versions — in which case nothing is changed at all, including
+the other document.
 
 ### DELETE `/api/artifacts/{id}`
 Deletes a generation artifact. Returns `204` or `404`.

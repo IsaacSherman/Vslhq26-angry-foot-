@@ -183,6 +183,58 @@ public class GenerationOrchestratorTests : IDisposable
         artifact.CoverLetterRefinementJson.Should().Contain("Synthesized letter.");
     }
 
+    [Fact]
+    public async Task GenerateAsync_WithDeepReview_OffersTheRefinementBulletsTheRankerLeftOut()
+    {
+        SeedProfileAndBullets("Built C# services.", "Watered the office plants.", "Ran the office move.");
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["c#"], [], [], [], [], null, null));
+        var pipeline = new FakeRefinementPipeline(TwoVersionsOf);
+        var sut = CreateSut(DeepReviewChatClient(), pipeline);
+
+        await sut.GenerateAsync(
+            new GenerationRequest("C# role.", null, null, MaxBullets: 1, DeepReview: true),
+            CancellationToken.None);
+
+        var request = pipeline.Requests.Should()
+            .ContainSingle(x => x.ArtifactKind == "ordered set of resume bullets").Subject;
+        request.SourceMaterial.Should().Contain("Built C# services.", "the selected bullet is on the resume");
+        request.SourceMaterial.Should().Contain(
+            "office", "the runner-up bullets have to be offered for deep review to swap one in");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WithoutDeepReview_RetrievesNoBench()
+    {
+        SeedProfileAndBullets("Built C# services.", "Watered the office plants.");
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["c#"], [], [], [], [], null, null));
+        var sut = CreateSut(DeepReviewChatClient(), new FakeRefinementPipeline());
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("C# role.", null, null, MaxBullets: 1),
+            CancellationToken.None);
+
+        result.SelectedBulletIds.Should().ContainSingle("bullet selection is untouched when deep review is off");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_PassesGuidanceToBothServices()
+    {
+        SeedProfileAndBullets("Built C# services.");
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto([], [], [], [], [], null, null));
+        var pipeline = new FakeRefinementPipeline(TwoVersionsOf);
+        var sut = CreateSut(DeepReviewChatClient(), pipeline);
+
+        await sut.GenerateAsync(
+            new GenerationRequest("A role.", null, null, null, DeepReview: true, Guidance: "  ACME was a startup  "),
+            CancellationToken.None);
+
+        pipeline.Requests.Should().HaveCount(2, "the bullet set and the cover letter are each refined");
+        pipeline.Requests.Should().AllSatisfy(x => x.UserGuidance.Should().Be("ACME was a startup"));
+    }
+
     /// <summary>
     /// An AI that answers both generation calls. The rewrite reply is an empty set, which parses
     /// cleanly and leaves every bullet on its original text - enough for deep review to engage

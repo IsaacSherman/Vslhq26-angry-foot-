@@ -22,9 +22,20 @@ namespace AngryFoot.ApiService.Application.Refinement;
 /// <param name="GroundingQuery">
 /// Text to retrieve library grounding with. Defaults to the draft when null.
 /// </param>
+/// <param name="UserGuidance">
+/// The candidate's own clarification of what their material means. Binding: it outranks the
+/// critique, because the agents are guessing at an ambiguity the candidate can simply resolve.
+/// </param>
 internal sealed record RefinementRequest(
     string ArtifactKind,
     string OutputContract,
     string SourceMaterial,
     string Draft,
-    string? GroundingQuery = null);
+    string? GroundingQuery = null,
+    string? UserGuidance = null);
+
+/// <summary>
+/// The reviewer's verdict on a draft: what is wrong with it, and the reviewer's own attempt at
+/// doing better. Surfaced on its own so the user can weigh in before the later stages run.
+/// </summary>
+internal sealed record RefinementCritique(string Critique, string? Alternative);

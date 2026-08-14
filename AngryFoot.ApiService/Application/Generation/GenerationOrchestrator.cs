@@ -45,8 +45,18 @@ internal sealed class GenerationOrchestrator(
         var analysis = await jobAnalyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
 
         var maxBullets = Math.Clamp(request.MaxBullets.GetValueOrDefault(10), 1, 20);
-        var ranked = await RetrieveRankedBulletsAsync(request.JobDescription, analysis, maxBullets, cancellationToken);
-        var rewriteOutcome = await rewriteService.RewriteAsync(analysis, ranked, request.DeepReview, cancellationToken);
+
+        // Deep review is allowed to swap a weak bullet out for a better one, so it needs
+        // candidates the ranker left on the bench. Without it, retrieval stays exactly as before.
+        var benchSize = request.DeepReview ? maxBullets : 0;
+        var ranked = await RetrieveRankedBulletsAsync(
+            request.JobDescription, analysis, maxBullets + benchSize, cancellationToken);
+        var selected = ranked.Take(maxBullets).ToArray();
+        var bench = ranked.Skip(maxBullets).ToArray();
+
+        var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
+        var rewriteOutcome = await rewriteService.RewriteAsync(
+            analysis, selected, bench, guidance, request.DeepReview, cancellationToken);
         var rewritten = rewriteOutcome.Recommended;
 
         var resumeMarkdown = resumeService.BuildResume(profile, analysis, rewritten);
@@ -55,6 +65,7 @@ internal sealed class GenerationOrchestrator(
         var coverLetter = await coverLetterService.BuildCoverLetterAsync(
             profile,
             new CoverLetterContext(request.JobTitle, request.Company, analysis, rewritten),
+            guidance,
             request.DeepReview,
             cancellationToken);
 

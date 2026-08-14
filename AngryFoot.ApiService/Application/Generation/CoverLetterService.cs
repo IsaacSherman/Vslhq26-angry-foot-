@@ -15,9 +15,11 @@ internal sealed class CoverLetterService(
     IDraftRefinementPipeline refinementPipeline,
     ILogger<CoverLetterService> logger)
 {
+    /// <param name="guidance">The candidate's clarification of their own material, if any.</param>
     public async Task<CoverLetterOutcome> BuildCoverLetterAsync(
         Domain.Profile profile,
         CoverLetterContext context,
+        string? guidance,
         bool deepReview,
         CancellationToken cancellationToken)
     {
@@ -25,9 +27,12 @@ internal sealed class CoverLetterService(
 
         var candidate = AiJsonUtilities.ToJson(new { profile.Name, profile.ProfessionalSummary });
         var selectedBullets = AiJsonUtilities.ToJson(context.Bullets.Select(x => x.Text));
+        var guidanceLine = string.IsNullOrWhiteSpace(guidance)
+            ? string.Empty
+            : $"\nThe candidate has clarified what their experience means. Treat this as fact: {guidance.Trim()}";
 
         var systemPrompt = "You write concise professional cover letters in markdown. Use only provided facts. Do not fabricate experience. Keep under 350 words.";
-        var userPrompt = $"Candidate: {candidate}\nRole: {context.JobTitle}\nCompany: {context.Company}\nAnalysis: {AiJsonUtilities.ToJson(context.Analysis)}\nSelectedBullets: {selectedBullets}";
+        var userPrompt = $"Candidate: {candidate}\nRole: {context.JobTitle}\nCompany: {context.Company}\nAnalysis: {AiJsonUtilities.ToJson(context.Analysis)}\nSelectedBullets: {selectedBullets}{guidanceLine}";
 
         try
         {
@@ -48,7 +53,8 @@ internal sealed class CoverLetterService(
                         Draft: draft,
                         // The letter's claims come from the selected bullets, so ground against
                         // those rather than against the letter's own prose.
-                        GroundingQuery: string.Join(" ", context.Bullets.Select(x => x.Text))),
+                        GroundingQuery: string.Join(" ", context.Bullets.Select(x => x.Text)),
+                        UserGuidance: guidance),
                     cancellationToken);
 
                 return new CoverLetterOutcome(refinement?.Recommended?.Text ?? draft, refinement);

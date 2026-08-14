@@ -26,6 +26,7 @@ public class CoverLetterServiceTests
         var result = (await sut.BuildCoverLetterAsync(
             CreateProfile(),
             new CoverLetterContext("Engineer", "Contoso", EmptyAnalysis, []),
+            guidance: null,
             deepReview: false,
             CancellationToken.None)).Markdown;
 
@@ -41,6 +42,7 @@ public class CoverLetterServiceTests
         var result = (await sut.BuildCoverLetterAsync(
             CreateProfile(),
             new CoverLetterContext("Staff Engineer", "Contoso", EmptyAnalysis, [Bullet("Did a thing."), Bullet("Did another."), Bullet("Third."), Bullet("Fourth - should be cut.")]),
+            guidance: null,
             deepReview: false,
             CancellationToken.None)).Markdown;
 
@@ -61,6 +63,7 @@ public class CoverLetterServiceTests
         var result = (await sut.BuildCoverLetterAsync(
             new Profile { Id = Guid.NewGuid() },
             new CoverLetterContext(null, null, EmptyAnalysis, []),
+            guidance: null,
             deepReview: false,
             CancellationToken.None)).Markdown;
 
@@ -87,6 +90,7 @@ public class CoverLetterServiceTests
         var result = await sut.BuildCoverLetterAsync(
             CreateProfile(),
             new CoverLetterContext("Engineer", "Contoso", EmptyAnalysis, [Bullet("Shipped billing.")]),
+            guidance: null,
             deepReview: true,
             CancellationToken.None);
 
@@ -105,6 +109,7 @@ public class CoverLetterServiceTests
         var result = await sut.BuildCoverLetterAsync(
             CreateProfile(),
             new CoverLetterContext("Engineer", "Contoso", EmptyAnalysis, []),
+            guidance: null,
             deepReview: true,
             CancellationToken.None);
 
@@ -124,6 +129,7 @@ public class CoverLetterServiceTests
         var act = () => sut.BuildCoverLetterAsync(
             CreateProfile(),
             new CoverLetterContext(null, null, EmptyAnalysis, []),
+            guidance: null,
             deepReview: false,
             cts.Token);
 
