@@ -129,6 +129,75 @@ public class RealAiSmokeTests
             $"Deep review took {deep.Elapsed.TotalSeconds:F0}s, which exceeds the 10 minute client budget.");
     }
 
+    /// <summary>
+    /// The reviewer sees the candidate's other bullets so it can tell an overreach from a fair
+    /// claim. It used to treat them as a supply of claims instead, answering a vague bullet about
+    /// one job with achievements lifted from another. Prompt-content tests pin the wording; only a
+    /// real model can say whether the wording works.
+    /// </summary>
+    [Fact]
+    public async Task DeepReviewCritique_WithRealAi_WhenEnabled_DoesNotImportOtherBulletsAchievements()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("RUN_AI_INTEGRATION"), "1", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var output = TestContext.Current.TestOutputHelper;
+
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        // Distinctive, unmistakably unrelated work for the reviewer to be tempted by.
+        string[] library =
+        [
+            "Streamed oscilloscope acquisition data at 25ns granularity to multiple concurrent clients.",
+            "Cut release time from 20 minutes to under 2 with a one-click deployment pipeline.",
+            "Maintained systems and improved throughput for the ACME account."
+        ];
+
+        foreach (var bullet in library)
+        {
+            await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bullet), cancellationToken);
+        }
+
+        var response = await apiClient.PostAsJsonAsync(
+            "/api/bullets/rewrite/critique",
+            new RewriteBulletRequest("Maintained systems and improved throughput for the ACME account", DeepReview: true),
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var critique = await response.Content.ReadFromJsonAsync<BulletRewriteCritiqueResponse>(cancellationToken);
+        Assert.NotNull(critique);
+
+        var alternative = critique!.Alternative ?? string.Empty;
+        output?.WriteLine($"v1:  {critique.Draft}");
+        output?.WriteLine($"v2:  {alternative}");
+
+        // Terms that appear nowhere in the bullet under review, only in the other two.
+        string[] borrowed = ["oscilloscope", "25ns", "one-click", "20 minutes", "deployment pipeline"];
+        var imported = borrowed
+            .Where(term => alternative.Contains(term, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        Assert.True(
+            imported.Length == 0,
+            $"The reviewer's alternative imported claims from unrelated bullets: {string.Join(", ", imported)}. Full text: {alternative}");
+    }
+
     private static async Task<(GenerationResultDto Result, TimeSpan Elapsed)> TimeGenerationAsync(
         HttpClient apiClient, GenerationRequest request, CancellationToken cancellationToken)
     {
