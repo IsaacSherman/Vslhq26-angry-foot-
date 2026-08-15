@@ -1,0 +1,252 @@
+@using AngryFoot.Contracts
+@using AngryFoot.Web.Models
+@inject AngryFoot.Web.Services.ApiClient ApiClient
+
+@*
+    Variants of one bullet, kept side by side. Nothing here edits the bullet: writing a revision
+    leaves the original untouched, and only Use this version replaces it - at which point the
+    wording it replaced survives as that revision's source text.
+*@
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Versions of this bullet</span>
+        <span class="text-muted small">@revisions.Count saved</span>
+    </div>
+    <div class="card-body">
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        <p class="text-muted small">
+            A version is an alternative wording of the same accomplishment, kept alongside your bullet rather than
+            replacing it. Write one per audience &mdash; an ATS screen and a hiring manager want different things
+            from the same work.
+        </p>
+
+        <div class="row g-2 align-items-end mb-2">
+            <div class="col-md-5">
+                <label class="form-label" for="revision-mode">Write a version for</label>
+                <select class="form-select" id="revision-mode" @bind="mode" disabled="@isWorking">
+                    @foreach (var option in Enum.GetValues<BulletRevisionModeDto>())
+                    {
+                        <option value="@option">@RevisionModeLabels.Describe(option)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-7">
+                <label class="form-label" for="revision-guidance">Anything the writer should know (optional)</label>
+                <input class="form-control" id="revision-guidance" @bind="guidance" disabled="@isWorking"
+                       placeholder="e.g. &quot;the platform was internal, not a product&quot;" />
+            </div>
+        </div>
+
+        <div class="mb-2">
+            <button class="btn btn-outline-primary me-3" @onclick="CreateAsync" disabled="@(isWorking || BulletId is null)">
+                @if (isCreating)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                }
+                Write this version
+            </button>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="revision-deep-review" @bind="deepReview" disabled="@isWorking" />
+                <label class="form-check-label" for="revision-deep-review">Deep review</label>
+            </div>
+        </div>
+
+        <div class="form-text mb-3">@RevisionModeLabels.Explain(mode)</div>
+
+        <WorkingIndicator Visible="@isCreating" Message="@CreateProgressMessage" />
+
+        @if (revisions.Count == 0)
+        {
+            <p class="text-muted mb-0">No versions yet. Your bullet is unchanged either way.</p>
+        }
+        else
+        {
+            <div class="list-group">
+                @foreach (var revision in revisions)
+                {
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                            <div>
+                                <span class="badge text-bg-primary me-1">@RevisionModeLabels.Describe(revision.Mode)</span>
+                                @* Razor reads "v@..." as an email address and emits it verbatim. *@
+                                <span class="text-muted small">@($"v{revision.Version}")</span>
+                                @if (!revision.IsAiGenerated)
+                                {
+                                    <span class="badge text-bg-light text-muted ms-1"
+                                          title="Written without AI: the text was tidied and the suggestions describe what this mode would have done.">
+                                        No AI
+                                    </span>
+                                }
+                                @if (revision.IsStale)
+                                {
+                                    <span class="badge text-bg-warning ms-1"
+                                          title="Your bullet has changed since this version was written, so it rewords text that no longer exists.">
+                                        Out of date
+                                    </span>
+                                }
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success me-1" @onclick="() => PromoteAsync(revision)" disabled="@isWorking">
+                                    Use this version
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(revision)" disabled="@isWorking">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+
+                        <p class="mb-2">@revision.RevisedText</p>
+
+                        <BulletQualityPanel Quality="@revision.Quality" ShowDiagnostics="false" />
+
+                        @if (!string.IsNullOrWhiteSpace(revision.Rationale))
+                        {
+                            <details>
+                                <summary style="cursor: pointer;" class="small text-muted">Why it was written this way</summary>
+                                <div class="border-start border-3 ps-3 py-1 mt-2 small">
+                                    <p class="mb-1">@revision.Rationale</p>
+                                    <p class="text-muted mb-0">Written from: <em>@revision.SourceText</em></p>
+                                </div>
+                            </details>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Guid? BulletId { get; set; }
+
+    /// <summary>Raised after a promotion, so the editor can show the bullet's new text.</summary>
+    [Parameter]
+    public EventCallback<BulletDto> BulletChanged { get; set; }
+
+    private readonly List<BulletRevisionDto> revisions = [];
+    private BulletRevisionModeDto mode = BulletRevisionModeDto.StrongerWording;
+    private string? guidance;
+    private bool deepReview;
+    private bool isCreating;
+    private bool isBusy;
+    private string? errorMessage;
+
+    private bool isWorking => isCreating || isBusy;
+
+    private string CreateProgressMessage => deepReview
+        ? "Writing this version, then critiquing, revising, and merging it. Four AI calls, so expect a minute or two."
+        : "Writing this version. Usually a few seconds.";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        revisions.Clear();
+        errorMessage = null;
+
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            revisions.AddRange(await ApiClient.GetBulletRevisionsAsync(BulletId.Value));
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isCreating = true;
+
+        try
+        {
+            var created = await ApiClient.CreateBulletRevisionAsync(
+                BulletId.Value, mode, deepReview, string.IsNullOrWhiteSpace(guidance) ? null : guidance.Trim());
+
+            if (created is not null)
+            {
+                revisions.Insert(0, created);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private async Task PromoteAsync(BulletRevisionDto revision)
+    {
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isBusy = true;
+
+        try
+        {
+            var result = await ApiClient.PromoteBulletRevisionAsync(BulletId.Value, revision.Id);
+            if (result is not null)
+            {
+                revisions.Clear();
+                revisions.AddRange(result.Revisions);
+                await BulletChanged.InvokeAsync(result.Bullet);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task DeleteAsync(BulletRevisionDto revision)
+    {
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isBusy = true;
+
+        try
+        {
+            if (await ApiClient.DeleteBulletRevisionAsync(BulletId.Value, revision.Id))
+            {
+                revisions.Remove(revision);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

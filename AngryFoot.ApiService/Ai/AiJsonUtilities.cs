@@ -4,11 +4,25 @@ namespace AngryFoot.ApiService.Ai;
 
 internal static class AiJsonUtilities
 {
-    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Options = CreateOptions();
 
     /// <summary>The options every AI payload is read and written with, shared so a generated JSON
     /// schema describes exactly the shape the deserializer will accept.</summary>
     public static JsonSerializerOptions SerializerOptions => Options;
+
+    /// <summary>
+    /// Frozen here rather than on first use. A <see cref="JsonSerializerOptions"/> freezes itself the
+    /// first time it serializes, and these options are shared across concurrent requests - so one
+    /// thread could be freezing them while another built a JSON schema from them, and the schema
+    /// build would fail. That failure is swallowed and degrades to an unconstrained call, which made
+    /// it a silent, load-dependent loss of the shape guarantee rather than an error anyone saw.
+    /// </summary>
+    private static JsonSerializerOptions CreateOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.MakeReadOnly(populateMissingResolver: true);
+        return options;
+    }
 
     /// <summary>
     /// Pulls a JSON value of type <typeparamref name="T"/> out of an AI response, which may be

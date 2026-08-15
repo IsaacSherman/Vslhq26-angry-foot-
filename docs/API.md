@@ -150,6 +150,50 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
 }
 ```
 
+### Bullet versions
+
+A version is an alternative wording of a bullet, kept alongside it. Creating one never modifies the
+bullet; only the promote call does.
+
+`BulletDto` and `BulletRevisionDto` both carry a `quality` object: `score`, a `signals[]` array of
+`{ name, label, earned, weight }`, `wordCount`, and `diagnostics[]` (the same shape evidence coverage
+uses, Why panel included). `score` always equals the sum of the weights of the earned signals.
+
+#### GET `/api/bullets/{id}/revisions`
+Returns the bullet's versions (`200`), or `404` when the bullet does not exist. An existing bullet
+with no versions returns `[]`.
+
+#### POST `/api/bullets/{id}/revisions`
+Writes a new version. `201` with the created `BulletRevisionDto`, `404` for an unknown bullet, `400`
+for a mode outside the enum.
+
+```json
+{
+  "mode": "Ats",
+  "deepReview": false,
+  "guidance": "the platform was internal, not a product"
+}
+```
+
+`mode` is one of `Grammar`, `StrongerWording`, `Star`, `Executive`, `Technical`, `Ats`. `guidance` is
+the candidate's own clarification and is treated as fact by the writer. `deepReview` runs the
+critique-and-revise pass over the draft.
+
+The response carries `sourceText` (the wording it was written from), `version` (numbered per mode),
+`rationale` (one sentence on what changed, null when the heuristic fallback wrote it),
+`isAiGenerated`, and `isStale` (the bullet has changed since, so this rewords text that no longer
+exists — a version that has itself been promoted is not stale).
+
+#### POST `/api/bullets/{id}/revisions/{revisionId}/promote`
+Makes the version the bullet's canonical text and returns `PromoteBulletRevisionResponse` —
+`bullet` plus the refreshed `revisions`. `404` when either id is unknown. The replaced wording is not
+lost: it is the promoted version's own `sourceText`. Promotion writes through the same path as an
+ordinary edit, so the bullet is re-tagged and re-indexed.
+
+#### DELETE `/api/bullets/{id}/revisions/{revisionId}`
+`204`, or `404` when the version does not belong to that bullet. Deleting a bullet deletes its
+versions.
+
 ## Generations
 
 ### POST `/api/generations/analyze`

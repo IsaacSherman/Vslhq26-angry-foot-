@@ -87,6 +87,52 @@ public class BulletQualityHeuristicsTests
                 + "cannot make an exception for short technology names without letting the filler back in");
     }
 
+    [Theory]
+    [InlineData("Rebuilt the release process.")]
+    [InlineData("Led the migration.")]
+    [InlineData("Delivered the platform.")]
+    public void OpensWithAction_WithAVerbFirst_IsTrue(string text)
+    {
+        BulletQualityHeuristics.OpensWithAction(text).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Responsible for the release process.")]
+    [InlineData("The release process was rebuilt.")]
+    public void OpensWithAction_WithAnAssignmentOrAPassiveOpener_IsFalse(string text)
+    {
+        BulletQualityHeuristics.OpensWithAction(text).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ClaimsOwnership_RequiresAnOwnershipVerbAndNoCollectiveHedge()
+    {
+        BulletQualityHeuristics.ClaimsOwnership("Led the migration.").Should().BeTrue();
+        BulletQualityHeuristics.ClaimsOwnership("We led the migration.").Should().BeFalse();
+        BulletQualityHeuristics.ClaimsOwnership("Our team led the migration.").Should().BeFalse();
+        BulletQualityHeuristics.ClaimsOwnership("Attended the migration planning.").Should().BeFalse();
+    }
+
+    [Fact]
+    public void ClaimsOwnership_DoesNotMatchAnOwnershipVerbInsideALongerWord()
+    {
+        BulletQualityHeuristics.ClaimsOwnership("Fulfilled the compliance checklist.")
+            .Should().BeFalse("\"led\" inside \"fulfilled\" is not a claim of leadership");
+    }
+
+    [Fact]
+    public void IsSpecific_LooksForANamedThingRatherThanACategoryOfWork()
+    {
+        BulletQualityHeuristics.IsSpecific("Rebuilt the Apollo release pipeline.").Should().BeTrue();
+        BulletQualityHeuristics.IsSpecific("Rebuilt the release pipeline.").Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsSpecific_IgnoresTheCapitalThatOnlyStartsTheSentence()
+    {
+        BulletQualityHeuristics.IsSpecific("Improved reliability.").Should().BeFalse();
+    }
+
     [Fact]
     public void NamesTechnology_AndMentionsOutcome_ReadTheirKeywordLists()
     {

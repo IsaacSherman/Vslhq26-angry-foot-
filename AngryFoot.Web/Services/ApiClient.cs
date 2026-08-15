@@ -75,6 +75,60 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
     }
 
+    public async Task<List<BulletRevisionDto>> GetBulletRevisionsAsync(Guid bulletId, CancellationToken cancellationToken = default)
+    {
+        return await httpClient.GetFromJsonAsync<List<BulletRevisionDto>>($"/api/bullets/{bulletId}/revisions", cancellationToken) ?? [];
+    }
+
+    public async Task<BulletRevisionDto?> CreateBulletRevisionAsync(
+        Guid bulletId,
+        BulletRevisionModeDto mode,
+        bool deepReview = false,
+        string? guidance = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new CreateBulletRevisionRequest(mode, deepReview, guidance),
+            cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletRevisionDto>(cancellationToken);
+    }
+
+    public async Task<bool> DeleteBulletRevisionAsync(Guid bulletId, Guid revisionId, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.DeleteAsync($"/api/bullets/{bulletId}/revisions/{revisionId}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>Makes a revision the bullet's canonical text; returns the updated bullet and revisions.</summary>
+    public async Task<PromoteBulletRevisionResponse?> PromoteBulletRevisionAsync(
+        Guid bulletId,
+        Guid revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsync($"/api/bullets/{bulletId}/revisions/{revisionId}/promote", null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PromoteBulletRevisionResponse>(cancellationToken);
+    }
+
     public async Task<bool> DeleteBulletAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.DeleteAsync($"/api/bullets/{id}", cancellationToken);
