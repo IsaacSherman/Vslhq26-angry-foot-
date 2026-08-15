@@ -2,21 +2,9 @@
 
 Helps a job candidate generate a bespoke resume for a target job description by storing achievement bullets, enriching them with AI metadata, analyzing the target job description, and generating a tailored resume + cover letter in Markdown.
 
-## Team
-
-- **Angry Foot**
-- **Members:**
-  - Isaac Sherman (@IsaacSherman)
-
-## Category
-
-- **Event:** [VSLHQ26 Hackathon](https://github.com/live360events/vslhq26-hackathon)
-- **Primary:** Azure OpenAI/LLM app 
-- **Secondary (optional):** Copilot integration
-
 ## What it does
 
-Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  AngryFoot both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired
+Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  AngryFoot both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired.
 
 
 ## Architecture
@@ -83,8 +71,8 @@ The generation pipeline inside the API service runs as a chain: job description 
 
 ```bash
 # Clone the repo
-git clone https://github.com/IsaacSherman/Vslhq26-angry-foot-.git
-cd Vslhq26-angry-foot-
+git clone <repository-url>
+cd <repository-directory>
 
 #Configure Azure OpenAI via user secrets - see Configuration below
 dotnet user-secrets set "AzureOpenAI:Endpoint" "https://<resource>.openai.azure.com/openai/v1" --project AngryFoot.AppHost
