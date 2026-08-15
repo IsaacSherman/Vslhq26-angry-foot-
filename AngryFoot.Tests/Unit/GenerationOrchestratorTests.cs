@@ -1,3 +1,4 @@
+using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.ApiService.Application.Retrieval;
@@ -35,7 +36,21 @@ public class GenerationOrchestratorTests : IDisposable
             new BulletRankingService(),
             new BulletRewriteService(chatClient, pipeline, NullLogger<BulletRewriteService>.Instance),
             new ResumeMarkdownService(),
-            new CoverLetterService(chatClient, pipeline, NullLogger<CoverLetterService>.Instance));
+            new CoverLetterService(chatClient, pipeline, NullLogger<CoverLetterService>.Instance),
+            CreateCoverageAnalyzer());
+    }
+
+    /// <summary>
+    /// The real service with no diagnostic analyzers: the generation path only ever uses its
+    /// deterministic half, so faking the service would test the fake rather than what ships.
+    /// </summary>
+    private EvidenceCoverageService CreateCoverageAnalyzer()
+    {
+        return new EvidenceCoverageService(
+            _database.Context,
+            new FakeEvidenceReviewer(),
+            [],
+            NullLogger<EvidenceCoverageService>.Instance);
     }
 
     private void SeedProfileAndBullets(params string[] bulletTexts)

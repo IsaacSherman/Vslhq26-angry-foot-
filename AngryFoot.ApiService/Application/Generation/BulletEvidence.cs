@@ -19,15 +19,31 @@ internal enum EvidenceMatch
 }
 
 /// <summary>
-/// Decides whether a bullet counts as evidence for a requirement term. Shared by the fit
-/// heuristic and the occupation benchmark so the two never disagree about what "covered" means.
+/// Decides whether a bullet counts as evidence for a requirement term. Shared by the evidence
+/// coverage engine, the occupation benchmark, and deep review's grounding, so none of them ever
+/// disagree about what "covered" means.
 /// </summary>
 internal static class BulletEvidence
 {
     public static bool Supports(Bullet bullet, string term, EvidenceMatch match = EvidenceMatch.WholeWord)
     {
-        return ContainsTerm(bullet.BulletText, term, match)
-            || bullet.Skills.Any(skill => ContainsTerm(skill, term, match))
+        return SupportsInText(bullet, term, match) || SupportsInMetadata(bullet, term, match);
+    }
+
+    /// <summary>The term appears in what the candidate wrote.</summary>
+    public static bool SupportsInText(Bullet bullet, string term, EvidenceMatch match = EvidenceMatch.WholeWord)
+    {
+        return ContainsTerm(bullet.BulletText, term, match);
+    }
+
+    /// <summary>
+    /// The term appears among the skills or technologies enrichment extracted, which is a stronger
+    /// signal than prose: it means the term was read as what the bullet is <em>about</em> rather
+    /// than as something it mentions in passing.
+    /// </summary>
+    public static bool SupportsInMetadata(Bullet bullet, string term, EvidenceMatch match = EvidenceMatch.WholeWord)
+    {
+        return bullet.Skills.Any(skill => ContainsTerm(skill, term, match))
             || bullet.Technologies.Any(technology => ContainsTerm(technology, term, match));
     }
 

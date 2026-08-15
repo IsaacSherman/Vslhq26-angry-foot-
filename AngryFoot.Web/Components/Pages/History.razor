@@ -57,6 +57,10 @@ else
                 <label class="form-label">Original Job Description</label>
                 <textarea class="form-control mb-3" rows="6" readonly>@selectedArtifact.JobDescription</textarea>
 
+                @* Null for artifacts generated before coverage was recorded; the panel renders nothing. *@
+                <EvidenceCoveragePanel Coverage="@selectedArtifact.Coverage"
+                                       Title="Evidence Coverage when this resume was generated" />
+
                 <div class="row g-3">
                     <div class="col-md-6">
                         <DraftVersionPicker Refinement="@selectedArtifact.ResumeRefinement"

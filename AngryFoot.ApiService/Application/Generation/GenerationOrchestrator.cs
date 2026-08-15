@@ -1,4 +1,5 @@
 using AngryFoot.ApiService.Application.Artifacts;
+using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
@@ -13,7 +14,8 @@ internal sealed class GenerationOrchestrator(
     BulletRankingService rankingService,
     BulletRewriteService rewriteService,
     ResumeMarkdownService resumeService,
-    CoverLetterService coverLetterService) : IGenerationOrchestrator
+    CoverLetterService coverLetterService,
+    IEvidenceCoverageAnalyzer coverageAnalyzer) : IGenerationOrchestrator
 {
     private const float MinimumSemanticSimilarity = 0.35f;
 
@@ -69,6 +71,13 @@ internal sealed class GenerationOrchestrator(
             request.DeepReview,
             cancellationToken);
 
+        // Reported over the bullets as the resume orders them, not as the ranker scored them, so
+        // an ordering note is about the document the user is holding.
+        var coverage = await coverageAnalyzer.DescribeResumeAsync(
+            analysis,
+            rewritten.Select(x => x.Bullet).ToArray(),
+            cancellationToken);
+
         var artifact = new GenerationArtifact
         {
             Id = Guid.NewGuid(),
@@ -80,8 +89,9 @@ internal sealed class GenerationOrchestrator(
             SelectedBulletIds = rewritten.Select(x => x.Bullet.Id).ToList(),
             JobAnalysisJson = Ai.AiJsonUtilities.ToJson(analysis),
             CreatedDate = DateTime.UtcNow,
-            ResumeRefinementJson = ArtifactRefinements.ToJson(resumeRefinement),
-            CoverLetterRefinementJson = ArtifactRefinements.ToJson(coverLetter.Refinement)
+            ResumeRefinementJson = ArtifactJsonColumns.ToJson(resumeRefinement),
+            CoverLetterRefinementJson = ArtifactJsonColumns.ToJson(coverLetter.Refinement),
+            EvidenceCoverageJson = ArtifactJsonColumns.ToJson(coverage)
         };
 
         dbContext.GenerationArtifacts.Add(artifact);
@@ -94,7 +104,8 @@ internal sealed class GenerationOrchestrator(
             analysis,
             artifact.SelectedBulletIds,
             resumeRefinement,
-            coverLetter.Refinement);
+            coverLetter.Refinement,
+            coverage);
     }
 
     /// <summary>

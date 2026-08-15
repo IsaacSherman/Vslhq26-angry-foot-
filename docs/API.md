@@ -153,8 +153,8 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
 ## Generations
 
 ### POST `/api/generations/analyze`
-Analyzes a job description and returns structured metadata used for ranking and tailoring, the fit
-assessment against the bullet library, and the occupational benchmark.
+Analyzes a job description and returns structured metadata used for ranking and tailoring, the
+evidence coverage report for the bullet library, and the occupational benchmark.
 
 Request:
 ```json
@@ -167,8 +167,65 @@ Request:
 `jobTitle` is optional. It maps the role to an occupation for the benchmark; when omitted, the
 title inferred from the job description is used instead.
 
-Response: `JobFitAnalysisDto` — `job` (`JobAnalysisDto`), `fit` (`FitAssessmentDto`), and
-`benchmark` (`OccupationBenchmarkDto`, nullable).
+Response: `JobEvidenceAnalysisDto` — `job` (`JobAnalysisDto`), `coverage`
+(`EvidenceCoverageReportDto`), and `benchmark` (`OccupationBenchmarkDto`, nullable).
+
+`coverage` is always present. It reports how much of the posting's stated requirements the bullet
+library evidences — a measure of the resume, not of the candidate — and every part of it is
+traceable:
+
+- `coverageScore` is derived, not asserted. It is always
+  `round(100 * earnedWeight / totalWeight)`, and both operands are on the payload so a client can
+  check the arithmetic. Each requirement contributes `weight * 2` to `totalWeight` and earns
+  `weight *` 2 for `"Strong"` evidence, 1 for `"Weak"`, 0 for `"Missing"`.
+- `requirements[]` links each extracted requirement to the bullets cited as evidence for it, under
+  `why.supportingEvidence`. A citation's `isExactTermMatch: false` means an AI reviewer read the
+  bullet as related without the bullet naming the requirement.
+- `diagnostics[]` carries severities `"Warning"`, `"Suggestion"`, and `"Info"`, and codes
+  `missing-skill`, `weak-evidence`, `duplicate-bullet`, `bullet-ordering`, `overused-wording`,
+  `no-measurable-impact`, `unsupported-claim`, and `analysis-limitation`.
+- Every requirement and every diagnostic carries a `why` object (the requirement at stake, the
+  supporting evidence, what evidence is missing, and the reasoning).
+- `source` is `"Deterministic"` or `"AiReviewed"`. With no AI configured the report is complete and
+  `source` says so; an AI review may adjust per-requirement strengths but never returns a score, and
+  may raise a strength by at most one step and only while citing a bullet from the library.
+
+```json
+{
+  "coverageScore": 50,
+  "earnedWeight": 6,
+  "totalWeight": 12,
+  "summary": "Of 3 extracted requirements, 1 is evidenced by a bullet that shows a result ...",
+  "strongCount": 1,
+  "weakCount": 1,
+  "missingCount": 1,
+  "requirements": [
+    {
+      "requirement": "Azure",
+      "kind": "Technology",
+      "weight": 2,
+      "strength": "Missing",
+      "why": {
+        "requirement": "Azure",
+        "supportingEvidence": [],
+        "missingEvidence": ["A bullet describing hands-on Azure work and what it achieved."],
+        "reasoning": "This posting names \"Azure\" among its technologies. No bullet in your library mentions it."
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "Warning",
+      "code": "missing-skill",
+      "message": "\"Azure\" is named among the technologies in this posting, but no bullet in your library mentions it.",
+      "why": { "requirement": "Azure", "supportingEvidence": [], "missingEvidence": ["..."], "reasoning": "..." },
+      "bulletIds": []
+    }
+  ],
+  "source": "Deterministic",
+  "disclaimer": "Evidence coverage measures how much of this posting's stated requirements ..."
+}
+```
 
 `benchmark` compares the bullet library against aggregate O\*NET occupational data for the mapped
 occupation. It is null only when the bundled dataset could not be loaded. `matchConfidence` is
@@ -217,6 +274,11 @@ carry the labelled versions (same shape as `refinement` above; each resume versi
 whole rendered resume). `resumeMarkdown` and `coverLetterMarkdown` are always the recommended
 versions, and are what the persisted artifact holds.
 
+`coverage` (`EvidenceCoverageReportDto`, same shape as `/analyze`) reports on the bullets that made
+it into this resume, in the order the resume prints them — so unlike `/analyze` it can diagnose
+`bullet-ordering`. Its `source` is always `"Deterministic"`: a generation already chains several AI
+calls, and this reports on a decision rather than making one.
+
 ## Artifacts
 
 ### GET `/api/artifacts`
@@ -226,6 +288,10 @@ Returns generation artifact summaries in descending `createdDate` order.
 Returns a full generation artifact (`200`) or `404`. Artifacts generated with `deepReview` also
 carry `resumeRefinement` and `coverLetterRefinement`, so the version picker still works when the
 generation is reopened from history.
+
+`coverage` is the evidence coverage report as of the moment the resume was generated, frozen rather
+than recomputed — the library moves on, and a report that re-scored itself against later bullets
+would no longer explain the resume beside it. Null for artifacts generated before it was recorded.
 
 ### PUT `/api/artifacts/{id}/selection`
 Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so history

@@ -187,11 +187,11 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
             : message);
     }
 
-    public async Task<JobFitAnalysisDto> AnalyzeJobAsync(string jobDescription, string? jobTitle = null, CancellationToken cancellationToken = default)
+    public async Task<JobEvidenceAnalysisDto> AnalyzeJobAsync(string jobDescription, string? jobTitle = null, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/generations/analyze", new { jobDescription, jobTitle }, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken))!;
+        return (await response.Content.ReadFromJsonAsync<JobEvidenceAnalysisDto>(cancellationToken))!;
     }
 
     public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken = default)

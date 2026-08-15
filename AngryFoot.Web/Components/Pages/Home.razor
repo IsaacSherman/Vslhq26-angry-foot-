@@ -9,8 +9,8 @@
     <h1 class="display-5 fw-bold">AngryFoot</h1>
     <p class="col-lg-9 fs-5 mb-0">
         Build a library of achievement bullets, let AI enrich them with skills and impact metadata,
-        then generate a resume and cover letter tailored to any job description &mdash; with an honest
-        assessment of your fit before you apply.
+        then generate a resume and cover letter tailored to any job description &mdash; with every
+        requirement traced back to the bullets that evidence it.
     </p>
 </div>
 
@@ -28,7 +28,7 @@
         <div class="alert alert-warning py-2">
             <span class="bi bi-exclamation-triangle me-1" aria-hidden="true"></span>
             <strong>AI is not configured.</strong> Everything still works using built-in heuristics,
-            but enrichment, fit assessment, and generation are better with AI. @aiStatus.Message
+            but enrichment, evidence review, and generation are better with AI. @aiStatus.Message
         </div>
     }
 }
@@ -70,8 +70,9 @@
             <div class="card-body d-flex flex-column">
                 <h5 class="card-title"><span class="badge text-bg-secondary me-2">3</span>Generate</h5>
                 <p class="card-text flex-grow-1">
-                    Paste a job description to see your fit score, strengths, and gaps &mdash;
-                    then generate a tailored resume and cover letter in Markdown.
+                    Paste a job description to see which of its requirements your bullets evidence,
+                    which they only mention, and which they miss &mdash; then generate a tailored
+                    resume and cover letter in Markdown.
                 </p>
                 <a class="btn btn-primary" href="generate">Analyze &amp; generate</a>
             </div>

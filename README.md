@@ -13,7 +13,7 @@ AngryFoot is a .NET Aspire solution with two runnable services and three support
 
 - **AngryFoot.AppHost** — Aspire orchestrator. Launches the API service and web frontend, wires up service discovery, and hosts the developer dashboard.
 - **AngryFoot.Web** — Blazor Server UI (Bullets, Profile, Generate, History pages). Talks to the API service exclusively through a typed `ApiClient` (`HttpClient` resolved via Aspire service discovery, `https+http://apiservice`). Renders generated Markdown with a Preview/Markdown toggle (Markdig).
-- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, candidate-fit assessment, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Bullet selection for a generation prefers semantic retrieval — bullets are embedded and indexed in Qdrant, and the job description is matched against them by vector similarity — falling back to the original deterministic keyword-overlap ranking when no embedding deployment is configured (see [Semantic bullet retrieval (RAG)](#semantic-bullet-retrieval-rag)). Persistence is EF Core over a per-user SQLite database.
+- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, evidence coverage analysis, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Bullet selection for a generation prefers semantic retrieval — bullets are embedded and indexed in Qdrant, and the job description is matched against them by vector similarity — falling back to the original deterministic keyword-overlap ranking when no embedding deployment is configured (see [Semantic bullet retrieval (RAG)](#semantic-bullet-retrieval-rag)). Persistence is EF Core over a per-user SQLite database.
 - **AngryFoot.Contracts** — shared DTOs referenced by both Web and ApiService, so the UI and API can never drift apart silently.
 - **AngryFoot.ServiceDefaults** — shared Aspire plumbing: HTTP resilience (retry/circuit-breaker), service discovery, and OpenTelemetry tracing/metrics for both services.
 - **AngryFoot.Tests** — xUnit suite: fast Moq-based unit tests for every service, plus Aspire integration tests that boot the full AppHost against isolated temp databases (including an end-to-end MCP client test).
@@ -26,7 +26,7 @@ flowchart LR
         subgraph Api["AngryFoot.ApiService"]
             REST["REST endpoints<br/>/api/*"]
             MCP["MCP server<br/>/mcp"]
-            Services["Application services<br/>bullets · profile · generation · fit"]
+            Services["Application services<br/>bullets · profile · generation · evidence"]
             Chat["IChatClient"]
             EF["EF Core"]
         end
@@ -49,13 +49,13 @@ flowchart LR
     Defaults -.-> Api
 ```
 
-The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `FitAssessmentService` (score the user's chances against their bullet library) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
+The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `EvidenceCoverageService` (link each requirement to the bullets that evidence it) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
 
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
 - **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` and `IEmbeddingGenerator` abstractions), Qdrant.Client + Aspire.Hosting.Qdrant/Aspire.Qdrant.Client (optional semantic retrieval), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5. Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
-- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, fit assessment, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
+- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, evidence review, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
 - **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports, plus a Docker-hosted Qdrant container it starts and stops automatically for semantic bullet retrieval. No cloud deployment required. Data lives in a per-user SQLite database; Qdrant's vector data is bind-mounted to a local folder next to it. Set `Qdrant:Enabled=false` to skip the container entirely (see Configuration).
 
 ## Getting started
@@ -64,7 +64,7 @@ The generation pipeline inside the API service runs as a chain: job description 
 
 - **.NET 10 SDK** (the repo builds with a 10.0.4xx preview SDK; Aspire 13.4 is pulled in via the AppHost project SDK — no separate workload install needed)
 - **Docker** (running). The AppHost automatically starts a Qdrant container (`qdrant/qdrant:latest`) on `dotnet run` for semantic bullet retrieval. Without Docker running, set `Qdrant:Enabled=false` (see Configuration) — the app then runs exactly as before, with keyword-overlap ranking and no Qdrant.
-- **Azure OpenAI resource with a chat deployment** (optional). Without it the app runs entirely on heuristic fallbacks; with it you get full AI enrichment, fit assessment, and generation. You will need three values: the resource endpoint URL (`https://<resource>.openai.azure.com`), an API key, and the chat deployment name.
+- **Azure OpenAI resource with a chat deployment** (optional). Without it the app runs entirely on heuristic fallbacks; with it you get full AI enrichment, evidence review, and generation. You will need three values: the resource endpoint URL (`https://<resource>.openai.azure.com`), an API key, and the chat deployment name.
 - No external database server — SQLite is embedded and created on first run; Qdrant's data is a local Docker bind mount, not a separate service to provision.
 
 ### Setup
@@ -153,9 +153,37 @@ Without a usable embedding deployment, Qdrant still starts (it's harmless and id
 
 `dotnet test`'s Aspire integration tests always disable Qdrant for themselves regardless of this setting, so running the test suite never requires Docker.
 
+### Evidence coverage
+
+**Analyze** answers one question: how much of what this posting asks for do your bullets actually evidence? Every part of the answer is traceable back to a bullet you wrote.
+
+**The score is derived, not asserted.** It is always
+
+```
+coverageScore = round(100 × earnedWeight / totalWeight)
+```
+
+and both operands ship on the response. Each requirement is worth `weight × 2` points and earns `weight ×` 2 for strong evidence, 1 for weak, 0 for none — so you can recompute the number by hand from the rows on screen. Required skills and named technologies weigh 2; preferred skills weigh 1.
+
+**Strong, weak, or missing** is decided by what the bullet says:
+
+| | |
+|---|---|
+| **Strong** | the requirement is one of the bullet's extracted skills or technologies, **or** the bullet names it *and* quantifies a result |
+| **Weak** | a bullet mentions it but never shows what came of the work — half credit |
+| **Missing** | no bullet mentions it |
+
+**Diagnostics** read like editor diagnostics rather than a grade, at three severities — `warning`, `suggestion`, `info` — covering missing requirements, weak evidence, near-duplicate bullets, bullet ordering, overused wording, bullets with no measurable impact, unsupported claims, and the limits of the analysis itself. Every diagnostic and every requirement carries a **Why**: the requirement at stake, the bullets cited for it, what evidence is absent, and the reasoning connecting them. There is no recommendation anywhere in the product that does not come with one.
+
+**What the AI is and is not allowed to do.** With no AI configured the report is complete — word matching, the strength rule, and all six deterministic analyzers run, and the report says `source: Deterministic` so you know a paraphrase may have been missed. With AI configured, a reviewer may correct what word matching got wrong, but it **never returns a score**. It may lower a strength freely; it may raise one by at most a single step, only while citing a bullet it was actually given, and never to *strong* on a bullet that does not name the requirement. A bullet it cites by meaning rather than by words is shown as **AI-identified**, with the bullet's real text beside it. The worst a hallucinated match can do is move one requirement half a step — and you can see it and overrule it.
+
+**On the wording.** This measures a document. A low number means your bullets do not yet *say* something, not that you have not *done* it — and the UI says so directly, under the score, every time. The number is deliberately rendered without a red/amber/green treatment for the same reason; colour is spent on the per-requirement rows, where it points at something you can act on.
+
+**Generate** produces its own report over the bullets that made the resume, in the order the resume prints them — which is what lets it flag a stronger bullet sitting below a weaker one. It is stored with the artifact and frozen, so reopening a generation from History explains the resume you actually sent rather than re-scoring it against a library that has moved on since.
+
 ### Occupational benchmark
 
-Alongside the fit score — which measures how well your bullets cover *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
+Alongside evidence coverage — which measures how well your bullets evidence *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
 
 The comparison set is aggregate labor-market data from the [O\*NET occupational database](https://www.onetonline.org) (U.S. Department of Labor/ETA), bundled at [`AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json`](AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json). No configuration, API key, or network access is required — it works offline on first run.
 
@@ -164,7 +192,7 @@ The comparison set is aggregate labor-market data from the [O\*NET occupational 
 How it works:
 
 - The **Job Title** field on `/generate` is mapped to an O\*NET occupation by exact match against the occupation's title and its published reported job titles, then by word-overlap for a fuzzy match. Seniority and ladder markers (`Senior`, `Staff`, `II`) are stripped first, since O\*NET occupations are not ladder-specific. If no title is entered, the title inferred from the job description is used.
-- Each requirement in the occupation's profile is checked against your bullets using the same evidence rule as the fit heuristic (`BulletEvidence`), weighted by O\*NET's published importance rating.
+- Each requirement in the occupation's profile is checked against your bullets using the same evidence rule as [evidence coverage](#evidence-coverage) (`BulletEvidence`), weighted by O\*NET's published importance rating.
 - No mapping is reported rather than guessed: an unrecognized title gets an explanatory message, not a wrong occupation.
 
 To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tools/onet/) — `extract_onet.py` then `build_dataset.py` — and copy the regenerated `onet-occupations.json` over the bundled copy. Their comments document every transformation applied to the published data, and `onet-occupations.json` carries a `notes` block recording which values are O\*NET's and which are ours.
@@ -219,7 +247,7 @@ One rough edge worth knowing: the resume stages exchange a JSON array rather tha
 - **Markdown output only.** Generated resumes and cover letters are Markdown; there is no PDF or DOCX export yet, so final formatting happens in whatever tool you paste into.
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
 - **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
-- **Fit assessment only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
+- **Evidence coverage only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
 - **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.

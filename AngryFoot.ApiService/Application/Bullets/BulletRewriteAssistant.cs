@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AngryFoot.ApiService.Ai;
 using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.Contracts;
@@ -30,7 +29,7 @@ public interface IBulletRewriteAssistant
     Task<RewriteBulletResponse> CompleteAsync(CompleteBulletRewriteRequest request, CancellationToken cancellationToken);
 }
 
-internal sealed partial class BulletRewriteAssistant(
+internal sealed class BulletRewriteAssistant(
     IChatClient chatClient,
     IDraftRefinementPipeline refinementPipeline,
     ILogger<BulletRewriteAssistant> logger) : IBulletRewriteAssistant
@@ -154,17 +153,17 @@ internal sealed partial class BulletRewriteAssistant(
     {
         var suggestions = new List<string>();
 
-        if (!ImpactPattern().IsMatch(bulletText))
+        if (!BulletQualityHeuristics.HasMeasurableImpact(bulletText))
         {
             suggestions.Add("Add a measurable result (percentage, time saved, cost reduction, or volume)." );
         }
 
-        if (!ContainsOutcomeKeyword(bulletText))
+        if (!BulletQualityHeuristics.MentionsOutcome(bulletText))
         {
             suggestions.Add("Include business impact (customer value, reliability, delivery speed, or quality)." );
         }
 
-        if (!ContainsTechnologyKeyword(bulletText))
+        if (!BulletQualityHeuristics.NamesTechnology(bulletText))
         {
             suggestions.Add("Consider naming key tools/technologies used when appropriate.");
         }
@@ -187,31 +186,6 @@ internal sealed partial class BulletRewriteAssistant(
             .ToArray();
     }
 
-    private static bool ContainsOutcomeKeyword(string text)
-    {
-        var lower = text.ToLowerInvariant();
-        return lower.Contains("improv")
-            || lower.Contains("increas")
-            || lower.Contains("reduc")
-            || lower.Contains("faster")
-            || lower.Contains("quality")
-            || lower.Contains("reliab")
-            || lower.Contains("efficien");
-    }
-
-    private static bool ContainsTechnologyKeyword(string text)
-    {
-        var lower = text.ToLowerInvariant();
-        return lower.Contains(".net")
-            || lower.Contains("c#")
-            || lower.Contains("api")
-            || lower.Contains("sql")
-            || lower.Contains("azure")
-            || lower.Contains("blazor")
-            || lower.Contains("docker")
-            || lower.Contains("github");
-    }
-
     private static string ToProfessionalTone(string text)
     {
         var trimmed = text.Trim();
@@ -223,7 +197,4 @@ internal sealed partial class BulletRewriteAssistant(
         var rewritten = char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
         return rewritten.EndsWith('.') ? rewritten : rewritten + ".";
     }
-
-    [GeneratedRegex("\\b(\\d+%|\\$?\\d+[\\d,]*(\\.\\d+)?|\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?))\\b", RegexOptions.IgnoreCase)]
-    private static partial Regex ImpactPattern();
 }

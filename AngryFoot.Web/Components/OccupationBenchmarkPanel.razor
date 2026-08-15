@@ -1,9 +1,14 @@
 @using AngryFoot.Contracts
+@using AngryFoot.Web.Models
 
 @*
     Shows the bullet library against aggregate occupational data. The copy here is deliberate:
     this is a comparison against published occupation-level statistics, and it must never read
     as a comparison against specific people or a named employer's staff (issue #5).
+
+    The score shares evidence coverage's neutral treatment rather than carrying its own traffic
+    light: two aggregates on one page, coloured to different rules, would read as one of them
+    passing judgement (issue #18).
 *@
 
 @if (Benchmark is not null)
@@ -13,7 +18,7 @@
             <span>Typical Requirements for This Occupation</span>
             @if (IsMatched)
             {
-                <span class="badge @BadgeClass(Benchmark.CoverageScore)">Coverage: @Benchmark.CoverageScore / 100</span>
+                <span class="badge @CoverageBands.AggregateBadge">Coverage: @Benchmark.CoverageScore / 100</span>
             }
         </div>
         <div class="card-body">
@@ -30,7 +35,7 @@
 
                 <div class="progress mb-3" role="progressbar" aria-label="Occupational coverage"
                      aria-valuenow="@Benchmark.CoverageScore" aria-valuemin="0" aria-valuemax="100">
-                    <div class="progress-bar @BarClass(Benchmark.CoverageScore)" style="width: @(Benchmark.CoverageScore)%"></div>
+                    <div class="progress-bar @CoverageBands.AggregateBar" style="width: @(Benchmark.CoverageScore)%"></div>
                 </div>
 
                 <p class="lead">@Benchmark.Summary</p>
@@ -99,17 +104,4 @@
     /// <summary>Only the highest-importance items are listed, so say so when some are held back.</summary>
     private static string Showing(int listed, int total) => total > listed ? $"(top {listed} of {total})" : string.Empty;
 
-    private static string BadgeClass(int score) => score switch
-    {
-        >= 75 => "text-bg-success",
-        >= 50 => "text-bg-warning",
-        _ => "text-bg-danger"
-    };
-
-    private static string BarClass(int score) => score switch
-    {
-        >= 75 => "bg-success",
-        >= 50 => "bg-warning",
-        _ => "bg-danger"
-    };
 }

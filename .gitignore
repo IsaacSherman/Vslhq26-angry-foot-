@@ -85,8 +85,10 @@ BenchmarkDotNet.Artifacts/
 # .NET Core
 project.lock.json
 project.fragment.lock.json
-artifacts/
-.artifacts/
+# Anchored to the repo root: these are the .NET SDK's build output directories. Unanchored, they
+# also swallowed AngryFoot.ApiService/Application/Artifacts/, which left a source file untracked.
+/artifacts/
+/.artifacts/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

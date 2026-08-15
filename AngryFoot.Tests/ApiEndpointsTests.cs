@@ -338,7 +338,11 @@ public class ApiEndpointsTests
         var cancellationToken = TestContext.Current.CancellationToken;
         // var cancellationToken = cts.Token;
         // cts.CancelAfter(10000);
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+
+        // Deliberately unconfigured AI: everything asserted below is then the deterministic
+        // engine's own output, which is what makes this the end-to-end proof that evidence
+        // coverage is a complete feature without an AI deployment.
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestAiConfiguration.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
@@ -353,7 +357,17 @@ public class ApiEndpointsTests
 
         var apiClient = app.CreateHttpClient("apiservice");
 
-        await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest("Implemented automated validation workflows that reduced manual review effort by 75%."), cancellationToken);
+        // A spread the report has something to say about: one quantified, one that names the
+        // posting's technologies without a result, and one opening on an assignment.
+        foreach (var bulletText in new[]
+        {
+            "Implemented automated validation workflows that reduced manual review effort by 75%.",
+            "Maintained C# services and ASP.NET Core endpoints across the platform.",
+            "Responsible for the deployment pipeline."
+        })
+        {
+            await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText), cancellationToken);
+        }
 
         var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new
         {
@@ -361,12 +375,49 @@ public class ApiEndpointsTests
             JobTitle = "Senior Software Engineer"
         }, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
-        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken);
+        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobEvidenceAnalysisDto>(cancellationToken);
         Assert.NotNull(analysis);
         Assert.NotNull(analysis!.Job);
-        Assert.NotNull(analysis.Fit);
-        Assert.InRange(analysis.Fit.FitScore, 0, 100);
-        Assert.False(string.IsNullOrWhiteSpace(analysis.Fit.Verdict));
+
+        var coverage = analysis.Coverage;
+        Assert.NotNull(coverage);
+        Assert.Equal(CoverageSourceDto.Deterministic, coverage.Source);
+        Assert.False(string.IsNullOrWhiteSpace(coverage.Summary));
+        Assert.False(string.IsNullOrWhiteSpace(coverage.Disclaimer));
+
+        AssertScoreIsDerivedFromRequirements(coverage);
+
+        Assert.NotEmpty(coverage.Requirements);
+        Assert.All(coverage.Requirements, requirement =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(requirement.Why.Reasoning));
+            Assert.Equal(requirement.Requirement, requirement.Why.Requirement);
+
+            // Anything credited must name the bullet it was credited for.
+            if (requirement.Strength != EvidenceStrengthDto.Missing)
+            {
+                Assert.NotEmpty(requirement.Why.SupportingEvidence);
+                Assert.All(requirement.Why.SupportingEvidence,
+                    citation => Assert.False(string.IsNullOrWhiteSpace(citation.BulletText)));
+            }
+        });
+
+        // This library cannot evidence C#, ASP.NET Core, and Azure at once.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.MissingSkill);
+        // The bullet opening "Responsible for" is caught without any AI involved.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.OverusedWording);
+        // Word matching alone cannot recognise a paraphrase, and the report has to admit that.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.AnalysisLimitation);
+
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Warning);
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Suggestion);
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Info);
+        Assert.All(coverage.Diagnostics, diagnostic =>
+        {
+            Assert.NotNull(diagnostic.Why);
+            Assert.False(string.IsNullOrWhiteSpace(diagnostic.Why.Reasoning));
+            Assert.False(string.IsNullOrWhiteSpace(diagnostic.Message));
+        });
 
         // The occupational benchmark ships as bundled data, so it is available with no configuration.
         Assert.NotNull(analysis.Benchmark);
@@ -388,10 +439,49 @@ public class ApiEndpointsTests
         Assert.False(string.IsNullOrWhiteSpace(result!.ResumeMarkdown));
         Assert.False(string.IsNullOrWhiteSpace(result.CoverLetterMarkdown));
 
+        Assert.NotNull(result.Coverage);
+        AssertScoreIsDerivedFromRequirements(result.Coverage!);
+
         var artifactsResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
         Assert.Equal(HttpStatusCode.OK, artifactsResponse.StatusCode);
         var artifacts = await artifactsResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
         Assert.NotNull(artifacts);
         Assert.Contains(artifacts!, x => x.Id == result.ArtifactId);
+
+        // The report has to survive the JSON column round trip, or History shows a resume with no
+        // record of why it holds the bullets it holds.
+        var artifactResponse = await apiClient.GetAsync($"/api/artifacts/{result.ArtifactId}", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, artifactResponse.StatusCode);
+        var artifact = await artifactResponse.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+        Assert.NotNull(artifact);
+        Assert.NotNull(artifact!.Coverage);
+        Assert.Equal(result.Coverage!.CoverageScore, artifact.Coverage!.CoverageScore);
+        Assert.Equal(result.Coverage.Requirements.Count, artifact.Coverage.Requirements.Count);
+        Assert.Equal(result.Coverage.Diagnostics.Count, artifact.Coverage.Diagnostics.Count);
+    }
+
+    /// <summary>
+    /// The promise the whole feature rests on: the number is reproducible from the rows the user can
+    /// see, rather than being an opinion printed next to them.
+    /// </summary>
+    private static void AssertScoreIsDerivedFromRequirements(EvidenceCoverageReportDto coverage)
+    {
+        var expectedTotal = coverage.Requirements.Sum(x => x.Weight * 2);
+        var expectedEarned = coverage.Requirements.Sum(x => x.Weight * x.Strength switch
+        {
+            EvidenceStrengthDto.Strong => 2,
+            EvidenceStrengthDto.Weak => 1,
+            _ => 0
+        });
+
+        Assert.Equal(expectedTotal, coverage.TotalWeight);
+        Assert.Equal(expectedEarned, coverage.EarnedWeight);
+
+        var expectedScore = expectedTotal == 0
+            ? 0
+            : (int)Math.Round(100.0 * expectedEarned / expectedTotal, MidpointRounding.AwayFromZero);
+
+        Assert.Equal(expectedScore, coverage.CoverageScore);
+        Assert.InRange(coverage.CoverageScore, 0, 100);
     }
 }

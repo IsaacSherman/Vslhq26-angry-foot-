@@ -1,0 +1,66 @@
+@using AngryFoot.Contracts
+
+@*
+    The "Why" behind one recommendation. Every recommendation in the product renders through this
+    component, so nothing the app suggests can appear without the requirement, the evidence, and the
+    reasoning that produced it (issue #18).
+*@
+
+@if (Why is not null)
+{
+    <div class="border-start border-3 ps-3 py-1 small">
+        @if (!string.IsNullOrWhiteSpace(Why.Requirement))
+        {
+            <p class="mb-2">
+                <span class="text-muted">Job requirement:</span> <strong>@Why.Requirement</strong>
+            </p>
+        }
+
+        <p class="mb-2">@Why.Reasoning</p>
+
+        @if (Why.SupportingEvidence.Count > 0)
+        {
+            <p class="text-muted mb-1">@EvidenceHeading</p>
+            <ul class="list-unstyled mb-2">
+                @foreach (var citation in Why.SupportingEvidence)
+                {
+                    <li class="mb-2">
+                        <blockquote class="mb-1 fst-italic">@citation.BulletText</blockquote>
+                        <span class="text-muted">@citation.Because</span>
+                        @if (!citation.IsExactTermMatch)
+                        {
+                            <span class="badge text-bg-light ms-1"
+                                  title="The bullet does not contain this requirement's wording. An AI reviewer read the two as related.">
+                                AI-identified
+                            </span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (Why.MissingEvidence.Count > 0)
+        {
+            <p class="text-muted mb-1">What would close this:</p>
+            <ul class="mb-0">
+                @foreach (var missing in Why.MissingEvidence)
+                {
+                    <li>@missing</li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    [Parameter]
+    public EvidenceRationaleDto? Why { get; set; }
+
+    /// <summary>
+    /// The bullets under a wording or ordering note are what the note is about rather than proof of
+    /// anything, so calling them evidence there would be wrong.
+    /// </summary>
+    private string EvidenceHeading => string.IsNullOrWhiteSpace(Why?.Requirement)
+        ? "Bullets involved:"
+        : "Evidence in your library:";
+}
