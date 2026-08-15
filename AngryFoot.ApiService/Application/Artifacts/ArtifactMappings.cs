@@ -28,6 +28,7 @@ public static class ArtifactMappings
             artifact.CreatedDate,
             ArtifactJsonColumns.FromJson<RefinementDto>(artifact.ResumeRefinementJson),
             ArtifactJsonColumns.FromJson<RefinementDto>(artifact.CoverLetterRefinementJson),
-            ArtifactJsonColumns.FromJson<EvidenceCoverageReportDto>(artifact.EvidenceCoverageJson));
+            ArtifactJsonColumns.FromJson<EvidenceCoverageReportDto>(artifact.EvidenceCoverageJson),
+            ArtifactJsonColumns.FromJson<GenerationExplanationDto>(artifact.GenerationExplanationJson));
     }
 }

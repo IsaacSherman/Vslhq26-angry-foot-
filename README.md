@@ -181,6 +181,21 @@ and both operands ship on the response. Each requirement is worth `weight × 2` 
 
 **Generate** produces its own report over the bullets that made the resume, in the order the resume prints them — which is what lets it flag a stronger bullet sitting below a weaker one. It is stored with the artifact and frozen, so reopening a generation from History explains the resume you actually sent rather than re-scoring it against a library that has moved on since.
 
+### Why this resume holds these bullets
+
+A generated resume is a compiled artifact, and **Generate** shows its build log. Every candidate the ranker produced is accounted for — not only the ones that made it, since an account covering the selected bullets alone would be the flattering half of the story.
+
+Each bullet is labelled with what became of it, and expands to the reasoning:
+
+- **Kept** — in the ranker's position, in your own words.
+- **Reworded** — tailored to this posting. Your wording and the resume's are shown side by side.
+- **Moved** — deep review put it somewhere other than where the ranker did, naming both positions.
+- **Left off** — with the reason. Either it evidences nothing this posting asks for, or it ranked below the cut.
+
+A bullet left off that speaks to something the resume **does not** evidence is called out as a cost rather than listed as a neutral fact: *"This resume does not fully evidence Kubernetes, which this bullet speaks to. Raising Max Bullets, or strengthening this one, would bring it in."* That is usually the most actionable line in the panel.
+
+The explanation is deterministic and costs no AI call — the generator's choices are already made by the time it runs, so explaining them cannot disagree with the resume it describes. It is stored with the artifact, so reopening a generation from History explains the resume you actually sent.
+
 ### Bullet versions and bullet quality
 
 A rewrite is a suggestion until the person who did the work says otherwise, so AngryFoot keeps rewrites **beside** a bullet rather than on top of it. Writing a version never changes your bullet; only **Use this version** does, and the wording it replaces survives as that version's source text.

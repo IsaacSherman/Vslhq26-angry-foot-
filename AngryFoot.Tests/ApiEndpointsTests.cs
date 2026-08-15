@@ -506,6 +506,23 @@ public class ApiEndpointsTests
         Assert.NotNull(result.Coverage);
         AssertScoreIsDerivedFromRequirements(result.Coverage!);
 
+        // Every candidate is accounted for, and the ones on the resume are the ones it names.
+        Assert.NotNull(result.Explanation);
+        Assert.NotEmpty(result.Explanation!.Decisions);
+        Assert.All(result.Explanation.Decisions, decision =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(decision.Why.Reasoning));
+            Assert.Contains(decision.Why.SupportingEvidence, x => x.BulletId == decision.BulletId);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.ResumePosition is null);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.FinalText is null);
+        });
+
+        var onResume = result.Explanation.Decisions
+            .Where(x => x.Kind != BulletDecisionKindDto.Omitted)
+            .Select(x => x.BulletId)
+            .ToHashSet();
+        Assert.Equal(result.SelectedBulletIds.ToHashSet(), onResume);
+
         var artifactsResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
         Assert.Equal(HttpStatusCode.OK, artifactsResponse.StatusCode);
         var artifacts = await artifactsResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
@@ -522,6 +539,12 @@ public class ApiEndpointsTests
         Assert.Equal(result.Coverage!.CoverageScore, artifact.Coverage!.CoverageScore);
         Assert.Equal(result.Coverage.Requirements.Count, artifact.Coverage.Requirements.Count);
         Assert.Equal(result.Coverage.Diagnostics.Count, artifact.Coverage.Diagnostics.Count);
+
+        Assert.NotNull(artifact.Explanation);
+        Assert.Equal(result.Explanation!.Summary, artifact.Explanation!.Summary);
+        Assert.Equal(
+            result.Explanation.Decisions.Select(x => x.BulletId),
+            artifact.Explanation.Decisions.Select(x => x.BulletId));
     }
 
     /// <summary>

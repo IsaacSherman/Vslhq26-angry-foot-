@@ -354,6 +354,34 @@ it into this resume, in the order the resume prints them — so unlike `/analyze
 `bullet-ordering`. Its `source` is always `"Deterministic"`: a generation already chains several AI
 calls, and this reports on a decision rather than making one.
 
+`explanation` (`GenerationExplanationDto`) accounts for **every** candidate the ranker produced,
+including the ones left off. Each `decisions[]` entry carries `bulletId`, `originalText`,
+`finalText` (null when omitted), `kind`, `rankerPosition`, `resumePosition` (null when omitted), and
+a `why` object of the same shape used everywhere else.
+
+`kind` is a **combinable flag set**, serialized as comma-separated names — a bullet can be both moved
+and reworded, and saying so beats picking whichever single label looked most notable:
+
+| Value | Meaning |
+|---|---|
+| `"Omitted"` | Left off this resume. Never combined with anything else. |
+| `"Selected"` | Kept, in the ranker's position, in the candidate's words. |
+| `"Selected, Revised"` | Kept in place, reworded for the posting. |
+| `"Selected, Reordered"` | Moved from the ranker's position, wording untouched. |
+| `"Selected, Revised, Reordered"` | Both. |
+
+Exactly one of `Selected` and `Omitted` is always present. Decisions are ordered by
+`resumePosition`, with the omitted ones last.
+
+> Note: `kind` is the only enum in these contracts sent as names. The rest — `enrichmentState`,
+> `strength`, `severity`, `requirementKind`, `source`, `mode` — serialize as **integers** under the
+> default web JSON options. Examples elsewhere in this document that show them as strings are
+> inaccurate on that point.
+
+For an omitted bullet that speaks to a requirement the resume does not fully evidence,
+`why.missingEvidence` says what leaving it off cost. Like `coverage`, this is computed
+deterministically and needs no AI call.
+
 ## Artifacts
 
 ### GET `/api/artifacts`
@@ -367,6 +395,9 @@ generation is reopened from history.
 `coverage` is the evidence coverage report as of the moment the resume was generated, frozen rather
 than recomputed — the library moves on, and a report that re-scored itself against later bullets
 would no longer explain the resume beside it. Null for artifacts generated before it was recorded.
+
+`explanation` is frozen for the same reason: it describes decisions taken over a candidate set that
+has since changed. Null for artifacts generated before it was recorded.
 
 ### PUT `/api/artifacts/{id}/selection`
 Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so history

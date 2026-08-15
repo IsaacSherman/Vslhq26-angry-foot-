@@ -1,0 +1,97 @@
+@using AngryFoot.Contracts
+@using AngryFoot.Web.Models
+
+@*
+    Why this resume holds the bullets it holds. Every candidate the generator considered is listed,
+    including the ones it left out - an account covering only the bullets that made it would be the
+    flattering half of the story rather than the whole of it (issue #18).
+*@
+
+@if (Explanation is not null)
+{
+    <div class="card mb-3">
+        <div class="card-header">@Title</div>
+        <div class="card-body">
+            <p class="lead">@Explanation.Summary</p>
+
+            <div class="list-group">
+                @foreach (var decision in Explanation.Decisions)
+                {
+                    <div class="list-group-item">
+                        <details>
+                            <summary style="cursor: pointer;">
+                                @foreach (var (label, cssClass) in Badges(decision.Kind))
+                                {
+                                    <span class="badge @cssClass me-1">@label</span>
+                                }
+                                @if (decision.ResumePosition is { } position)
+                                {
+                                    <span class="text-muted small ms-1 me-1">@($"#{position}")</span>
+                                }
+                                <span>@Excerpt(decision)</span>
+                            </summary>
+                            <div class="mt-2">
+                                @if (decision.FinalText is { } finalText
+                                     && !string.Equals(finalText, decision.OriginalText, StringComparison.Ordinal))
+                                {
+                                    <div class="mb-2 small">
+                                        <p class="text-muted mb-1">Your wording:</p>
+                                        <blockquote class="fst-italic mb-2">@decision.OriginalText</blockquote>
+                                        <p class="text-muted mb-1">On this resume:</p>
+                                        <blockquote class="fst-italic mb-0">@finalText</blockquote>
+                                    </div>
+                                }
+                                <EvidenceRationalePanel Why="@decision.Why" />
+                            </div>
+                        </details>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public GenerationExplanationDto? Explanation { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "Why this resume holds these bullets";
+
+    /// <summary>
+    /// The wording as it appears on the resume, since that is what the reader is looking at; the
+    /// original sits beside it inside the disclosure when the two differ.
+    /// </summary>
+    private static string Excerpt(BulletDecisionDto decision)
+    {
+        var text = decision.FinalText ?? decision.OriginalText;
+        return text.Length <= 90 ? text : text[..90].TrimEnd(',', '.', ' ') + "...";
+    }
+
+    /// <summary>
+    /// One badge per thing that happened, so a bullet that was moved and reworded says both.
+    /// Green for what made the resume, grey for what did not, and blue for what was done to it -
+    /// never a judgement on the bullet, since an omitted bullet is often a good one that lost to a
+    /// cap.
+    /// </summary>
+    private static IEnumerable<(string Label, string CssClass)> Badges(BulletDecisionKindDto kind)
+    {
+        if (kind.HasFlag(BulletDecisionKindDto.Omitted))
+        {
+            yield return ("Left off", "text-bg-secondary");
+            yield break;
+        }
+
+        yield return ("Kept", "text-bg-success");
+
+        if (kind.HasFlag(BulletDecisionKindDto.Reordered))
+        {
+            yield return ("Moved", "text-bg-info");
+        }
+
+        if (kind.HasFlag(BulletDecisionKindDto.Revised))
+        {
+            yield return ("Reworded", "text-bg-info");
+        }
+    }
+}

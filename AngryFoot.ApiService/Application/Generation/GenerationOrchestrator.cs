@@ -19,6 +19,13 @@ internal sealed class GenerationOrchestrator(
 {
     private const float MinimumSemanticSimilarity = 0.35f;
 
+    /// <summary>
+    /// How many bullets past the cut to retrieve purely so the explanation can account for them.
+    /// Bounded rather than proportional: the near-misses are what a reader learns from, and a list
+    /// of every bullet that lost is a list nobody reads.
+    /// </summary>
+    private const int MaxRunnersUpExplained = 10;
+
     public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.JobDescription))
@@ -49,12 +56,17 @@ internal sealed class GenerationOrchestrator(
         var maxBullets = Math.Clamp(request.MaxBullets.GetValueOrDefault(10), 1, 20);
 
         // Deep review is allowed to swap a weak bullet out for a better one, so it needs
-        // candidates the ranker left on the bench. Without it, retrieval stays exactly as before.
+        // candidates the ranker left on the bench.
         var benchSize = request.DeepReview ? maxBullets : 0;
+
+        // And the explanation needs runners-up whatever the mode: asking retrieval for exactly the
+        // number of bullets the resume will hold means nothing is ever left off, so "why isn't this
+        // bullet here" has no answer - including the answer worth having, that a bullet just below
+        // the cut was the only one evidencing something the resume now misses.
         var ranked = await RetrieveRankedBulletsAsync(
-            request.JobDescription, analysis, maxBullets + benchSize, cancellationToken);
+            request.JobDescription, analysis, maxBullets + benchSize + MaxRunnersUpExplained, cancellationToken);
         var selected = ranked.Take(maxBullets).ToArray();
-        var bench = ranked.Skip(maxBullets).ToArray();
+        var bench = ranked.Skip(maxBullets).Take(benchSize).ToArray();
 
         var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
         var rewriteOutcome = await rewriteService.RewriteAsync(
@@ -78,6 +90,10 @@ internal sealed class GenerationOrchestrator(
             rewritten.Select(x => x.Bullet).ToArray(),
             cancellationToken);
 
+        // Every candidate the ranker produced, not only the ones that made it: an account that
+        // covered the selected bullets alone would be the flattering half of the story.
+        var explanation = GenerationExplanationService.Explain(analysis, ranked, rewritten);
+
         var artifact = new GenerationArtifact
         {
             Id = Guid.NewGuid(),
@@ -91,7 +107,8 @@ internal sealed class GenerationOrchestrator(
             CreatedDate = DateTime.UtcNow,
             ResumeRefinementJson = ArtifactJsonColumns.ToJson(resumeRefinement),
             CoverLetterRefinementJson = ArtifactJsonColumns.ToJson(coverLetter.Refinement),
-            EvidenceCoverageJson = ArtifactJsonColumns.ToJson(coverage)
+            EvidenceCoverageJson = ArtifactJsonColumns.ToJson(coverage),
+            GenerationExplanationJson = ArtifactJsonColumns.ToJson(explanation)
         };
 
         dbContext.GenerationArtifacts.Add(artifact);
@@ -105,7 +122,8 @@ internal sealed class GenerationOrchestrator(
             artifact.SelectedBulletIds,
             resumeRefinement,
             coverLetter.Refinement,
-            coverage);
+            coverage,
+            explanation);
     }
 
     /// <summary>

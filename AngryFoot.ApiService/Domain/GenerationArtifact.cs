@@ -29,4 +29,11 @@ public sealed class GenerationArtifact
     /// resume sitting next to it. Null for artifacts generated before the report existed.
     /// </summary>
     public string? EvidenceCoverageJson { get; set; }
+
+    /// <summary>
+    /// Serialized <c>GenerationExplanationDto</c>: what became of every bullet the generator
+    /// considered. Frozen for the same reason as <see cref="EvidenceCoverageJson"/> - it explains
+    /// the decisions taken on the day, and the candidate set has moved on since.
+    /// </summary>
+    public string? GenerationExplanationJson { get; set; }
 }
