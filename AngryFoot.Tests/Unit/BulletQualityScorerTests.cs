@@ -7,14 +7,22 @@ namespace AngryFoot.Tests.Unit;
 
 public class BulletQualityScorerTests
 {
-    private static Bullet Bullet(string text, string[]? technologies = null, string[]? jobCategories = null)
+    private static Bullet Bullet(
+        string text,
+        string[]? technologies = null,
+        string[]? jobCategories = null,
+        string[]? acknowledged = null)
         => new()
         {
             Id = Guid.NewGuid(),
             BulletText = text,
             Technologies = (technologies ?? []).ToList(),
-            JobCategories = (jobCategories ?? []).ToList()
+            JobCategories = (jobCategories ?? []).ToList(),
+            AcknowledgedQualitySignals = (acknowledged ?? []).ToList()
         };
+
+    private static BulletQualitySignalDto Signal(BulletQualityDto quality, string name)
+        => quality.Signals.Single(x => x.Name == name);
 
     private static bool Earned(BulletQualityDto quality, string name)
         => quality.Signals.Single(x => x.Name == name).Earned;
@@ -39,12 +47,12 @@ public class BulletQualityScorerTests
     }
 
     [Fact]
-    public void Score_WithNothingEarned_IsZeroAndSaysWhyForEachMiss()
+    public void Score_WithOnlyThePresumedSignalEarned_ScoresJustThat()
     {
         var quality = BulletQualityScorer.Score(Bullet("responsible for various things"));
 
-        quality.Score.Should().Be(0);
-        quality.Signals.Should().OnlyContain(x => !x.Earned);
+        quality.Score.Should().Be(5, "ownership is presumed; nothing else about this bullet earns anything");
+        quality.Signals.Where(x => x.Earned).Select(x => x.Name).Should().Equal(BulletQualitySignals.Ownership);
         quality.Diagnostics.Should().NotBeEmpty();
         quality.Diagnostics.Should().AllSatisfy(x => x.Why.Reasoning.Should().NotBeNullOrWhiteSpace());
     }
@@ -99,7 +107,7 @@ public class BulletQualityScorerTests
         var quality = BulletQualityScorer.Score(Bullet(longText, technologies: ["Azure"], jobCategories: ["Engineering"]));
 
         quality.Score.Should().Be(100, "length is advice, not a penalty");
-        quality.Diagnostics.Should().Contain(x => x.Message.Contains("runs to"));
+        quality.Diagnostics.Should().Contain(x => x.Message.Contains("stops being skimmed"));
     }
 
     [Fact]
@@ -111,14 +119,103 @@ public class BulletQualityScorerTests
         quality.Diagnostics.Should().Contain(x => x.Message.Contains("responsible for"));
     }
 
-    [Fact]
-    public void Score_CollectiveWordingLosesTheOwnershipSignal()
+    /// <summary>
+    /// The bullets an ownership allowlist used to reject. A resume elides its subject, so each of
+    /// these reads as the author's own work and scores as such.
+    /// </summary>
+    [Theory]
+    [InlineData("Mentored two interns through weekly 1:1s and code reviews.")]
+    [InlineData("Developed and maintained C# interoperability wrappers.")]
+    [InlineData("Provisioned and configured the software team's first CI/CD server.")]
+    public void Score_PresumesOwnershipOfWorkTheBulletDescribes(string text)
     {
-        Earned(BulletQualityScorer.Score(Bullet("We led the migration to Azure.")), BulletQualitySignals.Ownership)
-            .Should().BeFalse("a reader cannot tell which part was the candidate's");
+        Earned(BulletQualityScorer.Score(Bullet(text)), BulletQualitySignals.Ownership).Should().BeTrue();
+    }
 
-        Earned(BulletQualityScorer.Score(Bullet("Led the migration to Azure.")), BulletQualitySignals.Ownership)
-            .Should().BeTrue();
+    [Fact]
+    public void Score_OnlyLosesOwnershipWhenCreditIsGivenAway()
+    {
+        var shared = BulletQualityScorer.Score(Bullet("We led the migration to Azure."));
+
+        Earned(shared, BulletQualitySignals.Ownership).Should().BeFalse();
+        Signal(shared, BulletQualitySignals.Ownership).Detail.Should().Contain("\"we\"",
+            "the check has to name the wording it objected to");
+    }
+
+    [Fact]
+    public void Score_OwnershipIsWorthFivePointsBecauseTheTextCannotSettleIt()
+    {
+        Signal(BulletQualityScorer.Score(Bullet("Anything.")), BulletQualitySignals.Ownership)
+            .Weight.Should().Be(5);
+    }
+
+    [Fact]
+    public void Score_OwnershipIsTheOnlyContestableSignal()
+    {
+        var quality = BulletQualityScorer.Score(Bullet("Anything."));
+
+        quality.Signals.Where(x => x.IsContestable).Select(x => x.Name)
+            .Should().Equal(BulletQualitySignals.Ownership);
+    }
+
+    [Fact]
+    public void Score_ASettledSignalScoresAndIsReportedAsDeclared()
+    {
+        var quality = BulletQualityScorer.Score(
+            Bullet("We led the migration to Azure.", acknowledged: [BulletQualitySignals.Ownership]));
+
+        var ownership = Signal(quality, BulletQualitySignals.Ownership);
+        ownership.Earned.Should().BeTrue();
+        ownership.IsDeclared.Should().BeTrue("the author settled it; the wording did not");
+        ownership.Detail.Should().Contain("Settled by the author.");
+    }
+
+    [Fact]
+    public void Score_ASettledSignalStopsBeingRaised()
+    {
+        var quality = BulletQualityScorer.Score(
+            Bullet("We led the migration to Azure.", acknowledged: [BulletQualitySignals.Ownership]));
+
+        quality.Diagnostics.Should().NotContain(x => x.Message.Contains("Credit reads as shared"),
+            "being told twice that a check disagrees is what turns an assessment into an argument");
+    }
+
+    [Fact]
+    public void Score_SettlingASignalTheTextCanDecideDoesNothing()
+    {
+        var quality = BulletQualityScorer.Score(
+            Bullet("Led the migration.", acknowledged: [BulletQualitySignals.MeasurableImpact]));
+
+        Earned(quality, BulletQualitySignals.MeasurableImpact).Should().BeFalse(
+            "whether a figure is present is not open to opinion");
+    }
+
+    [Fact]
+    public void Score_EverySignalReportsWhatTheCheckSaw()
+    {
+        var quality = BulletQualityScorer.Score(
+            Bullet("Led the Apollo migration, cutting deploy time by 40%.", technologies: ["Azure"]));
+
+        quality.Signals.Should().AllSatisfy(x => x.Detail.Should().NotBeNullOrWhiteSpace());
+        Signal(quality, BulletQualitySignals.MeasurableImpact).Detail.Should().Contain("40%");
+        Signal(quality, BulletQualitySignals.Specificity).Detail.Should().Contain("Apollo");
+        Signal(quality, BulletQualitySignals.OpensWithAction).Detail.Should().Contain("Led");
+        Signal(quality, BulletQualitySignals.Technology).Detail.Should().Contain("Azure");
+    }
+
+    [Fact]
+    public void Score_DistinguishesNotEnrichedFromNothingFound()
+    {
+        var pending = Bullet("Led the migration.");
+        pending.EnrichmentState = EnrichmentState.Pending;
+
+        var enriched = Bullet("Led the migration.");
+        enriched.EnrichmentState = EnrichmentState.Enriched;
+
+        Signal(BulletQualityScorer.Score(pending), BulletQualitySignals.RoleRelevance)
+            .Detail.Should().Contain("Not enriched yet");
+        Signal(BulletQualityScorer.Score(enriched), BulletQualitySignals.RoleRelevance)
+            .Detail.Should().Contain("no job family");
     }
 
     [Fact]

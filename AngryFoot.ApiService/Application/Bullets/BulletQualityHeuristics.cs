@@ -52,63 +52,102 @@ internal static partial class BulletQualityHeuristics
     };
 
     /// <summary>
-    /// Verbs that claim the work rather than describe proximity to it. Not an exhaustive list of
-    /// good openers - a bullet starting with any past-tense verb also counts - but these are the
-    /// ones that additionally say the accomplishment was the writer's.
+    /// Verbs common enough at the start of a resume bullet to be recognised as actions without a
+    /// past-tense ending. Not a test of ownership - see <see cref="SharedCreditMarker"/> for that.
     /// </summary>
-    private static readonly string[] OwnershipVerbs =
+    private static readonly string[] ActionVerbs =
     [
-        "led", "owned", "drove", "architected", "designed", "built", "created", "founded",
-        "established", "spearheaded", "initiated", "launched", "delivered", "rebuilt", "rearchitected"
+        // Irregular past tenses, which the "-ed" test cannot reach.
+        "led", "built", "rebuilt", "drove", "ran", "wrote", "rewrote", "taught", "won", "grew",
+        "took", "made", "brought", "began", "set", "cut", "oversaw", "sold", "sent", "kept",
+        "held", "met", "chose", "drew", "found", "gave", "left", "put", "spoke", "spent", "dealt",
+        // Base forms, for a library written in the present tense.
+        "lead", "own", "drive", "build", "run", "ship", "grow", "win", "write", "teach", "mentor",
+        "rebuild", "oversee", "begin", "bring", "take", "make"
     ];
 
     /// <summary>
-    /// Wording that hands the accomplishment to a group. A bullet can honestly describe team work,
-    /// but a reader cannot tell what the candidate did from one.
+    /// Wording that hands the accomplishment to a group.
+    /// <para>
+    /// A resume elides its subject by convention: every bullet is read as the author's own work
+    /// unless it says otherwise. So the question is not "does this prove ownership" - nothing short
+    /// of writing "I" would - but "does this give the credit away", which only these do. Anything
+    /// that names the author's role in the work, in any of the hundreds of verbs English offers for
+    /// it, is left alone.
+    /// </para>
     /// </summary>
-    private static readonly string[] CollectiveHedges = ["we ", "we'", "our team", "the team", "team's"];
+    /// <remarks>
+    /// Possessives are deliberately absent. "the software team's first CI/CD server" says whose
+    /// server it was, not who built it, and reading that as shared credit is how a heuristic ends
+    /// up arguing with someone about their own work.
+    /// </remarks>
+    private static readonly string[] SharedCreditMarkers =
+    [
+        "we", "we've", "we'd", "we're", "our team", "the team and i", "assisted with", "assisted in",
+        "contributed to", "helped with", "helped to", "participated in", "part of a team",
+        "part of the team", "supported the team", "collaborated with the team"
+    ];
 
-    public static bool HasMeasurableImpact(string text) => ImpactPattern().IsMatch(text);
+    public static bool HasMeasurableImpact(string text) => MeasurableImpact(text) is not null;
+
+    /// <summary>The figure the bullet quantifies its result with, or null when it states none.</summary>
+    public static string? MeasurableImpact(string text)
+    {
+        var match = ImpactPattern().Match(text);
+        return match.Success ? match.Value : null;
+    }
+
+    public static bool OpensWithAction(string text) => OpeningAction(text) is not null;
 
     /// <summary>
-    /// The bullet leads with something the writer did. A past-tense verb or a known action verb in
-    /// first position, and not one of the openers that describe an assignment instead.
+    /// The action the bullet leads with, or null when it leads with something else. A past-tense
+    /// verb or a known action verb in first position, and not an opener that describes an
+    /// assignment instead.
     /// </summary>
-    public static bool OpensWithAction(string text)
+    public static string? OpeningAction(string text)
     {
         if (WeakOpener(text) is not null)
         {
-            return false;
+            return null;
         }
 
         var first = WordPattern().Match(text.TrimStart());
         if (!first.Success)
         {
-            return false;
+            return null;
         }
 
-        var word = first.Value.ToLowerInvariant();
-        return word.EndsWith("ed", StringComparison.Ordinal) || Array.Exists(OwnershipVerbs, verb => verb == word);
-    }
+        var lowered = first.Value.ToLowerInvariant();
 
-    /// <summary>The bullet claims the work rather than reporting a group's.</summary>
-    public static bool ClaimsOwnership(string text)
-    {
-        var padded = " " + text.ToLowerInvariant();
-        return !Array.Exists(CollectiveHedges, hedge => padded.Contains(" " + hedge, StringComparison.Ordinal))
-            && Array.Exists(OwnershipVerbs, verb => ContainsWord(padded, verb));
+        return lowered.EndsWith("ed", StringComparison.Ordinal) || Array.Exists(ActionVerbs, verb => verb == lowered)
+            ? first.Value
+            : null;
     }
 
     /// <summary>
-    /// The bullet names something in particular - a product, a system, a tool - rather than
-    /// describing a category of work. Detected as a capitalised word that is not simply the start
-    /// of a sentence, which is what a proper noun looks like without parsing English.
+    /// The wording that gives this bullet's credit away, or null when it reads as the author's own
+    /// work - which, on a resume, is what the absence of such wording means.
     /// </summary>
-    public static bool IsSpecific(string text)
+    public static string? SharedCreditMarker(string text)
+    {
+        // A curly apostrophe is what most editors produce, and "we've" has to read the same either way.
+        var padded = " " + text.ToLowerInvariant().Replace('’', '\'');
+        return Array.Find(SharedCreditMarkers, marker => ContainsWord(padded, marker));
+    }
+
+    public static bool IsSpecific(string text) => ProperNoun(text) is not null;
+
+    /// <summary>
+    /// The particular thing this bullet names - a product, a system, a tool - or null when it
+    /// describes a category of work instead. Detected as a capitalised word that is not simply the
+    /// start of a sentence, which is what a proper noun looks like without parsing English.
+    /// </summary>
+    public static string? ProperNoun(string text)
     {
         return WordPattern().Matches(text)
             .Skip(1)
-            .Any(match => char.IsUpper(match.Value[0]));
+            .FirstOrDefault(match => char.IsUpper(match.Value[0]))
+            ?.Value;
     }
 
     /// <summary>
@@ -169,7 +208,13 @@ internal static partial class BulletQualityHeuristics
         return false;
     }
 
-    [GeneratedRegex("\\b(\\d+%|\\$?\\d+[\\d,]*(\\.\\d+)?|\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?))\\b", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// Boundaries are per-alternative rather than wrapped around the whole group. A trailing
+    /// boundary after the group cannot follow "40%" - percent to full stop is not a word boundary -
+    /// so the engine backtracked onto the bare-number branch and reported the figure as "40".
+    /// Invisible while this only answered yes or no; wrong the moment the figure is quoted back.
+    /// </remarks>
+    [GeneratedRegex("(\\b\\d+%|\\b\\$?\\d+[\\d,]*(\\.\\d+)?\\b|\\b\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?)\\b)", RegexOptions.IgnoreCase)]
     private static partial Regex ImpactPattern();
 
     [GeneratedRegex("[A-Za-z][A-Za-z0-9#+.]*")]

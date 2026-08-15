@@ -19,4 +19,11 @@ public sealed class Bullet
     /// overwrite <see cref="BulletText"/>; see <see cref="BulletRevision"/>.
     /// </summary>
     public List<BulletRevision> Revisions { get; set; } = [];
+
+    /// <summary>
+    /// Quality signals the author has settled for this bullet. Held because some of what quality
+    /// scoring asks about is not in the text: a resume elides its subject, so no wording settles
+    /// whether work was shared, and the author's answer is the only evidence there is.
+    /// </summary>
+    public List<string> AcknowledgedQualitySignals { get; set; } = [];
 }

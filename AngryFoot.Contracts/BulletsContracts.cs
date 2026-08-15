@@ -22,9 +22,9 @@ public sealed record BulletDto(
     bool IsIndexed,
     BulletQualityDto? Quality = null);
 
-public sealed record CreateBulletRequest(string BulletText, string? SourceEmployer = null);
+public sealed record CreateBulletRequest(string BulletText, string? SourceEmployer = null, BulletTaggingDto? Tagging = null);
 
-public sealed record UpdateBulletRequest(string BulletText, string? SourceEmployer = null);
+public sealed record UpdateBulletRequest(string BulletText, string? SourceEmployer = null, BulletTaggingDto? Tagging = null);
 
 /// <param name="DeepReview">
 /// Opt in to the critique-and-revise pass: three extra AI calls that produce alternative versions
@@ -106,21 +106,32 @@ public sealed record BulletRevisionDto(
     DateTime CreatedDate,
     BulletQualityDto? Quality = null);
 
-/// <summary>
-/// What can be said about how a bullet is written, without reference to any particular posting.
-/// </summary>
-/// <param name="Score">
-/// 0-100, derived from the signals below so it is explainable from them rather than asserted
-/// alongside them.
-/// </param>
-/// <param name="Diagnostics">
-/// Reuses the evidence report's diagnostic type, so a bullet's problems are described in the same
-/// words and carry the same "Why" panel wherever they appear.
-/// </param>
+/// <summary>One thing checked about a bullet's writing, and what the check saw.</summary>
 /// <param name="Name">A well-known value from <see cref="BulletQualitySignals"/>.</param>
 /// <param name="Label">How to name this signal to the user.</param>
 /// <param name="Weight">What it contributes to the score when earned.</param>
-public sealed record BulletQualitySignalDto(string Name, string Label, bool Earned, int Weight);
+/// <param name="Detail">
+/// What the check actually saw, quoting the bullet where it can. A signal that reports a verdict
+/// without the words behind it cannot be argued with, and an assessment that cannot be argued with
+/// gets argued with anyway.
+/// </param>
+/// <param name="IsDeclared">
+/// Earned because the author said so rather than because the text shows it. Reported separately so
+/// the panel never claims the wording proved something it did not.
+/// </param>
+/// <param name="IsContestable">
+/// Whether the author can settle this signal themselves. True only where the check is inferring
+/// about the world rather than reading the text: whether work was shared is a fact no wording can
+/// settle, while whether a figure is present is not open to opinion.
+/// </param>
+public sealed record BulletQualitySignalDto(
+    string Name,
+    string Label,
+    bool Earned,
+    int Weight,
+    string Detail,
+    bool IsDeclared = false,
+    bool IsContestable = false);
 
 /// <summary>
 /// What can be said about how a bullet is written, without reference to any particular posting.
@@ -155,6 +166,40 @@ public static class BulletQualitySignals
     /// </summary>
     public const string RoleRelevance = "role-relevance";
 }
+
+/// <summary>
+/// The quality signals the author has settled for a bullet. A settled signal scores and stops being
+/// raised - the tool cannot know whether work was shared, and continuing to ask after being told is
+/// what turns an assessment into an argument.
+/// </summary>
+public sealed record SetBulletQualityAcknowledgementsRequest(IReadOnlyList<string> Signals);
+
+/// <summary>
+/// A quality assessment of text that has not been saved, plus the metadata the assessment used.
+/// </summary>
+/// <param name="Tagging">
+/// Echo this back on the create or update that follows and the enrichment is not run twice; see
+/// <see cref="BulletTaggingDto"/>.
+/// </param>
+public sealed record AssessBulletRequest(string BulletText, IReadOnlyList<string>? AcknowledgedSignals = null);
+
+public sealed record BulletAssessmentDto(BulletQualityDto Quality, BulletTaggingDto Tagging);
+
+/// <summary>
+/// Enrichment metadata together with the exact text it was derived from.
+/// </summary>
+/// <param name="ForText">
+/// The wording this metadata describes. A create or update carrying tagging for text that no longer
+/// matches is re-tagged from scratch rather than trusted - the same staleness guard resume import
+/// uses for reviewed bullets.
+/// </param>
+public sealed record BulletTaggingDto(
+    string ForText,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<string> Skills,
+    IReadOnlyList<string> Technologies,
+    IReadOnlyList<string> JobCategories,
+    IReadOnlyList<string> Impact);
 
 /// <param name="Guidance">
 /// The candidate's own clarification of anything ambiguous in the bullet, treated as fact by the

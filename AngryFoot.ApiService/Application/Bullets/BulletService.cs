@@ -16,6 +16,15 @@ public interface IBulletService
     Task<BulletDto?> EnrichAsync(Guid id, CancellationToken cancellationToken);
     Task<BulletDto?> IndexAsync(Guid id, CancellationToken cancellationToken);
     Task<int> IndexAllMissingAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Enriches and scores wording that has not been saved, persisting nothing. The returned tagging
+    /// can be handed back on the create or update that follows so the AI call is paid for once.
+    /// </summary>
+    Task<BulletAssessmentDto> AssessAsync(AssessBulletRequest request, CancellationToken cancellationToken);
+
+    /// <summary>Records which quality signals the author has settled for a bullet.</summary>
+    Task<BulletDto?> SetQualityAcknowledgementsAsync(Guid id, IReadOnlyList<string> signals, CancellationToken cancellationToken);
 }
 
 public sealed class BulletService(
@@ -93,7 +102,7 @@ public sealed class BulletService(
             EnrichmentState = EnrichmentState.Pending
         };
 
-        await TryApplyTaggingAsync(bullet, cancellationToken);
+        await ApplyOrReuseTaggingAsync(bullet, request.Tagging, cancellationToken);
         dbContext.Bullets.Add(bullet);
         await dbContext.SaveChangesAsync(cancellationToken);
         var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
@@ -125,7 +134,7 @@ public sealed class BulletService(
             await ForgetIgnoredDuplicatesAsync(id, cancellationToken);
         }
 
-        await TryApplyTaggingAsync(bullet, cancellationToken);
+        await ApplyOrReuseTaggingAsync(bullet, request.Tagging, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
@@ -216,6 +225,78 @@ public sealed class BulletService(
         }
 
         return indexedCount;
+    }
+
+    public async Task<BulletAssessmentDto> AssessAsync(AssessBulletRequest request, CancellationToken cancellationToken)
+    {
+        // A detached bullet: enrichment and scoring both need one, and nothing here is persisted.
+        var draft = new Bullet
+        {
+            Id = Guid.Empty,
+            BulletText = request.BulletText.Trim(),
+            AcknowledgedQualitySignals = (request.AcknowledgedSignals ?? []).ToList()
+        };
+
+        await TryApplyTaggingAsync(draft, cancellationToken);
+
+        return new BulletAssessmentDto(
+            BulletQualityScorer.Score(draft),
+            new BulletTaggingDto(
+                draft.BulletText,
+                draft.Tags,
+                draft.Skills,
+                draft.Technologies,
+                draft.JobCategories,
+                draft.Impact));
+    }
+
+    public async Task<BulletDto?> SetQualityAcknowledgementsAsync(
+        Guid id,
+        IReadOnlyList<string> signals,
+        CancellationToken cancellationToken)
+    {
+        var bullet = await dbContext.Bullets.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (bullet is null)
+        {
+            return null;
+        }
+
+        bullet.AcknowledgedQualitySignals = Normalize(signals);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var indexedIds = await vectorStore.GetIndexedIdsAsync([bullet.Id], cancellationToken);
+        return bullet.ToDto(indexedIds.Contains(bullet.Id));
+    }
+
+    /// <summary>
+    /// Uses tagging the caller already paid for, when it describes the text being saved. The text
+    /// has to match because tagging that describes different wording is worse than none: it would
+    /// file the bullet under skills it never mentions.
+    /// </summary>
+    private async Task ApplyOrReuseTaggingAsync(
+        Bullet bullet,
+        BulletTaggingDto? tagging,
+        CancellationToken cancellationToken)
+    {
+        if (tagging is null || !string.Equals(tagging.ForText.Trim(), bullet.BulletText, StringComparison.Ordinal))
+        {
+            await TryApplyTaggingAsync(bullet, cancellationToken);
+            return;
+        }
+
+        bullet.Tags = Normalize(tagging.Tags);
+        bullet.Skills = Normalize(tagging.Skills);
+        bullet.Technologies = Normalize(tagging.Technologies);
+        bullet.JobCategories = Normalize(tagging.JobCategories);
+        bullet.Impact = Normalize(tagging.Impact);
+
+        var hasMetadata = bullet.Tags.Count > 0
+            || bullet.Skills.Count > 0
+            || bullet.Technologies.Count > 0
+            || bullet.JobCategories.Count > 0
+            || bullet.Impact.Count > 0;
+
+        bullet.EnrichmentState = hasMetadata ? EnrichmentState.Enriched : EnrichmentState.Failed;
     }
 
     private async Task TryApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)

@@ -53,6 +53,9 @@ Request:
 { "bulletText": "Reduced widget waste by 30% by redesigning the assembly process." }
 ```
 
+An optional `tagging` from a prior `/api/bullets/assess` of the same text is used instead of running
+enrichment again; see that endpoint.
+
 Returns `201 Created` with `BulletDto` and `Location: /api/bullets/{id}`.
 
 ### PUT `/api/bullets/{id}`
@@ -155,9 +158,36 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
 A version is an alternative wording of a bullet, kept alongside it. Creating one never modifies the
 bullet; only the promote call does.
 
-`BulletDto` and `BulletRevisionDto` both carry a `quality` object: `score`, a `signals[]` array of
-`{ name, label, earned, weight }`, `wordCount`, and `diagnostics[]` (the same shape evidence coverage
-uses, Why panel included). `score` always equals the sum of the weights of the earned signals.
+`BulletDto` and `BulletRevisionDto` both carry a `quality` object: `score`, a `signals[]` array,
+`wordCount`, and `diagnostics[]` (the same shape evidence coverage uses, Why panel included).
+`score` always equals the sum of the weights of the earned signals.
+
+Each signal is `{ name, label, earned, weight, detail, isDeclared, isContestable }`. `detail` is what
+the check saw, quoting the bullet where it can — `States "40%"`, `Shared credit: "we"`,
+`Not enriched yet`.
+
+`isContestable` is true only for `ownership`, the one signal the text cannot settle: a resume elides
+its subject, so the check presumes the author and looks only for wording that gives credit away.
+`isDeclared` marks a signal earned because the author settled it rather than because the wording
+showed it — a settled signal scores and stops producing a diagnostic.
+
+#### POST `/api/bullets/assess`
+Scores wording that has not been saved. Persists nothing.
+
+```json
+{ "bulletText": "Cut Azure spend by 30%.", "acknowledgedSignals": ["ownership"] }
+```
+
+Returns `BulletAssessmentDto` — `quality`, plus the `tagging` the assessment used
+(`{ forText, tags, skills, technologies, jobCategories, impact }`). Two of the six signals come from
+enrichment rather than the text, so this runs the tagger; passing `tagging` back on the create or
+update that follows skips a second call. The API re-tags from scratch if `forText` no longer matches
+the text being saved.
+
+#### PUT `/api/bullets/{id}/quality-acknowledgements`
+Records which quality signals the author has settled. `{ "signals": ["ownership"] }` — the full set,
+so an empty array reopens everything. Returns the updated `BulletDto`, or `404`. Signals that are
+not contestable are stored but have no effect on the score.
 
 #### GET `/api/bullets/{id}/revisions`
 Returns the bullet's versions (`200`), or `404` when the bullet does not exist. An existing bullet

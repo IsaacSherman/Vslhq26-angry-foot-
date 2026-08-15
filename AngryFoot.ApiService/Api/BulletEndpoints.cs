@@ -128,6 +128,31 @@ public static class BulletEndpoints
             return Results.Ok(result);
         });
 
+        // Scores wording that has not been saved. Returns the tagging it used so the caller can
+        // hand it back on the save that follows rather than paying for enrichment twice.
+        bullets.MapPost("/assess", async (
+            AssessBulletRequest request,
+            IBulletService bulletService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BulletText))
+            {
+                return Results.BadRequest("Bullet text is required.");
+            }
+
+            return Results.Ok(await bulletService.AssessAsync(request, cancellationToken));
+        });
+
+        bullets.MapPut("/{id:guid}/quality-acknowledgements", async (
+            Guid id,
+            SetBulletQualityAcknowledgementsRequest request,
+            IBulletService bulletService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await bulletService.SetQualityAcknowledgementsAsync(id, request.Signals, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         // Revisions are variants of a bullet, not edits to it: creating one never touches the
         // bullet's own text, and promoting one is a separate, explicit call.
         bullets.MapGet("/{id:guid}/revisions", async (

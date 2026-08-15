@@ -7,13 +7,21 @@ namespace AngryFoot.ApiService.Application.Bullets;
 /// <summary>
 /// Scores how a bullet is written, independently of any posting.
 /// <para>
-/// The score is the sum of the weights of the signals it earns, and the signals ship on the DTO
-/// alongside it - the same rule evidence coverage follows, for the same reason: a number the user
-/// cannot take apart is a number they have to take on trust.
+/// The score is the sum of the weights of the signals it earns, and every signal ships with what the
+/// check saw. Diagnostics state what is absent or present; they do not coach, encourage, or explain
+/// why the author should care.
 /// </para>
 /// </summary>
 internal static class BulletQualityScorer
 {
+    /// <summary>
+    /// Ownership is worth a fraction of the others because it is the only one the text cannot
+    /// settle. A resume elides its subject, so no wording proves authorship and the check can only
+    /// spot credit being given away - a narrow thing to be worth much, and a costly thing to be
+    /// wrong about.
+    /// </summary>
+    private const int OwnershipWeight = 5;
+
     /// <summary>
     /// Long enough that a reader's attention runs out before the bullet does. Advisory only - it
     /// costs no points, because a long bullet packed with evidence beats a short empty one.
@@ -29,21 +37,52 @@ internal static class BulletQualityScorer
     public static BulletQualityDto Score(Bullet bullet, string? text = null)
     {
         var wording = string.IsNullOrWhiteSpace(text) ? bullet.BulletText : text;
+        var declared = bullet.AcknowledgedQualitySignals;
+
+        var opener = BulletQualityHeuristics.OpeningAction(wording);
+        var figure = BulletQualityHeuristics.MeasurableImpact(wording);
+        var sharedCredit = BulletQualityHeuristics.SharedCreditMarker(wording);
+        var properNoun = BulletQualityHeuristics.ProperNoun(wording);
+        var isEnriched = bullet.EnrichmentState == EnrichmentState.Enriched;
 
         BulletQualitySignalDto[] signals =
         [
-            new(BulletQualitySignals.OpensWithAction, "Opens with an action",
-                BulletQualityHeuristics.OpensWithAction(wording), 20),
-            new(BulletQualitySignals.MeasurableImpact, "Measurable result",
-                BulletQualityHeuristics.HasMeasurableImpact(wording), 25),
-            new(BulletQualitySignals.Ownership, "Clear ownership",
-                BulletQualityHeuristics.ClaimsOwnership(wording), 15),
-            new(BulletQualitySignals.Specificity, "Names specifics",
-                BulletQualityHeuristics.IsSpecific(wording), 15),
-            new(BulletQualitySignals.Technology, "Names technology",
-                bullet.Technologies.Count > 0 || BulletQualityHeuristics.NamesTechnology(wording), 15),
-            new(BulletQualitySignals.RoleRelevance, "Maps to a role",
-                bullet.JobCategories.Count > 0, 10)
+            Signal(BulletQualitySignals.OpensWithAction, "Opens with an action", 20, declared,
+                earned: opener is not null,
+                detail: opener is not null
+                    ? $"Opens with \"{opener}\"."
+                    : BulletQualityHeuristics.WeakOpener(wording) is { } weak
+                        ? $"Opens with \"{weak}\"."
+                        : "First word is not an action verb."),
+
+            Signal(BulletQualitySignals.MeasurableImpact, "Measurable result", 30, declared,
+                earned: figure is not null,
+                detail: figure is not null ? $"States \"{figure}\"." : "No figure present."),
+
+            Signal(BulletQualitySignals.Ownership, "Sole credit", OwnershipWeight, declared,
+                earned: sharedCredit is null,
+                detail: sharedCredit is null
+                    ? "No shared-credit wording."
+                    : $"Shared credit: \"{sharedCredit}\".",
+                isContestable: true),
+
+            Signal(BulletQualitySignals.Specificity, "Names specifics", 20, declared,
+                earned: properNoun is not null,
+                detail: properNoun is not null ? $"Names \"{properNoun}\"." : "No named system, product, or tool."),
+
+            Signal(BulletQualitySignals.Technology, "Names technology", 15, declared,
+                earned: bullet.Technologies.Count > 0 || BulletQualityHeuristics.NamesTechnology(wording),
+                detail: bullet.Technologies.Count > 0
+                    ? $"Tagged: {string.Join(", ", bullet.Technologies)}."
+                    : BulletQualityHeuristics.NamesTechnology(wording)
+                        ? "Named in the text."
+                        : isEnriched ? "None named or tagged." : "Not enriched yet."),
+
+            Signal(BulletQualitySignals.RoleRelevance, "Maps to a role", 10, declared,
+                earned: bullet.JobCategories.Count > 0,
+                detail: bullet.JobCategories.Count > 0
+                    ? $"Tagged: {string.Join(", ", bullet.JobCategories)}."
+                    : isEnriched ? "Enrichment placed it in no job family." : "Not enriched yet.")
         ];
 
         return new BulletQualityDto(
@@ -53,8 +92,30 @@ internal static class BulletQualityScorer
             BuildDiagnostics(bullet, wording, signals));
     }
 
-    private static bool Earned(BulletQualitySignalDto[] signals, string name)
-        => signals.First(signal => signal.Name == name).Earned;
+    /// <summary>
+    /// A signal the author has settled scores and reports as declared, so the panel never presents
+    /// their word as something the wording demonstrated.
+    /// </summary>
+    private static BulletQualitySignalDto Signal(
+        string name,
+        string label,
+        int weight,
+        IReadOnlyList<string> declared,
+        bool earned,
+        string detail,
+        bool isContestable = false)
+    {
+        var isDeclared = !earned && isContestable && declared.Contains(name, StringComparer.OrdinalIgnoreCase);
+
+        return new BulletQualitySignalDto(
+            name,
+            label,
+            earned || isDeclared,
+            weight,
+            isDeclared ? $"{detail} Settled by the author." : detail,
+            isDeclared,
+            isContestable);
+    }
 
     private static IReadOnlyList<CoverageDiagnosticDto> BuildDiagnostics(
         Bullet bullet,
@@ -63,83 +124,74 @@ internal static class BulletQualityScorer
     {
         var diagnostics = new List<CoverageDiagnosticDto>();
 
-        if (!Earned(signals, BulletQualitySignals.MeasurableImpact))
+        foreach (var signal in signals)
         {
-            diagnostics.Add(Diagnostic(
-                bullet,
-                DiagnosticSeverityDto.Suggestion,
-                CoverageDiagnosticCodes.NoMeasurableImpact,
-                "This bullet says what you did but not what changed because of it.",
-                "A figure is also what lifts a requirement from mentioned to evidenced when a posting asks for it.",
-                "A percentage, a duration, a cost, a volume - whatever the work actually moved."));
+            // A settled signal is not raised again. Being told twice that a check disagrees with
+            // the person who did the work is what turns an assessment into an argument.
+            if (signal.Earned)
+            {
+                continue;
+            }
+
+            if (Describe(signal) is { } message)
+            {
+                diagnostics.Add(Diagnostic(bullet, signal, message));
+            }
         }
 
-        if (!Earned(signals, BulletQualitySignals.OpensWithAction))
+        var wordCount = BulletQualityHeuristics.WordCount(wording);
+        if (wordCount > LongBulletWordCount)
         {
-            var opener = BulletQualityHeuristics.WeakOpener(wording);
-            diagnostics.Add(Diagnostic(
-                bullet,
-                DiagnosticSeverityDto.Suggestion,
-                CoverageDiagnosticCodes.OverusedWording,
-                opener is null
-                    ? "This bullet does not open on an action."
-                    : $"This bullet opens with \"{opener}\", which describes an assignment rather than an achievement.",
-                "The opening words are the ones most likely to be read.",
-                "A verb in first position naming what you did."));
-        }
-
-        if (!Earned(signals, BulletQualitySignals.Ownership))
-        {
-            diagnostics.Add(Diagnostic(
-                bullet,
-                DiagnosticSeverityDto.Info,
-                CoverageDiagnosticCodes.WeakEvidence,
-                "This bullet does not make clear which part was yours.",
-                "A reader who cannot tell what you did as opposed to what happened around you has to guess, "
-                    + "and guesses go against the candidate.",
-                "Wording that names your role in it - what you led, built, or decided."));
-        }
-
-        if (!Earned(signals, BulletQualitySignals.Specificity))
-        {
-            diagnostics.Add(Diagnostic(
-                bullet,
-                DiagnosticSeverityDto.Info,
-                CoverageDiagnosticCodes.WeakEvidence,
-                "This bullet describes a kind of work rather than a particular piece of it.",
-                "Named systems, products, and tools are what make a bullet checkable, and they are also the words "
-                    + "a posting's requirements are matched against.",
-                "The name of the system, product, or tool involved."));
-        }
-
-        if (BulletQualityHeuristics.WordCount(wording) > LongBulletWordCount)
-        {
-            diagnostics.Add(Diagnostic(
-                bullet,
+            diagnostics.Add(new CoverageDiagnosticDto(
                 DiagnosticSeverityDto.Info,
                 CoverageDiagnosticCodes.OverusedWording,
-                $"This bullet runs to {BulletQualityHeuristics.WordCount(wording)} words.",
-                "Past roughly forty words a bullet stops being skimmable, and the evidence in it competes with itself. "
-                    + "Splitting it usually produces two bullets that each earn their place.",
-                "Two shorter bullets, or the same claim with the qualifying clauses removed."));
+                $"{wordCount} words. Past about {LongBulletWordCount} a bullet stops being skimmed.",
+                EvidenceMappings.AboutBullets([bullet], $"{wordCount} words.", ["Two shorter bullets, or fewer qualifying clauses."]),
+                [bullet.Id]));
         }
 
         return diagnostics;
     }
 
+    /// <summary>Null for signals whose absence is not worth a line of its own.</summary>
+    private static string? Describe(BulletQualitySignalDto signal) => signal.Name switch
+    {
+        BulletQualitySignals.MeasurableImpact => "No measurable outcome stated.",
+        BulletQualitySignals.OpensWithAction => $"Does not open on an action. {signal.Detail}",
+        BulletQualitySignals.Ownership => $"Credit reads as shared. {signal.Detail}",
+        BulletQualitySignals.Specificity => "Describes a kind of work rather than a named one.",
+        _ => null
+    };
+
     private static CoverageDiagnosticDto Diagnostic(
         Bullet bullet,
-        DiagnosticSeverityDto severity,
-        string code,
-        string message,
-        string reasoning,
-        string missingEvidence)
+        BulletQualitySignalDto signal,
+        string message)
     {
+        var severity = signal.Name == BulletQualitySignals.MeasurableImpact
+            ? DiagnosticSeverityDto.Suggestion
+            : DiagnosticSeverityDto.Info;
+
         return new CoverageDiagnosticDto(
             severity,
-            code,
+            CodeFor(signal.Name),
             message,
-            EvidenceMappings.AboutBullets([bullet], reasoning, [missingEvidence]),
+            EvidenceMappings.AboutBullets([bullet], signal.Detail, [Remedy(signal.Name)]),
             [bullet.Id]);
     }
+
+    private static string CodeFor(string signalName) => signalName switch
+    {
+        BulletQualitySignals.MeasurableImpact => CoverageDiagnosticCodes.NoMeasurableImpact,
+        BulletQualitySignals.OpensWithAction => CoverageDiagnosticCodes.OverusedWording,
+        _ => CoverageDiagnosticCodes.WeakEvidence
+    };
+
+    private static string Remedy(string signalName) => signalName switch
+    {
+        BulletQualitySignals.MeasurableImpact => "A figure: percentage, duration, cost, or volume.",
+        BulletQualitySignals.OpensWithAction => "An action verb in first position.",
+        BulletQualitySignals.Ownership => "Wording that names the author's part, or settle this signal to keep it as written.",
+        _ => "The name of the system, product, or tool."
+    };
 }

@@ -2,9 +2,10 @@
 @using AngryFoot.Web.Models
 
 @*
-    How a bullet is written, independently of any posting. The score is the sum of the signals
-    listed beneath it, shown so the number can be taken apart rather than trusted - the same rule
-    evidence coverage follows.
+    How a bullet is written, independently of any posting. Every signal states what the check saw,
+    so a verdict can be checked against the words rather than taken on trust. Copy here is
+    deliberately flat: an assessment that flatters or apologises is harder to act on than one that
+    states what is there.
 *@
 
 @if (Quality is not null)
@@ -14,15 +15,38 @@
         <span class="text-muted small">@Quality.WordCount words</span>
     </div>
 
-    <div class="d-flex flex-wrap gap-1 mb-2">
-        @foreach (var signal in Quality.Signals)
-        {
-            <span class="badge @(signal.Earned ? "text-bg-success" : "text-bg-light text-muted")"
-                  title="@(signal.Earned ? $"Earned {signal.Weight} points" : $"{signal.Weight} points available")">
-                @(signal.Earned ? "✓" : "○") @signal.Label
-            </span>
-        }
-    </div>
+    <table class="table table-sm mb-2">
+        <tbody>
+            @foreach (var signal in Quality.Signals)
+            {
+                <tr>
+                    <td style="width: 1%;" class="text-nowrap">
+                        <span class="badge @(signal.Earned ? "text-bg-success" : "text-bg-light text-muted")">
+                            @(signal.Earned ? "✓" : "○") @signal.Weight
+                        </span>
+                    </td>
+                    <td style="width: 1%;" class="text-nowrap">@signal.Label</td>
+                    <td class="text-muted small">
+                        @signal.Detail
+                        @if (signal.IsDeclared)
+                        {
+                            <span class="badge text-bg-light text-muted ms-1">Declared</span>
+                        }
+                    </td>
+                    <td style="width: 1%;" class="text-nowrap">
+                        @if (signal.IsContestable && CanAcknowledge)
+                        {
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    disabled="@Disabled"
+                                    @onclick="() => ToggleAsync(signal)">
+                                @(signal.IsDeclared ? "Reopen" : "Settle")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
 
     @if (Quality.Diagnostics.Count > 0 && ShowDiagnostics)
     {
@@ -53,4 +77,42 @@
 
     [Parameter]
     public bool ShowDiagnostics { get; set; } = true;
+
+    /// <summary>
+    /// Whether the author can settle a contestable signal here. False for a revision's score, which
+    /// describes wording rather than the work, and for an unsaved bullet with nowhere to record it.
+    /// </summary>
+    [Parameter]
+    public bool CanAcknowledge { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised with the full set of settled signal names after a change.</summary>
+    [Parameter]
+    public EventCallback<IReadOnlyList<string>> AcknowledgementsChanged { get; set; }
+
+    private async Task ToggleAsync(BulletQualitySignalDto signal)
+    {
+        if (Quality is null)
+        {
+            return;
+        }
+
+        var settled = Quality.Signals
+            .Where(x => x.IsDeclared)
+            .Select(x => x.Name)
+            .ToList();
+
+        if (signal.IsDeclared)
+        {
+            settled.Remove(signal.Name);
+        }
+        else
+        {
+            settled.Add(signal.Name);
+        }
+
+        await AcknowledgementsChanged.InvokeAsync(settled);
+    }
 }

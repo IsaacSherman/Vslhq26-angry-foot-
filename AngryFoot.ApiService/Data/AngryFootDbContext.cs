@@ -58,6 +58,9 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
 
             var impact = entity.Property(x => x.Impact).HasConversion(stringListConverter);
             impact.Metadata.SetValueComparer(stringListComparer);
+
+            var acknowledged = entity.Property(x => x.AcknowledgedQualitySignals).HasConversion(stringListConverter);
+            acknowledged.Metadata.SetValueComparer(stringListComparer);
         });
 
         modelBuilder.Entity<BulletRevision>(entity =>

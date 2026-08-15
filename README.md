@@ -202,16 +202,24 @@ Versions are numbered per mode, so "the ATS version" has a history rather than a
 
 **Bullet quality** scores how a bullet is written, independently of any posting, and — like evidence coverage — the number is the sum of the signals shown beneath it and nothing else:
 
-| Signal | Points |
-|---|---|
-| Opens with an action | 20 |
-| Measurable result | 25 |
-| Clear ownership | 15 |
-| Names specifics | 15 |
-| Names technology | 15 |
-| Maps to a role | 10 |
+| Signal | Points | What it reads |
+|---|---|---|
+| Opens with an action | 20 | The first word |
+| Measurable result | 30 | A figure anywhere in the bullet |
+| Sole credit | 5 | Wording that gives credit away |
+| Names specifics | 20 | A proper noun |
+| Names technology | 15 | The text, or the enrichment tags |
+| Maps to a role | 10 | The enrichment tags |
+
+Every signal reports **what it saw**, not just whether it passed — `States "40%"`, `Opens with "Responsible for"`, `Shared credit: "we"`. A verdict without the words behind it can't be checked, and an assessment that can't be argued with gets argued with anyway.
+
+**Sole credit is worth 5 points, and presumes you.** A resume elides its subject by convention: every bullet is read as your own work unless it says otherwise. So the check does not hunt for proof of ownership — nothing short of writing "I" would qualify, and demanding that would reject "Mentored two interns", "Developed the wrappers", and most of what anyone writes. It looks only for wording that gives credit *away*: `we`, `our team`, `assisted with`, `contributed to`, `participated in`. Possessives are deliberately not on that list — "the software team's first CI/CD server" says whose server it was, not who built it.
+
+It is also the only signal you can **settle** yourself. Whether work was shared is a fact no wording can establish, so if the check reads your bullet wrong, mark it settled: it scores, it reports as *Declared* rather than pretending the text proved it, and it stops being raised. Nothing else is settleable — whether a figure is present is not a matter of opinion.
 
 Length is advice, not a penalty: a bullet past roughly forty words gets a note, but keeps its points, because a long bullet full of evidence beats a short empty one. "Maps to a role" asks only whether enrichment could place the work in any job family at all — whether it suits *your* target posting is [evidence coverage](#evidence-coverage)'s question, and answering it twice in two ways would leave you with two numbers to reconcile.
+
+**Reassess** scores the wording in the box without saving it. Two of the six signals come from enrichment rather than the text, so a full score costs an AI call; running it on demand means you can see the score before committing to the wording, and the enrichment is kept so the save that follows does not pay for it twice.
 
 Versions are scored against their parent bullet's enrichment, since a reworded accomplishment involves the same technologies whatever words it uses.
 
