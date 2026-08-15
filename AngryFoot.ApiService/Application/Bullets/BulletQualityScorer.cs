@@ -93,7 +93,7 @@ internal static class BulletQualityScorer
     }
 
     /// <summary>
-    /// A signal the author has settled scores and reports as declared, so the panel never presents
+    /// A signal the author has disputed scores and reports as their call, so the panel never presents
     /// their word as something the wording demonstrated.
     /// </summary>
     private static BulletQualitySignalDto Signal(
@@ -112,7 +112,7 @@ internal static class BulletQualityScorer
             label,
             earned || isDeclared,
             weight,
-            isDeclared ? $"{detail} Settled by the author." : detail,
+            isDeclared ? $"{detail} Disputed by the author." : detail,
             isDeclared,
             isContestable);
     }
@@ -126,7 +126,7 @@ internal static class BulletQualityScorer
 
         foreach (var signal in signals)
         {
-            // A settled signal is not raised again. Being told twice that a check disagrees with
+            // A disputed signal is not raised again. Being told twice that a check disagrees with
             // the person who did the work is what turns an assessment into an argument.
             if (signal.Earned)
             {
@@ -191,7 +191,7 @@ internal static class BulletQualityScorer
     {
         BulletQualitySignals.MeasurableImpact => "A figure: percentage, duration, cost, or volume.",
         BulletQualitySignals.OpensWithAction => "An action verb in first position.",
-        BulletQualitySignals.Ownership => "Wording that names the author's part, or settle this signal to keep it as written.",
+        BulletQualitySignals.Ownership => "Wording that names the author's part - or dispute this, if the collaboration is a fact of the work rather than a hedge in the sentence.",
         _ => "The name of the system, product, or tool."
     };
 }

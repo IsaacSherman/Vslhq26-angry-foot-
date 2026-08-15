@@ -220,8 +220,8 @@
 
         try
         {
-            var settled = quality?.Signals.Where(x => x.IsDeclared).Select(x => x.Name).ToArray() ?? [];
-            var assessment = await ApiClient.AssessBulletAsync(bulletText.Trim(), settled);
+            var disputed = quality?.Signals.Where(x => x.IsDeclared).Select(x => x.Name).ToArray() ?? [];
+            var assessment = await ApiClient.AssessBulletAsync(bulletText.Trim(), disputed);
 
             quality = assessment.Quality;
             assessedTagging = assessment.Tagging;

@@ -23,7 +23,7 @@ public interface IBulletService
     /// </summary>
     Task<BulletAssessmentDto> AssessAsync(AssessBulletRequest request, CancellationToken cancellationToken);
 
-    /// <summary>Records which quality signals the author has settled for a bullet.</summary>
+    /// <summary>Records which quality signals the author has disputed for a bullet.</summary>
     Task<BulletDto?> SetQualityAcknowledgementsAsync(Guid id, IReadOnlyList<string> signals, CancellationToken cancellationToken);
 }
 

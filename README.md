@@ -215,7 +215,11 @@ Every signal reports **what it saw**, not just whether it passed — `States "40
 
 **Sole credit is worth 5 points, and presumes you.** A resume elides its subject by convention: every bullet is read as your own work unless it says otherwise. So the check does not hunt for proof of ownership — nothing short of writing "I" would qualify, and demanding that would reject "Mentored two interns", "Developed the wrappers", and most of what anyone writes. It looks only for wording that gives credit *away*: `we`, `our team`, `assisted with`, `contributed to`, `participated in`. Possessives are deliberately not on that list — "the software team's first CI/CD server" says whose server it was, not who built it.
 
-It is also the only signal you can **settle** yourself. Whether work was shared is a fact no wording can establish, so if the check reads your bullet wrong, mark it settled: it scores, it reports as *Declared* rather than pretending the text proved it, and it stops being raised. Nothing else is settleable — whether a figure is present is not a matter of opinion.
+It is also the only signal you can **dispute**. Whether work was shared is a fact no wording can establish, so when the check reads your bullet wrong, say so: the points are restored, the row reports as *Author's call* rather than pretending the text proved anything, and the check stops raising it.
+
+Dispute it when **collaboration is a fact of the work rather than a hedge in the sentence**. Shared ownership is normal and expected for platform work, incident response, migrations, and anything large enough to need more than one person. Describing that accurately is not a weakness in the bullet and is not scored as one. The alternative — quietly rewriting joint work as solo work to satisfy a checker — is how a resume becomes something you cannot defend in the room.
+
+Nothing else is disputable: whether a figure is present is not a matter of opinion.
 
 Length is advice, not a penalty: a bullet past roughly forty words gets a note, but keeps its points, because a long bullet full of evidence beats a short empty one. "Maps to a role" asks only whether enrichment could place the work in any job family at all — whether it suits *your* target posting is [evidence coverage](#evidence-coverage)'s question, and answering it twice in two ways would leave you with two numbers to reconcile.
 

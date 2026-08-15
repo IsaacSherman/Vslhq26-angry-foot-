@@ -120,9 +120,9 @@ public sealed record BulletRevisionDto(
 /// the panel never claims the wording proved something it did not.
 /// </param>
 /// <param name="IsContestable">
-/// Whether the author can settle this signal themselves. True only where the check is inferring
-/// about the world rather than reading the text: whether work was shared is a fact no wording can
-/// settle, while whether a figure is present is not open to opinion.
+/// Whether the author can dispute this signal. True only where the check is inferring about the
+/// world rather than reading the text: whether work was shared is a fact no wording establishes,
+/// while whether a figure is present is not open to opinion.
 /// </param>
 public sealed record BulletQualitySignalDto(
     string Name,
@@ -168,9 +168,9 @@ public static class BulletQualitySignals
 }
 
 /// <summary>
-/// The quality signals the author has settled for a bullet. A settled signal scores and stops being
-/// raised - the tool cannot know whether work was shared, and continuing to ask after being told is
-/// what turns an assessment into an argument.
+/// The quality signals the author has disputed for a bullet. A disputed signal scores and stops
+/// being raised - the tool cannot know whether work was shared, and continuing to ask after being
+/// told is what turns an assessment into an argument.
 /// </summary>
 public sealed record SetBulletQualityAcknowledgementsRequest(IReadOnlyList<string> Signals);
 

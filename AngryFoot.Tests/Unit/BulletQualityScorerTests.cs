@@ -159,7 +159,7 @@ public class BulletQualityScorerTests
     }
 
     [Fact]
-    public void Score_ASettledSignalScoresAndIsReportedAsDeclared()
+    public void Score_ADisputedSignalScoresAndIsReportedAsTheAuthorsCall()
     {
         var quality = BulletQualityScorer.Score(
             Bullet("We led the migration to Azure.", acknowledged: [BulletQualitySignals.Ownership]));
@@ -167,11 +167,11 @@ public class BulletQualityScorerTests
         var ownership = Signal(quality, BulletQualitySignals.Ownership);
         ownership.Earned.Should().BeTrue();
         ownership.IsDeclared.Should().BeTrue("the author settled it; the wording did not");
-        ownership.Detail.Should().Contain("Settled by the author.");
+        ownership.Detail.Should().Contain("Disputed by the author.");
     }
 
     [Fact]
-    public void Score_ASettledSignalStopsBeingRaised()
+    public void Score_ADisputedSignalStopsBeingRaised()
     {
         var quality = BulletQualityScorer.Score(
             Bullet("We led the migration to Azure.", acknowledged: [BulletQualitySignals.Ownership]));
@@ -181,7 +181,7 @@ public class BulletQualityScorerTests
     }
 
     [Fact]
-    public void Score_SettlingASignalTheTextCanDecideDoesNothing()
+    public void Score_DisputingASignalTheTextCanDecideDoesNothing()
     {
         var quality = BulletQualityScorer.Score(
             Bullet("Led the migration.", acknowledged: [BulletQualitySignals.MeasurableImpact]));

@@ -30,16 +30,17 @@
                         @signal.Detail
                         @if (signal.IsDeclared)
                         {
-                            <span class="badge text-bg-light text-muted ms-1">Declared</span>
+                            <span class="badge text-bg-light text-muted ms-1">Author's call</span>
                         }
                     </td>
                     <td style="width: 1%;" class="text-nowrap">
-                        @if (signal.IsContestable && CanAcknowledge)
+                        @if (CanDispute(signal))
                         {
                             <button class="btn btn-sm btn-outline-secondary"
                                     disabled="@Disabled"
+                                    title="@(signal.IsDeclared ? "Hand this back to the check." : "Tell the check it has this wrong.")"
                                     @onclick="() => ToggleAsync(signal)">
-                                @(signal.IsDeclared ? "Reopen" : "Settle")
+                                @(signal.IsDeclared ? "Withdraw" : "Dispute")
                             </button>
                         }
                     </td>
@@ -47,6 +48,19 @@
             }
         </tbody>
     </table>
+
+    @if (Quality.Signals.Any(CanDispute))
+    {
+        <p class="text-muted small">
+            <strong>Sole credit can be disputed.</strong> It is judged from wording, and wording cannot establish
+            who did what &mdash; so if this check has it wrong, say so and the points are restored. Dispute it when
+            collaboration is a fact of the work rather than a hedge in the sentence. Shared ownership is normal and
+            expected for platform work, incident response, migrations, and anything large enough to need more than one
+            person; describing that accurately is not a weakness in the bullet and is not scored as one. Disputing
+            records it as your call rather than something the wording proved, and the check stops raising it. Every
+            other signal reads the text alone and is not open to dispute.
+        </p>
+    }
 
     @if (Quality.Diagnostics.Count > 0 && ShowDiagnostics)
     {
@@ -88,9 +102,16 @@
     [Parameter]
     public bool Disabled { get; set; }
 
-    /// <summary>Raised with the full set of settled signal names after a change.</summary>
+    /// <summary>Raised with the full set of disputed signal names after a change.</summary>
     [Parameter]
     public EventCallback<IReadOnlyList<string>> AcknowledgementsChanged { get; set; }
+
+    /// <summary>
+    /// Offered where the check disagrees with the author, and where they have already said so. A
+    /// check that already agrees has nothing to dispute, and a button saying otherwise is noise.
+    /// </summary>
+    private bool CanDispute(BulletQualitySignalDto signal)
+        => CanAcknowledge && signal.IsContestable && (!signal.Earned || signal.IsDeclared);
 
     private async Task ToggleAsync(BulletQualitySignalDto signal)
     {
@@ -99,20 +120,20 @@
             return;
         }
 
-        var settled = Quality.Signals
+        var disputed = Quality.Signals
             .Where(x => x.IsDeclared)
             .Select(x => x.Name)
             .ToList();
 
         if (signal.IsDeclared)
         {
-            settled.Remove(signal.Name);
+            disputed.Remove(signal.Name);
         }
         else
         {
-            settled.Add(signal.Name);
+            disputed.Add(signal.Name);
         }
 
-        await AcknowledgementsChanged.InvokeAsync(settled);
+        await AcknowledgementsChanged.InvokeAsync(disputed);
     }
 }

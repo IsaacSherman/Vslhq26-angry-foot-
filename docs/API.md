@@ -168,8 +168,9 @@ the check saw, quoting the bullet where it can — `States "40%"`, `Shared credi
 
 `isContestable` is true only for `ownership`, the one signal the text cannot settle: a resume elides
 its subject, so the check presumes the author and looks only for wording that gives credit away.
-`isDeclared` marks a signal earned because the author settled it rather than because the wording
-showed it — a settled signal scores and stops producing a diagnostic.
+`isDeclared` marks a signal earned because the author disputed the check rather than because the
+wording showed it — a disputed signal scores and stops producing a diagnostic. It is intended for
+bullets whose collaboration is a fact of the work, not a hedge in the sentence.
 
 #### POST `/api/bullets/assess`
 Scores wording that has not been saved. Persists nothing.
@@ -185,8 +186,8 @@ update that follows skips a second call. The API re-tags from scratch if `forTex
 the text being saved.
 
 #### PUT `/api/bullets/{id}/quality-acknowledgements`
-Records which quality signals the author has settled. `{ "signals": ["ownership"] }` — the full set,
-so an empty array reopens everything. Returns the updated `BulletDto`, or `404`. Signals that are
+Records which quality signals the author has disputed. `{ "signals": ["ownership"] }` — the full set,
+so an empty array hands them all back to the check. Returns the updated `BulletDto`, or `404`. Signals that are
 not contestable are stored but have no effect on the score.
 
 #### GET `/api/bullets/{id}/revisions`
