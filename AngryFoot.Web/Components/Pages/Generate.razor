@@ -31,6 +31,15 @@
                 <label class="form-label">Job Description</label>
                 <textarea class="form-control" rows="10" @bind="jobDescription"></textarea>
             </div>
+            <div class="col-12">
+                <label class="form-label">Guidance for the AI (optional)</label>
+                <textarea class="form-control" rows="3" @bind="guidance"
+                          placeholder="Clarify anything ambiguous in your bullets - e.g. &quot;'systems' means HVAC controls, not software&quot;, or &quot;ACME was a 4-person startup, not the toy company&quot;."></textarea>
+                <div class="form-text">
+                    Treated as fact by every AI stage, with or without deep review. Use it when a bullet reads one way to you
+                    and another way to a stranger.
+                </div>
+            </div>
         </div>
 
         <div class="mt-3">
@@ -41,19 +50,28 @@
                 }
                 Analyze
             </button>
-            <button class="btn btn-primary" @onclick="GenerateAsync" disabled="@isWorking">
+            <button class="btn btn-primary me-3" @onclick="GenerateAsync" disabled="@isWorking">
                 @if (isGenerating)
                 {
                     <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
                 }
                 Generate
             </button>
+            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="deep-review" @bind="deepReview" disabled="@isWorking" />
+                <label class="form-check-label" for="deep-review">Deep review</label>
+            </div>
+            <div class="form-text">
+                Deep review critiques, revises, and merges both the bullet rewrites and the cover letter, then lets you
+                pick between the versions. It can also reorder your bullets and swap in stronger ones the ranker left out.
+                Six extra AI calls, so generation takes several minutes instead of 30-90 seconds.
+            </div>
         </div>
     </div>
 </div>
 
 <WorkingIndicator Visible="@isAnalyzing" Message="Analyzing the job and assessing your fit against your bullet library. This usually takes under a minute." />
-<WorkingIndicator Visible="@isGenerating" Message="Generating your tailored resume and cover letter: analyzing the job, ranking and rewriting bullets, then drafting documents. This typically takes 30-90 seconds." />
+<WorkingIndicator Visible="@isGenerating" Message="@GenerateProgressMessage" />
 
 @if (fit is not null)
 {
@@ -146,12 +164,27 @@
         </div>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(selectionError))
+    {
+        <div class="alert alert-warning">@selectionError</div>
+    }
+
     <div class="row g-3">
         <div class="col-md-6">
-            <MarkdownPane Title="Resume" Markdown="@result.ResumeMarkdown" Rows="24" />
+            <DraftVersionPicker Refinement="@result.ResumeRefinement"
+                                Title="Deep review: pick a resume"
+                                SelectedLabel="@resumeVersionLabel"
+                                Disabled="@isSavingSelection"
+                                SelectedLabelChanged="OnResumeVersionSelected" />
+            <MarkdownPane Title="Resume" Markdown="@ResumeMarkdown" Rows="24" />
         </div>
         <div class="col-md-6">
-            <MarkdownPane Title="Cover Letter" Markdown="@result.CoverLetterMarkdown" Rows="24" />
+            <DraftVersionPicker Refinement="@result.CoverLetterRefinement"
+                                Title="Deep review: pick a cover letter"
+                                SelectedLabel="@coverLetterVersionLabel"
+                                Disabled="@isSavingSelection"
+                                SelectedLabelChanged="OnCoverLetterVersionSelected" />
+            <MarkdownPane Title="Cover Letter" Markdown="@CoverLetterMarkdown" Rows="24" />
         </div>
     </div>
 }
@@ -160,17 +193,36 @@
     private string? jobTitle;
     private string? company;
     private string jobDescription = string.Empty;
+    private string? guidance;
     private int maxBullets = 10;
 
     private bool isAnalyzing;
     private bool isGenerating;
+    private bool deepReview;
+    private bool isSavingSelection;
     private bool isWorking => isAnalyzing || isGenerating;
     private string? errorMessage;
+    private string? selectionError;
 
     private AngryFoot.Contracts.JobAnalysisDto? analysis;
     private AngryFoot.Contracts.FitAssessmentDto? fit;
     private AngryFoot.Contracts.OccupationBenchmarkDto? benchmark;
     private AngryFoot.Contracts.GenerationResultDto? result;
+    private string? resumeVersionLabel;
+    private string? coverLetterVersionLabel;
+
+    private string GenerateProgressMessage => deepReview
+        ? "Generating with deep review: analyzing the job, ranking and rewriting bullets, then critiquing, revising, and merging both documents. Expect several minutes."
+        : "Generating your tailored resume and cover letter: analyzing the job, ranking and rewriting bullets, then drafting documents. This typically takes 30-90 seconds.";
+
+    private string ResumeMarkdown =>
+        VersionText(result?.ResumeRefinement, resumeVersionLabel) ?? result?.ResumeMarkdown ?? string.Empty;
+
+    private string CoverLetterMarkdown =>
+        VersionText(result?.CoverLetterRefinement, coverLetterVersionLabel) ?? result?.CoverLetterMarkdown ?? string.Empty;
+
+    private static string? VersionText(AngryFoot.Contracts.RefinementDto? refinement, string? label)
+        => refinement?.Versions.FirstOrDefault(x => x.Label == label)?.Text;
 
     private static string FitBadgeClass(int score) => score switch
     {
@@ -232,6 +284,7 @@
         // from a previous Analyze belongs to whatever job was in the form then - not this one.
         fit = null;
         benchmark = null;
+        selectionError = null;
 
         isGenerating = true;
         try
@@ -240,9 +293,13 @@
                 jobDescription.Trim(),
                 jobTitle?.Trim(),
                 company?.Trim(),
-                maxBullets));
+                maxBullets,
+                deepReview,
+                guidance?.Trim()));
 
             analysis = result.Analysis;
+            resumeVersionLabel = result.ResumeRefinement?.RecommendedLabel;
+            coverLetterVersionLabel = result.CoverLetterRefinement?.RecommendedLabel;
         }
         catch (Exception ex)
         {
@@ -254,11 +311,52 @@
         }
     }
 
+    private async Task OnResumeVersionSelected(string label)
+    {
+        resumeVersionLabel = label;
+        await SaveSelectionAsync();
+    }
+
+    private async Task OnCoverLetterVersionSelected(string label)
+    {
+        coverLetterVersionLabel = label;
+        await SaveSelectionAsync();
+    }
+
+    /// <summary>
+    /// Writes the chosen versions back to the stored generation, so History shows what the user
+    /// picked here rather than whatever the arbiter happened to recommend.
+    /// </summary>
+    private async Task SaveSelectionAsync()
+    {
+        if (result is null)
+        {
+            return;
+        }
+
+        selectionError = null;
+        isSavingSelection = true;
+
+        try
+        {
+            await ApiClient.SelectArtifactVersionsAsync(result.ArtifactId, resumeVersionLabel, coverLetterVersionLabel);
+        }
+        catch (Exception ex)
+        {
+            // The selection still applies on screen; only the saved copy is stale.
+            selectionError = $"Showing your selection, but it could not be saved to history: {ex.Message}";
+        }
+        finally
+        {
+            isSavingSelection = false;
+        }
+    }
+
     private async Task CopyResumeAsync()
     {
         if (result is not null)
         {
-            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", result.ResumeMarkdown);
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", ResumeMarkdown);
         }
     }
 
@@ -266,7 +364,7 @@
     {
         if (result is not null)
         {
-            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", result.CoverLetterMarkdown);
+            await JsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", CoverLetterMarkdown);
         }
     }
 }

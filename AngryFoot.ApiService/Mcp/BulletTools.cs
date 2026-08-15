@@ -53,6 +53,7 @@ public static class BulletTools
     public static async Task<RewriteBulletResponse> RewriteBulletAsync(
         IBulletRewriteAssistant rewriteAssistant,
         [Description("The bullet text to improve.")] string bulletText,
+        [Description("Run the critique-and-revise pass: three extra AI calls that return labelled alternative versions (v1, v2, v1a, synthesis) in the 'refinement' field, with the best one in 'rewrittenText'. Slower; off by default.")] bool deepReview = false,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(bulletText))
@@ -60,7 +61,7 @@ public static class BulletTools
             throw new McpException("bulletText is required.");
         }
 
-        return await rewriteAssistant.RewriteAsync(bulletText, cancellationToken);
+        return await rewriteAssistant.RewriteAsync(bulletText, deepReview, cancellationToken);
     }
 
     [McpServerTool(Name = "enrich_bullet")]

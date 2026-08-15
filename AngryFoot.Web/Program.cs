@@ -34,17 +34,18 @@ builder.Services.AddHttpClient<ApiClient>(client =>
     {
         client.BaseAddress = new("https+http://apiservice");
         // Must exceed the resilience handler's total request timeout below.
-        client.Timeout = TimeSpan.FromMinutes(5);
+        client.Timeout = TimeSpan.FromMinutes(15);
     })
     .RemoveAllResilienceHandlers()
     .AddStandardResilienceHandler(options =>
     {
         // Generation requests fan out to several sequential AI calls and can run
-        // well past the default 10s attempt / 30s total timeouts.
-        options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(2);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(4);
+        // well past the default 10s attempt / 30s total timeouts. A deep-review
+        // generation chains four times as many, so it gets a 10 minute budget.
+        options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(10);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(12);
         // Sampling duration must be at least double the attempt timeout.
-        options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(4);
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(20);
         // POST /api/generations and POST /api/bullets are not idempotent; a retry
         // after a slow attempt would create duplicate artifacts/bullets.
         options.Retry.DisableForUnsafeHttpMethods();

@@ -41,7 +41,34 @@ public static class BulletEndpoints
                 return Results.BadRequest("Bullet text is required.");
             }
 
-            var result = await rewriteAssistant.RewriteAsync(request.BulletText, cancellationToken);
+            var result = await rewriteAssistant.RewriteAsync(request.BulletText, request.DeepReview, cancellationToken);
+            return Results.Ok(result);
+        });
+
+        // Deep review, split in two so the user can resolve an ambiguity the reviewer tripped
+        // over before the revision and synthesis stages commit to a reading of it.
+        bullets.MapPost("/rewrite/critique", async (RewriteBulletRequest request, IBulletRewriteAssistant rewriteAssistant, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BulletText))
+            {
+                return Results.BadRequest("Bullet text is required.");
+            }
+
+            var result = await rewriteAssistant.CritiqueAsync(request.BulletText, cancellationToken);
+            return result is null
+                // No AI draft or no usable critique; the caller should use the one-shot endpoint.
+                ? Results.NoContent()
+                : Results.Ok(result);
+        });
+
+        bullets.MapPost("/rewrite/complete", async (CompleteBulletRewriteRequest request, IBulletRewriteAssistant rewriteAssistant, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Draft) || string.IsNullOrWhiteSpace(request.Critique))
+            {
+                return Results.BadRequest("The draft and critique from the critique step are required.");
+            }
+
+            var result = await rewriteAssistant.CompleteAsync(request, cancellationToken);
             return Results.Ok(result);
         });
 

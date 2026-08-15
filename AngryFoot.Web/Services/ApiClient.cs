@@ -45,9 +45,32 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
     }
 
-    public async Task<RewriteBulletResponse> RewriteBulletAsync(string bulletText, CancellationToken cancellationToken = default)
+    public async Task<RewriteBulletResponse> RewriteBulletAsync(string bulletText, bool deepReview = false, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite", new RewriteBulletRequest(bulletText), cancellationToken);
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite", new RewriteBulletRequest(bulletText, deepReview), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
+    }
+
+    /// <summary>
+    /// Phase one of a guided deep review. Null when there was no AI draft to critique, in which
+    /// case the caller should fall back to <see cref="RewriteBulletAsync"/>.
+    /// </summary>
+    public async Task<BulletRewriteCritiqueResponse?> CritiqueBulletRewriteAsync(string bulletText, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite/critique", new RewriteBulletRequest(bulletText, DeepReview: true), cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletRewriteCritiqueResponse>(cancellationToken);
+    }
+
+    public async Task<RewriteBulletResponse> CompleteBulletRewriteAsync(CompleteBulletRewriteRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite/complete", request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
     }
@@ -186,6 +209,30 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
     public async Task<GenerationArtifactDto?> GetArtifactAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.GetAsync($"/api/artifacts/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+    }
+
+    /// <summary>
+    /// Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so
+    /// history keeps the version the user actually chose. Pass null for a document to leave it be.
+    /// </summary>
+    public async Task<GenerationArtifactDto?> SelectArtifactVersionsAsync(
+        Guid id,
+        string? resumeVersionLabel,
+        string? coverLetterVersionLabel,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PutAsJsonAsync(
+            $"/api/artifacts/{id}/selection",
+            new SelectArtifactVersionsRequest(resumeVersionLabel, coverLetterVersionLabel),
+            cancellationToken);
+
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;

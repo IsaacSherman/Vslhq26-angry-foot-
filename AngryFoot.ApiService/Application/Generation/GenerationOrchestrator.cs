@@ -1,3 +1,4 @@
+using AngryFoot.ApiService.Application.Artifacts;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
@@ -44,13 +45,28 @@ internal sealed class GenerationOrchestrator(
         var analysis = await jobAnalyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
 
         var maxBullets = Math.Clamp(request.MaxBullets.GetValueOrDefault(10), 1, 20);
-        var ranked = await RetrieveRankedBulletsAsync(request.JobDescription, analysis, maxBullets, cancellationToken);
-        var rewritten = await rewriteService.RewriteAsync(analysis, ranked, cancellationToken);
+
+        // Deep review is allowed to swap a weak bullet out for a better one, so it needs
+        // candidates the ranker left on the bench. Without it, retrieval stays exactly as before.
+        var benchSize = request.DeepReview ? maxBullets : 0;
+        var ranked = await RetrieveRankedBulletsAsync(
+            request.JobDescription, analysis, maxBullets + benchSize, cancellationToken);
+        var selected = ranked.Take(maxBullets).ToArray();
+        var bench = ranked.Skip(maxBullets).ToArray();
+
+        var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
+        var rewriteOutcome = await rewriteService.RewriteAsync(
+            analysis, selected, bench, guidance, request.DeepReview, cancellationToken);
+        var rewritten = rewriteOutcome.Recommended;
 
         var resumeMarkdown = resumeService.BuildResume(profile, analysis, rewritten);
-        var coverLetterMarkdown = await coverLetterService.BuildCoverLetterAsync(
+        var resumeRefinement = BuildResumeRefinement(profile, analysis, rewriteOutcome);
+
+        var coverLetter = await coverLetterService.BuildCoverLetterAsync(
             profile,
             new CoverLetterContext(request.JobTitle, request.Company, analysis, rewritten),
+            guidance,
+            request.DeepReview,
             cancellationToken);
 
         var artifact = new GenerationArtifact
@@ -60,10 +76,12 @@ internal sealed class GenerationOrchestrator(
             Company = request.Company?.Trim(),
             JobDescription = request.JobDescription.Trim(),
             ResumeMarkdown = resumeMarkdown,
-            CoverLetterMarkdown = coverLetterMarkdown,
+            CoverLetterMarkdown = coverLetter.Markdown,
             SelectedBulletIds = rewritten.Select(x => x.Bullet.Id).ToList(),
             JobAnalysisJson = Ai.AiJsonUtilities.ToJson(analysis),
-            CreatedDate = DateTime.UtcNow
+            CreatedDate = DateTime.UtcNow,
+            ResumeRefinementJson = ArtifactRefinements.ToJson(resumeRefinement),
+            CoverLetterRefinementJson = ArtifactRefinements.ToJson(coverLetter.Refinement)
         };
 
         dbContext.GenerationArtifacts.Add(artifact);
@@ -74,7 +92,33 @@ internal sealed class GenerationOrchestrator(
             artifact.ResumeMarkdown,
             artifact.CoverLetterMarkdown,
             analysis,
-            artifact.SelectedBulletIds);
+            artifact.SelectedBulletIds,
+            resumeRefinement,
+            coverLetter.Refinement);
+    }
+
+    /// <summary>
+    /// Turns the deep-review versions of the bullet rewrites into versions of the whole resume.
+    /// Rendering markdown is deterministic and free, so the user compares finished documents
+    /// instead of the JSON the agents actually exchanged.
+    /// </summary>
+    private RefinementDto? BuildResumeRefinement(
+        Domain.Profile profile, JobAnalysisDto analysis, BulletRewriteOutcome outcome)
+    {
+        if (outcome.Refinement is null)
+        {
+            return null;
+        }
+
+        var versions = outcome.Refinement.Versions
+            .Where(version => outcome.VersionBullets.ContainsKey(version.Label))
+            .Select(version => version with
+            {
+                Text = resumeService.BuildResume(profile, analysis, outcome.VersionBullets[version.Label])
+            })
+            .ToArray();
+
+        return outcome.Refinement with { Versions = versions };
     }
 
     /// <summary>

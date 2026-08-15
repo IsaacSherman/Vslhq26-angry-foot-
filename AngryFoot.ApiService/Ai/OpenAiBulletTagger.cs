@@ -32,8 +32,9 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(AiTimeout);
 
-            var responseText = await chatClient.GetTextResponseAsync(systemPrompt, userPrompt, timeoutCts.Token);
-            if (AiJsonUtilities.TryDeserialize<TagResponse>(responseText, out var parsed) && parsed is not null)
+            var response = await chatClient.GetJsonResponseAsync<TagResponse>(systemPrompt, userPrompt, timeoutCts.Token, logger);
+            var responseText = response.RawText;
+            if (response.Value is { } parsed)
             {
                 var aiResult = Normalize(new BulletTagging(
                     parsed.Tags ?? [],
@@ -45,7 +46,9 @@ public sealed partial class OpenAiBulletTagger(IChatClient chatClient, ILogger<O
                 return HasMetadata(aiResult) ? aiResult : fallback;
             }
 
-            logger.LogWarning("Bullet enrichment AI response could not be parsed. Using heuristic fallback.");
+            logger.LogWarning(
+                "Bullet enrichment AI response could not be parsed. Using heuristic fallback. Raw response: {RawResponse}",
+                AiJsonUtilities.ForLog(responseText));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

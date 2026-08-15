@@ -32,24 +32,75 @@
 </div>
 
 <div class="mb-3">
-    <button class="btn btn-outline-primary" @onclick="RewriteAsync" disabled="@(isRewriting || isSaving)">
+    <button class="btn btn-outline-primary me-3" @onclick="RewriteAsync" disabled="@(isRewriting || isSaving)">
         @if (isRewriting)
         {
             <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
         }
         Rewrite Suggestion
     </button>
+    <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="deep-review" @bind="deepReview" disabled="@(isRewriting || isSaving)" />
+        <label class="form-check-label" for="deep-review">Deep review</label>
+    </div>
+    <div class="form-text">
+        Deep review has a second agent critique the rewrite, lets the first agent revise it, and a third merge the results.
+        Three extra AI calls, so expect roughly four times the wait - and a choice of versions instead of one answer.
+        It pauses after the critique so you can correct anything the reviewer misread.
+    </div>
 </div>
 
-<WorkingIndicator Visible="@isRewriting" Message="Asking the AI for an improved rewrite and suggestions..." />
+<WorkingIndicator Visible="@isRewriting" Message="@RewriteProgressMessage" />
+<WorkingIndicator Visible="@isCompleting" Message="Revising and merging with your guidance. Two AI calls, usually under a minute." />
 <WorkingIndicator Visible="@isSaving" Message="Saving and enriching the bullet with AI-extracted skills, technologies, and tags..." />
+
+@if (critique is not null)
+{
+    <div class="card border-primary mb-3">
+        <div class="card-header">The reviewer's take &mdash; anything it got wrong?</div>
+        <div class="card-body">
+            <h6>Your bullet, rewritten (v1)</h6>
+            <p>@critique.Draft</p>
+
+            <h6>What the reviewer said</h6>
+            <p style="white-space: pre-wrap;">@critique.Critique</p>
+
+            @if (!string.IsNullOrWhiteSpace(critique.Alternative))
+            {
+                <h6>The reviewer's own attempt (v2)</h6>
+                <p>@critique.Alternative</p>
+            }
+
+            <label class="form-label" for="guidance">Your guidance (optional)</label>
+            <textarea class="form-control" id="guidance" rows="3" @bind="guidance" disabled="@isCompleting"
+                      placeholder="e.g. &quot;systems&quot; here means HVAC controls, not software - the reviewer read it wrong"></textarea>
+            <div class="form-text mb-3">
+                Anything you write here is treated as fact by the remaining agents and outranks the critique.
+                Leave it blank to carry on without it.
+            </div>
+
+            <button class="btn btn-primary" @onclick="CompleteRewriteAsync" disabled="@isCompleting">
+                @if (isCompleting)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                }
+                Revise and merge
+            </button>
+        </div>
+    </div>
+}
 
 @if (rewriteResult is not null)
 {
+    <DraftVersionPicker Refinement="@rewriteResult.Refinement"
+                        Title="Deep review: pick a rewrite"
+                        SelectedLabel="@selectedVersionLabel"
+                        SelectedLabelChanged="OnVersionSelected" />
+
     <div class="card mb-3">
         <div class="card-body">
             <h5 class="card-title">Suggested Rewrite</h5>
-            <p class="card-text">@rewriteResult.RewrittenText</p>
+            <p class="card-text">@SuggestedText</p>
 
             @if (rewriteResult.Suggestions.Count > 0)
             {
@@ -87,10 +138,39 @@
     private List<string> knownEmployers = [];
     private bool isSaving;
     private bool isRewriting;
+    private bool isCompleting;
+    private bool deepReview;
     private string? errorMessage;
     private RewriteBulletResponse? rewriteResult;
+    private BulletRewriteCritiqueResponse? critique;
+    private string? guidance;
+    private string? selectedVersionLabel;
 
     private bool IsCreate => !BulletId.HasValue;
+
+    /// <summary>
+    /// The text the Use button applies: the version the user picked, or the single rewrite when
+    /// deep review was off.
+    /// </summary>
+    private string SuggestedText
+    {
+        get
+        {
+            if (rewriteResult is null)
+            {
+                return string.Empty;
+            }
+
+            var version = rewriteResult.Refinement?.Versions
+                .FirstOrDefault(x => x.Label == selectedVersionLabel);
+
+            return version?.Text ?? rewriteResult.RewrittenText;
+        }
+    }
+
+    private string RewriteProgressMessage => deepReview
+        ? "Drafting a rewrite and having it reviewed. Two AI calls, then it pauses for your input."
+        : "Asking the AI for an improved rewrite and suggestions...";
 
     protected override async Task OnInitializedAsync()
     {
@@ -114,6 +194,9 @@
     {
         errorMessage = null;
         rewriteResult = null;
+        critique = null;
+        guidance = null;
+        selectedVersionLabel = null;
         if (BulletId is null)
         {
             bulletText = string.Empty;
@@ -143,10 +226,26 @@
         }
 
         isRewriting = true;
+        rewriteResult = null;
+        critique = null;
+        guidance = null;
 
         try
         {
-            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim());
+            if (deepReview)
+            {
+                // Stop after the critique so the user can correct a misreading before the
+                // revision and synthesis stages bake it in.
+                critique = await ApiClient.CritiqueBulletRewriteAsync(bulletText.Trim());
+                if (critique is not null)
+                {
+                    return;
+                }
+                // No AI draft to critique; fall through to the plain heuristic rewrite.
+            }
+
+            rewriteResult = await ApiClient.RewriteBulletAsync(bulletText.Trim(), deepReview: false);
+            selectedVersionLabel = rewriteResult.Refinement?.RecommendedLabel;
         }
         catch (Exception ex)
         {
@@ -158,11 +257,50 @@
         }
     }
 
+    private async Task CompleteRewriteAsync()
+    {
+        if (critique is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isCompleting = true;
+
+        try
+        {
+            rewriteResult = await ApiClient.CompleteBulletRewriteAsync(new CompleteBulletRewriteRequest(
+                critique.OriginalText,
+                critique.Draft,
+                critique.Critique,
+                critique.Alternative,
+                critique.Suggestions,
+                guidance));
+
+            selectedVersionLabel = rewriteResult.Refinement?.RecommendedLabel;
+            critique = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isCompleting = false;
+        }
+    }
+
+    private void OnVersionSelected(string label)
+    {
+        selectedVersionLabel = label;
+    }
+
     private void ApplyRewrite()
     {
-        if (rewriteResult is not null && !string.IsNullOrWhiteSpace(rewriteResult.RewrittenText))
+        var suggested = SuggestedText;
+        if (!string.IsNullOrWhiteSpace(suggested))
         {
-            bulletText = rewriteResult.RewrittenText;
+            bulletText = suggested;
         }
     }
 

@@ -5,6 +5,7 @@ using AngryFoot.ApiService.Application.Benchmarks;
 using AngryFoot.ApiService.Application.Bullets;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
+using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Mcp;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,8 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddAngryFootAi(builder.Configuration);
 builder.AddAngryFootRetrieval();
+builder.Services.AddScoped<IRefinementGrounding, BulletLibraryGrounding>();
+builder.Services.AddScoped<IDraftRefinementPipeline, DraftRefinementPipeline>();
 builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();
 builder.Services.AddScoped<IBulletService, BulletService>();
 builder.Services.AddScoped<IBulletRewriteAssistant, BulletRewriteAssistant>();

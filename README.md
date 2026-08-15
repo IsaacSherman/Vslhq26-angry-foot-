@@ -2,21 +2,9 @@
 
 Helps a job candidate generate a bespoke resume for a target job description by storing achievement bullets, enriching them with AI metadata, analyzing the target job description, and generating a tailored resume + cover letter in Markdown.
 
-## Team
-
-- **Angry Foot**
-- **Members:**
-  - Isaac Sherman (@IsaacSherman)
-
-## Category
-
-- **Event:** [VSLHQ26 Hackathon](https://github.com/live360events/vslhq26-hackathon)
-- **Primary:** Azure OpenAI/LLM app 
-- **Secondary (optional):** Copilot integration
-
 ## What it does
 
-Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  AngryFoot both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired
+Jobs practically require customized resumes to even be seen because of the prescreening for relevant skills.  AngryFoot both generates a resume from a job description (and the user's entered 'Bullets') and provides guidance on creating additional bullets to strengthen their application.  It also enhances/provides guidance on enhancing bullets written by the user if desired.
 
 
 ## Architecture
@@ -83,8 +71,8 @@ The generation pipeline inside the API service runs as a chain: job description 
 
 ```bash
 # Clone the repo
-git clone https://github.com/IsaacSherman/Vslhq26-angry-foot-.git
-cd Vslhq26-angry-foot-
+git clone <repository-url>
+cd <repository-directory>
 
 #Configure Azure OpenAI via user secrets - see Configuration below
 dotnet user-secrets set "AzureOpenAI:Endpoint" "https://<resource>.openai.azure.com/openai/v1" --project AngryFoot.AppHost
@@ -116,6 +104,26 @@ Secrets are stored with **.NET user secrets** (never committed; there is no `.en
 | `ConnectionStrings:angryfoot` | `Data Source=<path>` | Optional SQLite override. Default: `%LOCALAPPDATA%\AngryFoot\angryfoot.db` (per-user, survives rebuilds; integration tests point this at isolated temp files) |
 
 If AI is not configured, `GET /api/ai/status` reports Unhealthy with setup instructions, and all AI features fall back to heuristics; the same response's `retrievalEnabled`/`retrievalMessage` fields report whether semantic bullet retrieval is active. Both services write rolling log files to their own `Logs/` directory in addition to the console. The MCP endpoint is served at `http://localhost:<apiservice-port>/mcp` (streamable HTTP; find the port on the Aspire dashboard).
+
+### Schema-enforced AI responses
+
+Every AI call that expects JSON sends a JSON Schema derived from the C# type it will be parsed into (`ChatResponseFormat.ForJsonSchema<T>`, via `GetJsonResponseAsync<T>` in [`AiChatClientExtensions.cs`](AngryFoot.ApiService/Ai/AiChatClientExtensions.cs)), so the model is *constrained* to the shape rather than asked for it in the prompt and checked afterwards.
+
+This was not a theoretical concern. The enrichment step used to lose whole responses to shape drift — the model would answer a bullet about batch runtime with
+
+```json
+"impact": [ { "originalRuntime": "6 hours", "newRuntime": "40 minutes", "percentReduction": 88.9 } ]
+```
+
+against a contract of `IReadOnlyList<string>`. The JSON was valid; only the shape disagreed, and because the parse is all-or-nothing the perfectly good `skills`, `technologies`, and `tags` in the same response went in the bin with it.
+
+Three things this deliberately does **not** do:
+
+- **It does not guarantee truth.** A schema constrains shape, not meaning. The refinement stages still check that every returned `bulletId` belongs to the candidate, because nothing stops a well-formed answer from citing a bullet that does not exist.
+- **It does not replace the tolerant parser.** `AiJsonUtilities` still extracts JSON from prose and code fences, because a schema only helps if the provider honours it.
+- **It does not apply to the cover letter**, which asks for markdown prose and has no shape to enforce.
+
+Support depends on the deployment and the pinned `AzureOpenAI:ServiceVersion`. If a deployment rejects the schema the call is retried without it and a warning is logged naming the payload type — the feature keeps working, but the guarantee is gone, so that warning is worth watching for. Types that cannot be expressed in a closed schema (an unbounded `Dictionary<string, object>`, a bare `object`, or a root that is not an object) are logged and sent unconstrained; this is why the bullet rewrite draft wraps its array in a `{ "bullets": [...] }` envelope.
 
 ### Semantic bullet retrieval (RAG)
 
@@ -161,6 +169,45 @@ How it works:
 
 To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tools/onet/) — `extract_onet.py` then `build_dataset.py` — and copy the regenerated `onet-occupations.json` over the bundled copy. Their comments document every transformation applied to the published data, and `onet-occupations.json` carries a `notes` block recording which values are O\*NET's and which are ours.
 
+### Deep review (critique-and-revise)
+
+By default every AI-backed feature returns its **first** draft. **Deep review** is an opt-in checkbox on `/bullets/edit` and `/generate` that puts that draft through three more agents before you see it, and then hands you the versions to choose between rather than picking for you.
+
+| Label | Agent | What it is |
+|---|---|---|
+| `v1` | the writer | the first draft — exactly what you get with deep review off |
+| `v2` | the reviewer | critiques `v1`, then writes its own alternative from scratch |
+| `v1a` | the writer | revises `v1` after reading **only the critique**, never the reviewer's alternative |
+| `synthesis` | the arbiter | merges the versions into one, and is what's recommended by default |
+
+The reviewer and the arbiter both get grounding from your bullet library, so "you didn't do that" is a claim they can actually make. Retrieval uses Qdrant when it's configured and falls back to term overlap against SQLite otherwise, so deep review works without an embedding deployment.
+
+The stages degrade independently: a failed reviewer abandons the pass and you keep `v1`, and a failed reviser or arbiter just drops that version. Deep review is skipped entirely whenever the draft came from a heuristic fallback rather than the AI — there is nothing to critique.
+
+**On `/generate`,** deep review also rewrites the *shape* of the resume, not just its wording. The refinement stages may reorder your bullets (strongest evidence first), drop a weak one, and swap in a stronger bullet the ranker left on the bench — it's given runner-up candidates for exactly this. It cannot invent a bullet: every id it returns is checked against your library, and the set is capped at your Max Bullets. The initial draft still only rewords, in the ranker's order.
+
+**Telling it what you meant.** The most common failure isn't bad prose, it's an agent confidently misreading an ambiguous bullet. Two places to correct it:
+
+- **`/bullets/edit`** pauses after the critique and shows you `v1`, the critique, and `v2` with a comment box. Whatever you write is treated as fact by the remaining agents and **outranks the critique** — "'systems' here means HVAC controls, not software" stops the misreading before the revision and synthesis bake it in. Leave it blank and the pass carries on unguided.
+- **`/generate`** takes the same clarification up front, in the **Guidance for the AI** box. It reaches every stage including the first draft, so it works with deep review off too.
+
+The pause is entirely client-side: phase one hands its whole payload back and phase two takes it in, so the server never holds a half-finished rewrite.
+
+**Cost and latency.** Deep review is three extra AI calls per refined artifact — and a generation refines two (the bullet set as a whole, then the cover letter), so it's six extra calls, not three per bullet. Measured against `gpt-5-mini`, 6 bullets in the library, Max Bullets 5:
+
+| `POST /api/generations` | Plain | Deep review |
+|---|---|---|
+| AI calls | 3 | 9 |
+| Wall clock | 27-34s | 122-141s (3.6-4.5×) |
+
+Ranges are across repeat runs of the same request — the spread is the model's, not the pipeline's, so treat the upper end as the planning number. Budget **two to two and a half minutes** for a deep-review generation against a small library, growing with bullet count and job-description length.
+
+Version counts vary run to run for the same reason. A stage whose reply cannot be read back is dropped rather than shown as a broken choice, so a deep review may offer three versions instead of four; the raw response is logged when that happens. The web client allows a 10 minute ceiling (`AttemptTimeout` in [`AngryFoot.Web/Program.cs`](AngryFoot.Web/Program.cs), mirrored for tests in [`TestResilience.cs`](AngryFoot.Tests/TestResilience.cs)); `DeepReviewGeneration_WithRealAi_WhenEnabled_FitsInsideItsTimeout` in [`RealAiSmokeTests.cs`](AngryFoot.Tests/RealAiSmokeTests.cs) fails if a change pushes past it. Run it with `RUN_AI_INTEGRATION=1` to re-measure on your own deployment.
+
+The bullet editor is cheaper, and feels faster despite the extra calls, because the gate splits the wait: two calls, then your turn, then two more.
+
+One rough edge worth knowing: the resume stages exchange a JSON array rather than prose, and models are less reliable at that. A version whose JSON doesn't parse back into a valid bullet set is dropped, so a deep-review generation sometimes offers three resume versions where the cover letter offers four. It degrades quietly and the remaining versions are unaffected.
+
 ## Demo
 
 - Video file in this repo: `./demo/demo.mp4`
@@ -171,10 +218,10 @@ To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tool
 - **Single user, no authentication.** The REST API and MCP endpoint are unauthenticated and the database holds exactly one profile, so the app is local-use only; anything that can reach the ports can read and write.
 - **Markdown output only.** Generated resumes and cover letters are Markdown; there is no PDF or DOCX export yet, so final formatting happens in whatever tool you paste into.
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
-- **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI.
+- **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
 - **Fit assessment only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
 - **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
-- **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, but there is no verification pass — generated content should be reviewed before sending to a real employer.
+- **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.
 - **No backfill/reindex job for semantic retrieval.** Bullets are only embedded going forward from whenever `AzureOpenAI:EmbeddingDeployment` is first configured (via `IBulletService`'s create/update/enrich paths), so bullets created before that point won't surface in semantic search until they're edited or re-enriched. Without an embedding deployment configured at all (Qdrant running or not), generation still keyword-scores the entire bullet library on every request, so cost/latency there still scale with library size.
