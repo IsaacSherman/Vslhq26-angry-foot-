@@ -5,13 +5,13 @@
 namespace AngryFoot.ApiService.Data.Migrations;
 
 /// <inheritdoc />
-public partial class AddGenerationArtifactEvidenceCoverage : Migration
+public partial class AddGenerationArtifactExplanation : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.AddColumn<string>(
-            name: "EvidenceCoverageJson",
+            name: "GenerationExplanationJson",
             table: "GenerationArtifacts",
             type: "TEXT",
             nullable: true);
@@ -21,7 +21,7 @@ public partial class AddGenerationArtifactEvidenceCoverage : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.DropColumn(
-            name: "EvidenceCoverageJson",
+            name: "GenerationExplanationJson",
             table: "GenerationArtifacts");
     }
 }

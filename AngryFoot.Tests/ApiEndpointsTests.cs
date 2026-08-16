@@ -240,11 +240,75 @@ public class ApiEndpointsTests
         var enrichResponse = await apiClient.PostAsync($"/api/bullets/{created.Id}/enrich", content: null, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, enrichResponse.StatusCode);
 
+        await AssertRevisionsRoundTripAsync(apiClient, created.Id, cancellationToken);
+
         var deleteResponse = await apiClient.DeleteAsync($"/api/bullets/{created.Id}", cancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
+        // The bullet is gone, so its revisions must be too rather than outliving what they revise.
+        var orphanedRevisions = await apiClient.GetAsync($"/api/bullets/{created.Id}/revisions", cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, orphanedRevisions.StatusCode);
+
         var getDeletedResponse = await apiClient.GetAsync($"/api/bullets/{created.Id}", cancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getDeletedResponse.StatusCode);
+    }
+
+    /// <summary>
+    /// A revision is a variant kept beside the bullet, never an edit to it. This walks the whole
+    /// contract: write one, confirm the bullet is untouched, promote it, confirm it took.
+    /// </summary>
+    private static async Task AssertRevisionsRoundTripAsync(HttpClient apiClient, Guid bulletId, CancellationToken cancellationToken)
+    {
+        var before = await apiClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{bulletId}", cancellationToken);
+        Assert.NotNull(before);
+
+        var emptyResponse = await apiClient.GetAsync($"/api/bullets/{bulletId}/revisions", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
+        Assert.Empty((await emptyResponse.Content.ReadFromJsonAsync<List<BulletRevisionDto>>(cancellationToken))!);
+
+        var createResponse = await apiClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new CreateBulletRevisionRequest(BulletRevisionModeDto.Ats),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var revision = await createResponse.Content.ReadFromJsonAsync<BulletRevisionDto>(cancellationToken);
+        Assert.NotNull(revision);
+        Assert.Equal(BulletRevisionModeDto.Ats, revision!.Mode);
+        Assert.Equal(1, revision.Version);
+        Assert.Equal(before!.BulletText, revision.SourceText);
+        Assert.False(revision.IsStale);
+        Assert.False(string.IsNullOrWhiteSpace(revision.RevisedText));
+
+        // Quality travels with a revision, and its score is the sum of the signals shown beside it.
+        Assert.NotNull(revision.Quality);
+        Assert.Equal(
+            revision.Quality!.Signals.Where(x => x.Earned).Sum(x => x.Weight),
+            revision.Quality.Score);
+
+        var unchanged = await apiClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{bulletId}", cancellationToken);
+        Assert.Equal(before.BulletText, unchanged!.BulletText);
+
+        var promoteResponse = await apiClient.PostAsync(
+            $"/api/bullets/{bulletId}/revisions/{revision.Id}/promote", content: null, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, promoteResponse.StatusCode);
+
+        var promoted = await promoteResponse.Content.ReadFromJsonAsync<PromoteBulletRevisionResponse>(cancellationToken);
+        Assert.NotNull(promoted);
+        Assert.Equal(revision.RevisedText, promoted!.Bullet.BulletText);
+        Assert.False(promoted.Revisions.Single().IsStale, "the promoted version is the current wording");
+
+        // An out-of-range mode binds fine and has to be caught by the handler; a misspelled one
+        // never gets that far, because JSON binding rejects it first.
+        var rejected = await apiClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new { mode = 99 },
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        var deleteResponse = await apiClient.DeleteAsync(
+            $"/api/bullets/{bulletId}/revisions/{revision.Id}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
     [Fact]
@@ -442,6 +506,23 @@ public class ApiEndpointsTests
         Assert.NotNull(result.Coverage);
         AssertScoreIsDerivedFromRequirements(result.Coverage!);
 
+        // Every candidate is accounted for, and the ones on the resume are the ones it names.
+        Assert.NotNull(result.Explanation);
+        Assert.NotEmpty(result.Explanation!.Decisions);
+        Assert.All(result.Explanation.Decisions, decision =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(decision.Why.Reasoning));
+            Assert.Contains(decision.Why.SupportingEvidence, x => x.BulletId == decision.BulletId);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.ResumePosition is null);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.FinalText is null);
+        });
+
+        var onResume = result.Explanation.Decisions
+            .Where(x => x.Kind != BulletDecisionKindDto.Omitted)
+            .Select(x => x.BulletId)
+            .ToHashSet();
+        Assert.Equal(result.SelectedBulletIds.ToHashSet(), onResume);
+
         var artifactsResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
         Assert.Equal(HttpStatusCode.OK, artifactsResponse.StatusCode);
         var artifacts = await artifactsResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
@@ -458,6 +539,12 @@ public class ApiEndpointsTests
         Assert.Equal(result.Coverage!.CoverageScore, artifact.Coverage!.CoverageScore);
         Assert.Equal(result.Coverage.Requirements.Count, artifact.Coverage.Requirements.Count);
         Assert.Equal(result.Coverage.Diagnostics.Count, artifact.Coverage.Diagnostics.Count);
+
+        Assert.NotNull(artifact.Explanation);
+        Assert.Equal(result.Explanation!.Summary, artifact.Explanation!.Summary);
+        Assert.Equal(
+            result.Explanation.Decisions.Select(x => x.BulletId),
+            artifact.Explanation.Decisions.Select(x => x.BulletId));
     }
 
     /// <summary>

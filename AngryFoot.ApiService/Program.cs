@@ -43,6 +43,7 @@ builder.Services.AddScoped<IDraftRefinementPipeline, DraftRefinementPipeline>();
 builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();
 builder.Services.AddScoped<IBulletService, BulletService>();
 builder.Services.AddScoped<IBulletRewriteAssistant, BulletRewriteAssistant>();
+builder.Services.AddScoped<IBulletRevisionService, BulletRevisionService>();
 builder.Services.AddScoped<IBulletDuplicateDetector, BulletDuplicateDetector>();
 builder.Services.AddScoped<IResumeBulletImportService, ResumeBulletImportService>();
 builder.Services.AddScoped<IProfileService, ProfileService>();

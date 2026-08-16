@@ -7,317 +7,380 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace AngryFoot.ApiService.Data.Migrations
+namespace AngryFoot.ApiService.Data.Migrations;
+
+[DbContext(typeof(AngryFootDbContext))]
+partial class AngryFootDbContextModelSnapshot : ModelSnapshot
 {
-    [DbContext(typeof(AngryFootDbContext))]
-    partial class AngryFootDbContextModelSnapshot : ModelSnapshot
+    protected override void BuildModel(ModelBuilder modelBuilder)
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
-        {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+        modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Bullet", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Bullet", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("BulletText")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("AcknowledgedQualitySignals")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("TEXT");
+                b.Property<string>("BulletText")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<int>("EnrichmentState")
-                        .HasColumnType("INTEGER");
+                b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Impact")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<int>("EnrichmentState")
+                    .HasColumnType("INTEGER");
 
-                    b.Property<string>("JobCategories")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("Impact")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("ModifiedDate")
-                        .HasColumnType("TEXT");
+                b.Property<string>("JobCategories")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Skills")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<DateTime>("ModifiedDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("SourceEmployer")
-                        .HasColumnType("TEXT");
+                b.Property<string>("Skills")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Tags")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("SourceEmployer")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Technologies")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("Tags")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<string>("Technologies")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("Bullets");
-                });
+                b.HasKey("Id");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.ToTable("Bullets");
+            });
 
-                    b.Property<string>("IssueDate")
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.BulletRevision", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Issuer")
-                        .HasColumnType("TEXT");
+                b.Property<Guid>("BulletId")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProfileId")
-                        .HasColumnType("TEXT");
+                b.Property<bool>("IsAiGenerated")
+                    .HasColumnType("INTEGER");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                b.Property<string>("Mode")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<string>("Rationale")
+                    .HasColumnType("TEXT");
 
-                    b.HasIndex("ProfileId");
+                b.Property<string>("RevisedText")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("Certifications");
-                });
+                b.Property<string>("SourceText")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Education", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.Property<int>("Version")
+                    .HasColumnType("INTEGER");
 
-                    b.Property<string>("Credential")
-                        .HasColumnType("TEXT");
+                b.HasKey("Id");
 
-                    b.Property<string>("Field")
-                        .HasColumnType("TEXT");
+                b.HasIndex("BulletId", "Mode", "Version")
+                    .IsUnique();
 
-                    b.Property<string>("GraduationDate")
-                        .HasColumnType("TEXT");
+                b.ToTable("BulletRevisions");
+            });
 
-                    b.Property<string>("Institution")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProfileId")
-                        .HasColumnType("TEXT");
+                b.Property<string>("IssueDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                b.Property<string>("Issuer")
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.HasIndex("ProfileId");
+                b.Property<Guid>("ProfileId")
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("Education");
-                });
+                b.Property<int>("SortOrder")
+                    .HasColumnType("INTEGER");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.GenerationArtifact", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.HasKey("Id");
 
-                    b.Property<string>("Company")
-                        .HasColumnType("TEXT");
+                b.HasIndex("ProfileId");
 
-                    b.Property<string>("CoverLetterMarkdown")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.ToTable("Certifications");
+            });
 
-                    b.Property<string>("CoverLetterRefinementJson")
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Education", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("TEXT");
+                b.Property<string>("Credential")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("EvidenceCoverageJson")
-                        .HasColumnType("TEXT");
+                b.Property<string>("Field")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("JobAnalysisJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("GraduationDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("JobDescription")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("Institution")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("JobTitle")
-                        .HasColumnType("TEXT");
+                b.Property<Guid>("ProfileId")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("ResumeMarkdown")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<int>("SortOrder")
+                    .HasColumnType("INTEGER");
 
-                    b.Property<string>("ResumeRefinementJson")
-                        .HasColumnType("TEXT");
+                b.HasKey("Id");
 
-                    b.Property<string>("SelectedBulletIds")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.HasIndex("ProfileId");
 
-                    b.HasKey("Id");
+                b.ToTable("Education");
+            });
 
-                    b.ToTable("GenerationArtifacts");
-                });
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.GenerationArtifact", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.IgnoredBulletDuplicatePair", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.Property<string>("Company")
+                    .HasColumnType("TEXT");
 
-                    b.Property<Guid>("BulletIdA")
-                        .HasColumnType("TEXT");
+                b.Property<string>("CoverLetterMarkdown")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<Guid>("BulletIdB")
-                        .HasColumnType("TEXT");
+                b.Property<string>("CoverLetterRefinementJson")
+                    .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedDate")
-                        .HasColumnType("TEXT");
+                b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Note")
-                        .HasColumnType("TEXT");
+                b.Property<string>("EvidenceCoverageJson")
+                    .HasColumnType("TEXT");
 
-                    b.Property<double>("Similarity")
-                        .HasColumnType("REAL");
+                b.Property<string>("GenerationExplanationJson")
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<string>("JobAnalysisJson")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.HasIndex("BulletIdA", "BulletIdB")
-                        .IsUnique();
+                b.Property<string>("JobDescription")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("IgnoredBulletDuplicatePairs");
-                });
+                b.Property<string>("JobTitle")
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Profile", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.Property<string>("ResumeMarkdown")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("ResumeRefinementJson")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("GitHub")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<string>("SelectedBulletIds")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("LinkedIn")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.HasKey("Id");
 
-                    b.Property<DateTime>("ModifiedDate")
-                        .HasColumnType("TEXT");
+                b.ToTable("GenerationArtifacts");
+            });
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.IgnoredBulletDuplicatePair", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<Guid>("BulletIdA")
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("ProfessionalSummary")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.Property<Guid>("BulletIdB")
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("Profiles");
-                });
+                b.Property<string>("Note")
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.WorkHistory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                b.Property<double>("Similarity")
+                    .HasColumnType("REAL");
 
-                    b.Property<string>("Employer")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
+                b.HasKey("Id");
 
-                    b.Property<string>("EndDate")
-                        .HasColumnType("TEXT");
+                b.HasIndex("BulletIdA", "BulletIdB")
+                    .IsUnique();
 
-                    b.Property<string>("Location")
-                        .HasColumnType("TEXT");
+                b.ToTable("IgnoredBulletDuplicatePairs");
+            });
 
-                    b.Property<Guid>("ProfileId")
-                        .HasColumnType("TEXT");
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Profile", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("INTEGER");
+                b.Property<string>("Email")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("StartDate")
-                        .HasColumnType("TEXT");
+                b.Property<string>("GitHub")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Property<string>("Title")
-                        .HasColumnType("TEXT");
+                b.Property<string>("LinkedIn")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                b.Property<DateTime>("ModifiedDate")
+                    .HasColumnType("TEXT");
 
-                    b.HasIndex("ProfileId");
+                b.Property<string>("Name")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.ToTable("WorkHistory");
-                });
+                b.Property<string>("Phone")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
-                {
-                    b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
-                        .WithMany("Certifications")
-                        .HasForeignKey("ProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                b.Property<string>("ProfessionalSummary")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Navigation("Profile");
-                });
+                b.HasKey("Id");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Education", b =>
-                {
-                    b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
-                        .WithMany("Education")
-                        .HasForeignKey("ProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                b.ToTable("Profiles");
+            });
 
-                    b.Navigation("Profile");
-                });
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.WorkHistory", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.WorkHistory", b =>
-                {
-                    b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
-                        .WithMany("WorkHistory")
-                        .HasForeignKey("ProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                b.Property<string>("Employer")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
 
-                    b.Navigation("Profile");
-                });
+                b.Property<string>("EndDate")
+                    .HasColumnType("TEXT");
 
-            modelBuilder.Entity("AngryFoot.ApiService.Domain.Profile", b =>
-                {
-                    b.Navigation("Certifications");
+                b.Property<string>("Location")
+                    .HasColumnType("TEXT");
 
-                    b.Navigation("Education");
+                b.Property<Guid>("ProfileId")
+                    .HasColumnType("TEXT");
 
-                    b.Navigation("WorkHistory");
-                });
+                b.Property<int>("SortOrder")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("StartDate")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Title")
+                    .HasColumnType("TEXT");
+
+                b.HasKey("Id");
+
+                b.HasIndex("ProfileId");
+
+                b.ToTable("WorkHistory");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.BulletRevision", b =>
+            {
+                b.HasOne("AngryFoot.ApiService.Domain.Bullet", "Bullet")
+                    .WithMany("Revisions")
+                    .HasForeignKey("BulletId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+
+                b.Navigation("Bullet");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
+            {
+                b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
+                    .WithMany("Certifications")
+                    .HasForeignKey("ProfileId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+
+                b.Navigation("Profile");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Education", b =>
+            {
+                b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
+                    .WithMany("Education")
+                    .HasForeignKey("ProfileId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+
+                b.Navigation("Profile");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.WorkHistory", b =>
+            {
+                b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
+                    .WithMany("WorkHistory")
+                    .HasForeignKey("ProfileId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+
+                b.Navigation("Profile");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Bullet", b =>
+            {
+                b.Navigation("Revisions");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Profile", b =>
+            {
+                b.Navigation("Certifications");
+
+                b.Navigation("Education");
+
+                b.Navigation("WorkHistory");
+            });
 #pragma warning restore 612, 618
-        }
     }
 }

@@ -1,0 +1,139 @@
+@using AngryFoot.Contracts
+@using AngryFoot.Web.Models
+
+@*
+    How a bullet is written, independently of any posting. Every signal states what the check saw,
+    so a verdict can be checked against the words rather than taken on trust. Copy here is
+    deliberately flat: an assessment that flatters or apologises is harder to act on than one that
+    states what is there.
+*@
+
+@if (Quality is not null)
+{
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+        <span class="badge @CoverageBands.AggregateBadge">Bullet quality: @Quality.Score / 100</span>
+        <span class="text-muted small">@Quality.WordCount words</span>
+    </div>
+
+    <table class="table table-sm mb-2">
+        <tbody>
+            @foreach (var signal in Quality.Signals)
+            {
+                <tr>
+                    <td style="width: 1%;" class="text-nowrap">
+                        <span class="badge @(signal.Earned ? "text-bg-success" : "text-bg-light text-muted")">
+                            @(signal.Earned ? "✓" : "○") @signal.Weight
+                        </span>
+                    </td>
+                    <td style="width: 1%;" class="text-nowrap">@signal.Label</td>
+                    <td class="text-muted small">
+                        @signal.Detail
+                        @if (signal.IsDeclared)
+                        {
+                            <span class="badge text-bg-light text-muted ms-1">Author's call</span>
+                        }
+                    </td>
+                    <td style="width: 1%;" class="text-nowrap">
+                        @if (CanDispute(signal))
+                        {
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    disabled="@Disabled"
+                                    title="@(signal.IsDeclared ? "Hand this back to the check." : "Tell the check it has this wrong.")"
+                                    @onclick="() => ToggleAsync(signal)">
+                                @(signal.IsDeclared ? "Withdraw" : "Dispute")
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (Quality.Signals.Any(CanDispute))
+    {
+        <p class="text-muted small">
+            <strong>Sole credit can be disputed.</strong> It is judged from wording, and wording cannot establish
+            who did what &mdash; so if this check has it wrong, say so and the points are restored. Dispute it when
+            collaboration is a fact of the work rather than a hedge in the sentence. Shared ownership is normal and
+            expected for platform work, incident response, migrations, and anything large enough to need more than one
+            person; describing that accurately is not a weakness in the bullet and is not scored as one. Disputing
+            records it as your call rather than something the wording proved, and the check stops raising it. Every
+            other signal reads the text alone and is not open to dispute.
+        </p>
+    }
+
+    @if (Quality.Diagnostics.Count > 0 && ShowDiagnostics)
+    {
+        <div class="list-group mb-2">
+            @foreach (var diagnostic in Quality.Diagnostics)
+            {
+                <div class="list-group-item py-2">
+                    <details>
+                        <summary style="cursor: pointer;">
+                            <span class="badge @CoverageBands.SeverityBadge(diagnostic.Severity) me-2">
+                                @CoverageBands.SeverityLabel(diagnostic.Severity)
+                            </span>
+                            <span class="small">@diagnostic.Message</span>
+                        </summary>
+                        <div class="mt-2">
+                            <EvidenceRationalePanel Why="@diagnostic.Why" />
+                        </div>
+                    </details>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public BulletQualityDto? Quality { get; set; }
+
+    [Parameter]
+    public bool ShowDiagnostics { get; set; } = true;
+
+    /// <summary>
+    /// Whether the author can settle a contestable signal here. False for a revision's score, which
+    /// describes wording rather than the work, and for an unsaved bullet with nowhere to record it.
+    /// </summary>
+    [Parameter]
+    public bool CanAcknowledge { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Raised with the full set of disputed signal names after a change.</summary>
+    [Parameter]
+    public EventCallback<IReadOnlyList<string>> AcknowledgementsChanged { get; set; }
+
+    /// <summary>
+    /// Offered where the check disagrees with the author, and where they have already said so. A
+    /// check that already agrees has nothing to dispute, and a button saying otherwise is noise.
+    /// </summary>
+    private bool CanDispute(BulletQualitySignalDto signal)
+        => CanAcknowledge && signal.IsContestable && (!signal.Earned || signal.IsDeclared);
+
+    private async Task ToggleAsync(BulletQualitySignalDto signal)
+    {
+        if (Quality is null)
+        {
+            return;
+        }
+
+        var disputed = Quality.Signals
+            .Where(x => x.IsDeclared)
+            .Select(x => x.Name)
+            .ToList();
+
+        if (signal.IsDeclared)
+        {
+            disputed.Remove(signal.Name);
+        }
+        else
+        {
+            disputed.Add(signal.Name);
+        }
+
+        await AcknowledgementsChanged.InvokeAsync(disputed);
+    }
+}

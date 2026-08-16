@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AngryFoot.ApiService.Data.Migrations;
 
 [DbContext(typeof(AngryFootDbContext))]
-[Migration("20260811024815_AddIgnoredBulletDuplicatePairs")]
-partial class AddIgnoredBulletDuplicatePairs
+[Migration("20260815200259_AddBulletQualityAcknowledgements")]
+partial class AddBulletQualityAcknowledgements
 {
     /// <inheritdoc />
     protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -24,6 +24,10 @@ partial class AddIgnoredBulletDuplicatePairs
             {
                 b.Property<Guid>("Id")
                     .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("AcknowledgedQualitySignals")
+                    .IsRequired()
                     .HasColumnType("TEXT");
 
                 b.Property<string>("BulletText")
@@ -65,6 +69,47 @@ partial class AddIgnoredBulletDuplicatePairs
                 b.HasKey("Id");
 
                 b.ToTable("Bullets");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.BulletRevision", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("TEXT");
+
+                b.Property<Guid>("BulletId")
+                    .HasColumnType("TEXT");
+
+                b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
+
+                b.Property<bool>("IsAiGenerated")
+                    .HasColumnType("INTEGER");
+
+                b.Property<string>("Mode")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("Rationale")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("RevisedText")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("SourceText")
+                    .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<int>("Version")
+                    .HasColumnType("INTEGER");
+
+                b.HasKey("Id");
+
+                b.HasIndex("BulletId", "Mode", "Version")
+                    .IsUnique();
+
+                b.ToTable("BulletRevisions");
             });
 
         modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
@@ -141,7 +186,13 @@ partial class AddIgnoredBulletDuplicatePairs
                     .IsRequired()
                     .HasColumnType("TEXT");
 
+                b.Property<string>("CoverLetterRefinementJson")
+                    .HasColumnType("TEXT");
+
                 b.Property<DateTime>("CreatedDate")
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("EvidenceCoverageJson")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("JobAnalysisJson")
@@ -157,6 +208,9 @@ partial class AddIgnoredBulletDuplicatePairs
 
                 b.Property<string>("ResumeMarkdown")
                     .IsRequired()
+                    .HasColumnType("TEXT");
+
+                b.Property<string>("ResumeRefinementJson")
                     .HasColumnType("TEXT");
 
                 b.Property<string>("SelectedBulletIds")
@@ -270,6 +324,17 @@ partial class AddIgnoredBulletDuplicatePairs
                 b.ToTable("WorkHistory");
             });
 
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.BulletRevision", b =>
+            {
+                b.HasOne("AngryFoot.ApiService.Domain.Bullet", "Bullet")
+                    .WithMany("Revisions")
+                    .HasForeignKey("BulletId")
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .IsRequired();
+
+                b.Navigation("Bullet");
+            });
+
         modelBuilder.Entity("AngryFoot.ApiService.Domain.Certification", b =>
             {
                 b.HasOne("AngryFoot.ApiService.Domain.Profile", "Profile")
@@ -301,6 +366,11 @@ partial class AddIgnoredBulletDuplicatePairs
                     .IsRequired();
 
                 b.Navigation("Profile");
+            });
+
+        modelBuilder.Entity("AngryFoot.ApiService.Domain.Bullet", b =>
+            {
+                b.Navigation("Revisions");
             });
 
         modelBuilder.Entity("AngryFoot.ApiService.Domain.Profile", b =>

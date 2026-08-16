@@ -181,6 +181,69 @@ and both operands ship on the response. Each requirement is worth `weight × 2` 
 
 **Generate** produces its own report over the bullets that made the resume, in the order the resume prints them — which is what lets it flag a stronger bullet sitting below a weaker one. It is stored with the artifact and frozen, so reopening a generation from History explains the resume you actually sent rather than re-scoring it against a library that has moved on since.
 
+### Why this resume holds these bullets
+
+A generated resume is a compiled artifact, and **Generate** shows its build log. Every candidate the ranker produced is accounted for — not only the ones that made it, since an account covering the selected bullets alone would be the flattering half of the story.
+
+Each bullet is labelled with what became of it, and expands to the reasoning:
+
+- **Kept** — in the ranker's position, in your own words.
+- **Reworded** — tailored to this posting. Your wording and the resume's are shown side by side.
+- **Moved** — deep review put it somewhere other than where the ranker did, naming both positions.
+- **Left off** — with the reason. Either it evidences nothing this posting asks for, or it ranked below the cut.
+
+A bullet left off that speaks to something the resume **does not** evidence is called out as a cost rather than listed as a neutral fact: *"This resume does not fully evidence Kubernetes, which this bullet speaks to. Raising Max Bullets, or strengthening this one, would bring it in."* That is usually the most actionable line in the panel.
+
+The explanation is deterministic and costs no AI call — the generator's choices are already made by the time it runs, so explaining them cannot disagree with the resume it describes. It is stored with the artifact, so reopening a generation from History explains the resume you actually sent.
+
+### Bullet versions and bullet quality
+
+A rewrite is a suggestion until the person who did the work says otherwise, so AngryFoot keeps rewrites **beside** a bullet rather than on top of it. Writing a version never changes your bullet; only **Use this version** does, and the wording it replaces survives as that version's source text.
+
+Each version is written for a particular audience, and a bullet can hold several at once:
+
+| Mode | What it does |
+|---|---|
+| **Grammar cleanup** | Fixes grammar, tense, and punctuation. Changes nothing else. |
+| **Stronger wording** | Same facts, sharper verbs, less filler, accomplishment before context. |
+| **STAR format** | Situation, task, action, result. Parts your bullet does not supply are left out rather than invented. |
+| **Executive** | Leads with outcome, scope, and ownership; drops detail a non-engineer skips. |
+| **Technical** | Foregrounds the systems, techniques, and the engineering decision. |
+| **ATS** | Plain wording and standard industry terms for keyword screens; spells out abbreviations. |
+
+Every mode carries the same rule into its prompt: a version may change how an accomplishment is told and never what it claims. A rewrite that invents a metric is worse than no rewrite, because you are the one who has to defend it in the room.
+
+Versions are numbered per mode, so "the ATS version" has a history rather than a single current value. A version whose source wording you have since edited is marked **Out of date** rather than quietly presenting itself as current.
+
+**Bullet quality** scores how a bullet is written, independently of any posting, and — like evidence coverage — the number is the sum of the signals shown beneath it and nothing else:
+
+| Signal | Points | What it reads |
+|---|---|---|
+| Opens with an action | 20 | The first word |
+| Measurable result | 30 | A figure anywhere in the bullet |
+| Sole credit | 5 | Wording that gives credit away |
+| Names specifics | 20 | A proper noun |
+| Names technology | 15 | The text, or the enrichment tags |
+| Maps to a role | 10 | The enrichment tags |
+
+Every signal reports **what it saw**, not just whether it passed — `States "40%"`, `Opens with "Responsible for"`, `Shared credit: "we"`. A verdict without the words behind it can't be checked, and an assessment that can't be argued with gets argued with anyway.
+
+**Sole credit is worth 5 points, and presumes you.** A resume elides its subject by convention: every bullet is read as your own work unless it says otherwise. So the check does not hunt for proof of ownership — nothing short of writing "I" would qualify, and demanding that would reject "Mentored two interns", "Developed the wrappers", and most of what anyone writes. It looks only for wording that gives credit *away*: `we`, `our team`, `assisted with`, `contributed to`, `participated in`. Possessives are deliberately not on that list — "the software team's first CI/CD server" says whose server it was, not who built it.
+
+It is also the only signal you can **dispute**. Whether work was shared is a fact no wording can establish, so when the check reads your bullet wrong, say so: the points are restored, the row reports as *Author's call* rather than pretending the text proved anything, and the check stops raising it.
+
+Dispute it when **collaboration is a fact of the work rather than a hedge in the sentence**. Shared ownership is normal and expected for platform work, incident response, migrations, and anything large enough to need more than one person. Describing that accurately is not a weakness in the bullet and is not scored as one. The alternative — quietly rewriting joint work as solo work to satisfy a checker — is how a resume becomes something you cannot defend in the room.
+
+Nothing else is disputable: whether a figure is present is not a matter of opinion.
+
+Length is advice, not a penalty: a bullet past roughly forty words gets a note, but keeps its points, because a long bullet full of evidence beats a short empty one. "Maps to a role" asks only whether enrichment could place the work in any job family at all — whether it suits *your* target posting is [evidence coverage](#evidence-coverage)'s question, and answering it twice in two ways would leave you with two numbers to reconcile.
+
+**Reassess** scores the wording in the box without saving it. Two of the six signals come from enrichment rather than the text, so a full score costs an AI call; running it on demand means you can see the score before committing to the wording, and the enrichment is kept so the save that follows does not pay for it twice.
+
+Versions are scored against their parent bullet's enrichment, since a reworded accomplishment involves the same technologies whatever words it uses.
+
+Without AI configured, writing a version tidies the text and tells you what that mode would have done — it does not attempt the rewrite, because a heuristic cannot restructure a bullet into STAR without inventing the parts that are missing.
+
 ### Occupational benchmark
 
 Alongside evidence coverage — which measures how well your bullets evidence *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.

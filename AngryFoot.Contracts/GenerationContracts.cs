@@ -58,7 +58,8 @@ public sealed record GenerationResultDto(
     IReadOnlyList<Guid> SelectedBulletIds,
     RefinementDto? ResumeRefinement = null,
     RefinementDto? CoverLetterRefinement = null,
-    EvidenceCoverageReportDto? Coverage = null);
+    EvidenceCoverageReportDto? Coverage = null,
+    GenerationExplanationDto? Explanation = null);
 
 public sealed record ArtifactSummaryDto(
     Guid Id,
@@ -82,4 +83,5 @@ public sealed record GenerationArtifactDto(
     DateTime CreatedDate,
     RefinementDto? ResumeRefinement = null,
     RefinementDto? CoverLetterRefinement = null,
-    EvidenceCoverageReportDto? Coverage = null);
+    EvidenceCoverageReportDto? Coverage = null,
+    GenerationExplanationDto? Explanation = null);

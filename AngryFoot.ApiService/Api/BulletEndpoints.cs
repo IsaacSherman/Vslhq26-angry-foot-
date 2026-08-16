@@ -128,6 +128,79 @@ public static class BulletEndpoints
             return Results.Ok(result);
         });
 
+        // Scores wording that has not been saved. Returns the tagging it used so the caller can
+        // hand it back on the save that follows rather than paying for enrichment twice.
+        bullets.MapPost("/assess", async (
+            AssessBulletRequest request,
+            IBulletService bulletService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.BulletText))
+            {
+                return Results.BadRequest("Bullet text is required.");
+            }
+
+            return Results.Ok(await bulletService.AssessAsync(request, cancellationToken));
+        });
+
+        bullets.MapPut("/{id:guid}/quality-acknowledgements", async (
+            Guid id,
+            SetBulletQualityAcknowledgementsRequest request,
+            IBulletService bulletService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await bulletService.SetQualityAcknowledgementsAsync(id, request.Signals, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
+        // Revisions are variants of a bullet, not edits to it: creating one never touches the
+        // bullet's own text, and promoting one is a separate, explicit call.
+        bullets.MapGet("/{id:guid}/revisions", async (
+            Guid id,
+            IBulletRevisionService revisionService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await revisionService.GetAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
+        bullets.MapPost("/{id:guid}/revisions", async (
+            Guid id,
+            CreateBulletRevisionRequest request,
+            IBulletRevisionService revisionService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.IsDefined(request.Mode))
+            {
+                return Results.BadRequest("Unknown revision mode.");
+            }
+
+            var result = await revisionService.CreateAsync(id, request, cancellationToken);
+            return result is null
+                ? Results.NotFound()
+                : Results.Created($"/api/bullets/{id}/revisions/{result.Id}", result);
+        });
+
+        bullets.MapDelete("/{id:guid}/revisions/{revisionId:guid}", async (
+            Guid id,
+            Guid revisionId,
+            IBulletRevisionService revisionService,
+            CancellationToken cancellationToken) =>
+        {
+            var deleted = await revisionService.DeleteAsync(id, revisionId, cancellationToken);
+            return deleted ? Results.NoContent() : Results.NotFound();
+        });
+
+        bullets.MapPost("/{id:guid}/revisions/{revisionId:guid}/promote", async (
+            Guid id,
+            Guid revisionId,
+            IBulletRevisionService revisionService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await revisionService.PromoteAsync(id, revisionId, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         bullets.MapPost("/index-missing", async (IBulletService bulletService, CancellationToken cancellationToken) =>
         {
             var indexedCount = await bulletService.IndexAllMissingAsync(cancellationToken);

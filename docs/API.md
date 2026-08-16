@@ -53,6 +53,9 @@ Request:
 { "bulletText": "Reduced widget waste by 30% by redesigning the assembly process." }
 ```
 
+An optional `tagging` from a prior `/api/bullets/assess` of the same text is used instead of running
+enrichment again; see that endpoint.
+
 Returns `201 Created` with `BulletDto` and `Location: /api/bullets/{id}`.
 
 ### PUT `/api/bullets/{id}`
@@ -149,6 +152,78 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
   "modifiedDate": "2026-01-01T00:00:00Z"
 }
 ```
+
+### Bullet versions
+
+A version is an alternative wording of a bullet, kept alongside it. Creating one never modifies the
+bullet; only the promote call does.
+
+`BulletDto` and `BulletRevisionDto` both carry a `quality` object: `score`, a `signals[]` array,
+`wordCount`, and `diagnostics[]` (the same shape evidence coverage uses, Why panel included).
+`score` always equals the sum of the weights of the earned signals.
+
+Each signal is `{ name, label, earned, weight, detail, isDeclared, isContestable }`. `detail` is what
+the check saw, quoting the bullet where it can — `States "40%"`, `Shared credit: "we"`,
+`Not enriched yet`.
+
+`isContestable` is true only for `ownership`, the one signal the text cannot settle: a resume elides
+its subject, so the check presumes the author and looks only for wording that gives credit away.
+`isDeclared` marks a signal earned because the author disputed the check rather than because the
+wording showed it — a disputed signal scores and stops producing a diagnostic. It is intended for
+bullets whose collaboration is a fact of the work, not a hedge in the sentence.
+
+#### POST `/api/bullets/assess`
+Scores wording that has not been saved. Persists nothing.
+
+```json
+{ "bulletText": "Cut Azure spend by 30%.", "acknowledgedSignals": ["ownership"] }
+```
+
+Returns `BulletAssessmentDto` — `quality`, plus the `tagging` the assessment used
+(`{ forText, tags, skills, technologies, jobCategories, impact }`). Two of the six signals come from
+enrichment rather than the text, so this runs the tagger; passing `tagging` back on the create or
+update that follows skips a second call. The API re-tags from scratch if `forText` no longer matches
+the text being saved.
+
+#### PUT `/api/bullets/{id}/quality-acknowledgements`
+Records which quality signals the author has disputed. `{ "signals": ["ownership"] }` — the full set,
+so an empty array hands them all back to the check. Returns the updated `BulletDto`, or `404`. Signals that are
+not contestable are stored but have no effect on the score.
+
+#### GET `/api/bullets/{id}/revisions`
+Returns the bullet's versions (`200`), or `404` when the bullet does not exist. An existing bullet
+with no versions returns `[]`.
+
+#### POST `/api/bullets/{id}/revisions`
+Writes a new version. `201` with the created `BulletRevisionDto`, `404` for an unknown bullet, `400`
+for a mode outside the enum.
+
+```json
+{
+  "mode": "Ats",
+  "deepReview": false,
+  "guidance": "the platform was internal, not a product"
+}
+```
+
+`mode` is one of `Grammar`, `StrongerWording`, `Star`, `Executive`, `Technical`, `Ats`. `guidance` is
+the candidate's own clarification and is treated as fact by the writer. `deepReview` runs the
+critique-and-revise pass over the draft.
+
+The response carries `sourceText` (the wording it was written from), `version` (numbered per mode),
+`rationale` (one sentence on what changed, null when the heuristic fallback wrote it),
+`isAiGenerated`, and `isStale` (the bullet has changed since, so this rewords text that no longer
+exists — a version that has itself been promoted is not stale).
+
+#### POST `/api/bullets/{id}/revisions/{revisionId}/promote`
+Makes the version the bullet's canonical text and returns `PromoteBulletRevisionResponse` —
+`bullet` plus the refreshed `revisions`. `404` when either id is unknown. The replaced wording is not
+lost: it is the promoted version's own `sourceText`. Promotion writes through the same path as an
+ordinary edit, so the bullet is re-tagged and re-indexed.
+
+#### DELETE `/api/bullets/{id}/revisions/{revisionId}`
+`204`, or `404` when the version does not belong to that bullet. Deleting a bullet deletes its
+versions.
 
 ## Generations
 
@@ -279,6 +354,34 @@ it into this resume, in the order the resume prints them — so unlike `/analyze
 `bullet-ordering`. Its `source` is always `"Deterministic"`: a generation already chains several AI
 calls, and this reports on a decision rather than making one.
 
+`explanation` (`GenerationExplanationDto`) accounts for **every** candidate the ranker produced,
+including the ones left off. Each `decisions[]` entry carries `bulletId`, `originalText`,
+`finalText` (null when omitted), `kind`, `rankerPosition`, `resumePosition` (null when omitted), and
+a `why` object of the same shape used everywhere else.
+
+`kind` is a **combinable flag set**, serialized as comma-separated names — a bullet can be both moved
+and reworded, and saying so beats picking whichever single label looked most notable:
+
+| Value | Meaning |
+|---|---|
+| `"Omitted"` | Left off this resume. Never combined with anything else. |
+| `"Selected"` | Kept, in the ranker's position, in the candidate's words. |
+| `"Selected, Revised"` | Kept in place, reworded for the posting. |
+| `"Selected, Reordered"` | Moved from the ranker's position, wording untouched. |
+| `"Selected, Revised, Reordered"` | Both. |
+
+Exactly one of `Selected` and `Omitted` is always present. Decisions are ordered by
+`resumePosition`, with the omitted ones last.
+
+> Note: `kind` is the only enum in these contracts sent as names. The rest — `enrichmentState`,
+> `strength`, `severity`, `requirementKind`, `source`, `mode` — serialize as **integers** under the
+> default web JSON options. Examples elsewhere in this document that show them as strings are
+> inaccurate on that point.
+
+For an omitted bullet that speaks to a requirement the resume does not fully evidence,
+`why.missingEvidence` says what leaving it off cost. Like `coverage`, this is computed
+deterministically and needs no AI call.
+
 ## Artifacts
 
 ### GET `/api/artifacts`
@@ -292,6 +395,9 @@ generation is reopened from history.
 `coverage` is the evidence coverage report as of the moment the resume was generated, frozen rather
 than recomputed — the library moves on, and a report that re-scored itself against later bullets
 would no longer explain the resume beside it. Null for artifacts generated before it was recorded.
+
+`explanation` is frozen for the same reason: it describes decisions taken over a candidate set that
+has since changed. Null for artifacts generated before it was recorded.
 
 ### PUT `/api/artifacts/{id}/selection`
 Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so history

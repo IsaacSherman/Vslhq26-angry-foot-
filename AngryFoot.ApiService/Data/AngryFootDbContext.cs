@@ -11,6 +11,7 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public DbSet<Bullet> Bullets => Set<Bullet>();
+    public DbSet<BulletRevision> BulletRevisions => Set<BulletRevision>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<WorkHistory> WorkHistory => Set<WorkHistory>();
     public DbSet<Education> Education => Set<Education>();
@@ -57,6 +58,28 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
 
             var impact = entity.Property(x => x.Impact).HasConversion(stringListConverter);
             impact.Metadata.SetValueComparer(stringListComparer);
+
+            var acknowledged = entity.Property(x => x.AcknowledgedQualitySignals).HasConversion(stringListConverter);
+            acknowledged.Metadata.SetValueComparer(stringListComparer);
+        });
+
+        modelBuilder.Entity<BulletRevision>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RevisedText).IsRequired();
+            entity.Property(x => x.SourceText).IsRequired();
+
+            // Stored as text, unlike EnrichmentState's int: the modes are a user-facing list that is
+            // expected to grow, and inserting one in the middle would silently relabel every
+            // existing row if the ordinal were the stored value.
+            entity.Property(x => x.Mode).HasConversion<string>();
+
+            entity.HasOne(x => x.Bullet)
+                .WithMany(x => x.Revisions)
+                .HasForeignKey(x => x.BulletId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => new { x.BulletId, x.Mode, x.Version }).IsUnique();
         });
 
         modelBuilder.Entity<Profile>(entity =>

@@ -87,6 +87,85 @@ public class BulletQualityHeuristicsTests
                 + "cannot make an exception for short technology names without letting the filler back in");
     }
 
+    [Theory]
+    [InlineData("Rebuilt the release process.", "Rebuilt")]
+    [InlineData("Led the migration.", "Led")]
+    [InlineData("Mentored two interns.", "Mentored")]
+    public void OpeningAction_WithAVerbFirst_NamesIt(string text, string expected)
+    {
+        BulletQualityHeuristics.OpeningAction(text).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("Responsible for the release process.")]
+    [InlineData("The release process was rebuilt.")]
+    public void OpeningAction_WithAnAssignmentOrAPassiveOpener_IsNull(string text)
+    {
+        BulletQualityHeuristics.OpeningAction(text).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A resume elides its subject, so any verb describing the work reads as the author's. These
+    /// are the bullets an allowlist of "ownership verbs" used to reject, each of them plainly
+    /// personal work.
+    /// </summary>
+    [Theory]
+    [InlineData("Led the migration.")]
+    [InlineData("Mentored two interns through weekly 1:1s and code reviews.")]
+    [InlineData("Developed and maintained C# interoperability wrappers.")]
+    [InlineData("Implemented scalable data models and a Roslyn-based analyzer.")]
+    [InlineData("Provisioned and configured the software team's first CI/CD server.")]
+    [InlineData("Attended the migration planning and rewrote the rollout order.")]
+    public void SharedCreditMarker_WhenTheBulletDescribesItsAuthorsWork_IsNull(string text)
+    {
+        BulletQualityHeuristics.SharedCreditMarker(text).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("We led the migration.", "we")]
+    [InlineData("Our team led the migration.", "our team")]
+    [InlineData("Assisted with the migration.", "assisted with")]
+    [InlineData("Contributed to the rollout plan.", "contributed to")]
+    [InlineData("Participated in the design review.", "participated in")]
+    public void SharedCreditMarker_WhenCreditIsGivenAway_NamesTheWording(string text, string expected)
+    {
+        BulletQualityHeuristics.SharedCreditMarker(text).Should().Be(expected);
+    }
+
+    [Fact]
+    public void SharedCreditMarker_DoesNotReadAPossessiveAsSharedCredit()
+    {
+        BulletQualityHeuristics.SharedCreditMarker("Provisioned the software team's first CI/CD server.")
+            .Should().BeNull("\"the team's server\" says whose server it was, not who built it");
+    }
+
+    [Fact]
+    public void SharedCreditMarker_DoesNotMatchInsideALongerWord()
+    {
+        BulletQualityHeuristics.SharedCreditMarker("Weekly releases were automated.")
+            .Should().BeNull("\"we\" inside \"weekly\" gives nothing away");
+    }
+
+    [Fact]
+    public void ProperNoun_NamesTheParticularThingOrNothing()
+    {
+        BulletQualityHeuristics.ProperNoun("Rebuilt the Apollo release pipeline.").Should().Be("Apollo");
+        BulletQualityHeuristics.ProperNoun("Rebuilt the release pipeline.").Should().BeNull();
+    }
+
+    [Fact]
+    public void MeasurableImpact_QuotesTheFigureItFound()
+    {
+        BulletQualityHeuristics.MeasurableImpact("Cut build times by 40%.").Should().Be("40%");
+        BulletQualityHeuristics.MeasurableImpact("Led the migration.").Should().BeNull();
+    }
+
+    [Fact]
+    public void IsSpecific_IgnoresTheCapitalThatOnlyStartsTheSentence()
+    {
+        BulletQualityHeuristics.IsSpecific("Improved reliability.").Should().BeFalse();
+    }
+
     [Fact]
     public void NamesTechnology_AndMentionsOutcome_ReadTheirKeywordLists()
     {
