@@ -17,6 +17,24 @@
 <div class="mb-3">
     <label class="form-label">Bullet Text</label>
     <textarea class="form-control" rows="6" @bind="bulletText"></textarea>
+    <div class="mt-2">
+        <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="ReassessAsync"
+                disabled="@(isAssessing || isSaving || isRewriting || string.IsNullOrWhiteSpace(bulletText))">
+            @if (isAssessing)
+            {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            }
+            Reassess
+        </button>
+        @if (isQualityStale)
+        {
+            <span class="text-muted small ms-2">Scored against earlier wording.</span>
+        }
+        <BulletQualityPanel Quality="@quality"
+                            CanAcknowledge="@(!IsCreate)"
+                            Disabled="@(isAssessing || isSaving)"
+                            AcknowledgementsChanged="OnAcknowledgementsChanged" />
+    </div>
 </div>
 
 <div class="mb-3">
@@ -118,6 +136,11 @@
     </div>
 }
 
+@if (!IsCreate)
+{
+    <BulletRevisionsPanel BulletId="@BulletId" BulletChanged="OnPromotedRevision" />
+}
+
 <div>
     <button class="btn btn-primary me-2" @onclick="SaveAsync" disabled="@(isSaving || isRewriting)">
         @if (isSaving)
@@ -145,8 +168,97 @@
     private BulletRewriteCritiqueResponse? critique;
     private string? guidance;
     private string? selectedVersionLabel;
+    private BulletQualityDto? quality;
+    private bool isAssessing;
+
+    /// <summary>
+    /// Enrichment from the last Reassess. Handed to Save so a bullet that has already been through
+    /// the tagger is not sent through it twice; the API ignores it if the text has moved on.
+    /// </summary>
+    private BulletTaggingDto? assessedTagging;
+
+    /// <summary>The wording <see cref="quality"/> describes, so the panel can admit when it is behind.</summary>
+    private string? scoredText;
+
+    private bool isQualityStale => quality is not null && !string.Equals(scoredText, bulletText, StringComparison.Ordinal);
 
     private bool IsCreate => !BulletId.HasValue;
+
+    /// <summary>
+    /// A promoted version becomes the bullet's text, so the editor has to show the new wording
+    /// rather than leave the user editing what they just replaced.
+    /// </summary>
+    private void OnPromotedRevision(BulletDto bullet)
+    {
+        bulletText = bullet.BulletText;
+        sourceEmployer = bullet.SourceEmployer;
+        ApplyQuality(bullet);
+    }
+
+    private void ApplyQuality(BulletDto bullet)
+    {
+        quality = bullet.Quality;
+        scoredText = bullet.BulletText;
+        // The bullet was tagged server-side by whatever wrote it; nothing local to reuse.
+        assessedTagging = null;
+    }
+
+    /// <summary>
+    /// Two of the six signals come from enrichment rather than the text, so a full score needs an AI
+    /// call. Running it here rather than on save means the score can be seen before committing to
+    /// the wording, and the tagging is kept so the save that follows does not repeat the call.
+    /// </summary>
+    private async Task ReassessAsync()
+    {
+        if (string.IsNullOrWhiteSpace(bulletText))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isAssessing = true;
+
+        try
+        {
+            var disputed = quality?.Signals.Where(x => x.IsDeclared).Select(x => x.Name).ToArray() ?? [];
+            var assessment = await ApiClient.AssessBulletAsync(bulletText.Trim(), disputed);
+
+            quality = assessment.Quality;
+            assessedTagging = assessment.Tagging;
+            scoredText = bulletText.Trim();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isAssessing = false;
+        }
+    }
+
+    private async Task OnAcknowledgementsChanged(IReadOnlyList<string> signals)
+    {
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+
+        try
+        {
+            var updated = await ApiClient.SetBulletQualityAcknowledgementsAsync(BulletId.Value, signals);
+            if (updated is not null)
+            {
+                ApplyQuality(updated);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
 
     /// <summary>
     /// The text the Use button applies: the version the user picked, or the single rewrite when
@@ -201,6 +313,9 @@
         {
             bulletText = string.Empty;
             sourceEmployer = null;
+            quality = null;
+            scoredText = null;
+            assessedTagging = null;
             return;
         }
 
@@ -213,6 +328,7 @@
 
         bulletText = bullet.BulletText;
         sourceEmployer = bullet.SourceEmployer;
+        ApplyQuality(bullet);
     }
 
     private async Task RewriteAsync()
@@ -321,11 +437,11 @@
             var employer = string.IsNullOrWhiteSpace(sourceEmployer) ? null : sourceEmployer.Trim();
             if (BulletId is null)
             {
-                await ApiClient.CreateBulletAsync(bulletText.Trim(), employer);
+                await ApiClient.CreateBulletAsync(bulletText.Trim(), employer, assessedTagging);
             }
             else
             {
-                var updated = await ApiClient.UpdateBulletAsync(BulletId.Value, bulletText.Trim(), employer);
+                var updated = await ApiClient.UpdateBulletAsync(BulletId.Value, bulletText.Trim(), employer, assessedTagging);
                 if (updated is null)
                 {
                     errorMessage = "Bullet not found.";

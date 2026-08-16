@@ -21,4 +21,19 @@ public sealed class GenerationArtifact
 
     /// <summary>Same, for the cover letter.</summary>
     public string? CoverLetterRefinementJson { get; set; }
+
+    /// <summary>
+    /// Serialized <c>EvidenceCoverageReportDto</c> for the bullets this resume used, as of the
+    /// moment it was generated. Frozen rather than recomputed on read: the library moves on, and a
+    /// report that silently re-scored itself against later bullets would no longer explain the
+    /// resume sitting next to it. Null for artifacts generated before the report existed.
+    /// </summary>
+    public string? EvidenceCoverageJson { get; set; }
+
+    /// <summary>
+    /// Serialized <c>GenerationExplanationDto</c>: what became of every bullet the generator
+    /// considered. Frozen for the same reason as <see cref="EvidenceCoverageJson"/> - it explains
+    /// the decisions taken on the day, and the candidate set has moved on since.
+    /// </summary>
+    public string? GenerationExplanationJson { get; set; }
 }

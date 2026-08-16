@@ -13,7 +13,7 @@ AngryFoot is a .NET Aspire solution with two runnable services and three support
 
 - **AngryFoot.AppHost** — Aspire orchestrator. Launches the API service and web frontend, wires up service discovery, and hosts the developer dashboard.
 - **AngryFoot.Web** — Blazor Server UI (Bullets, Profile, Generate, History pages). Talks to the API service exclusively through a typed `ApiClient` (`HttpClient` resolved via Aspire service discovery, `https+http://apiservice`). Renders generated Markdown with a Preview/Markdown toggle (Markdig).
-- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, candidate-fit assessment, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Bullet selection for a generation prefers semantic retrieval — bullets are embedded and indexed in Qdrant, and the job description is matched against them by vector similarity — falling back to the original deterministic keyword-overlap ranking when no embedding deployment is configured (see [Semantic bullet retrieval (RAG)](#semantic-bullet-retrieval-rag)). Persistence is EF Core over a per-user SQLite database.
+- **AngryFoot.ApiService** — ASP.NET Core Minimal API hosting two front doors over the same application services: REST endpoints (`/api/bullets`, `/api/profile`, `/api/generations`, `/api/artifacts`, `/api/ai/status`) and an MCP server (`/mcp`, streamable HTTP) exposing bullet CRUD as tools for AI agents like Copilot. Application services handle bullet enrichment (AI tagging), job analysis, evidence coverage analysis, bullet ranking/rewriting, and resume/cover-letter assembly. Every AI-backed service calls Azure OpenAI through the provider-agnostic `IChatClient` abstraction and degrades to deterministic heuristics when AI is unavailable. Bullet selection for a generation prefers semantic retrieval — bullets are embedded and indexed in Qdrant, and the job description is matched against them by vector similarity — falling back to the original deterministic keyword-overlap ranking when no embedding deployment is configured (see [Semantic bullet retrieval (RAG)](#semantic-bullet-retrieval-rag)). Persistence is EF Core over a per-user SQLite database.
 - **AngryFoot.Contracts** — shared DTOs referenced by both Web and ApiService, so the UI and API can never drift apart silently.
 - **AngryFoot.ServiceDefaults** — shared Aspire plumbing: HTTP resilience (retry/circuit-breaker), service discovery, and OpenTelemetry tracing/metrics for both services.
 - **AngryFoot.Tests** — xUnit suite: fast Moq-based unit tests for every service, plus Aspire integration tests that boot the full AppHost against isolated temp databases (including an end-to-end MCP client test).
@@ -26,7 +26,7 @@ flowchart LR
         subgraph Api["AngryFoot.ApiService"]
             REST["REST endpoints<br/>/api/*"]
             MCP["MCP server<br/>/mcp"]
-            Services["Application services<br/>bullets · profile · generation · fit"]
+            Services["Application services<br/>bullets · profile · generation · evidence"]
             Chat["IChatClient"]
             EF["EF Core"]
         end
@@ -49,13 +49,13 @@ flowchart LR
     Defaults -.-> Api
 ```
 
-The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `FitAssessmentService` (score the user's chances against their bullet library) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
+The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `EvidenceCoverageService` (link each requirement to the bullets that evidence it) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
 
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
 - **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` and `IEmbeddingGenerator` abstractions), Qdrant.Client + Aspire.Hosting.Qdrant/Aspire.Qdrant.Client (optional semantic retrieval), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5. Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
-- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, fit assessment, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
+- **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, evidence review, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
 - **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports, plus a Docker-hosted Qdrant container it starts and stops automatically for semantic bullet retrieval. No cloud deployment required. Data lives in a per-user SQLite database; Qdrant's vector data is bind-mounted to a local folder next to it. Set `Qdrant:Enabled=false` to skip the container entirely (see Configuration).
 
 ## Getting started
@@ -64,7 +64,7 @@ The generation pipeline inside the API service runs as a chain: job description 
 
 - **.NET 10 SDK** (the repo builds with a 10.0.4xx preview SDK; Aspire 13.4 is pulled in via the AppHost project SDK — no separate workload install needed)
 - **Docker** (running). The AppHost automatically starts a Qdrant container (`qdrant/qdrant:latest`) on `dotnet run` for semantic bullet retrieval. Without Docker running, set `Qdrant:Enabled=false` (see Configuration) — the app then runs exactly as before, with keyword-overlap ranking and no Qdrant.
-- **Azure OpenAI resource with a chat deployment** (optional). Without it the app runs entirely on heuristic fallbacks; with it you get full AI enrichment, fit assessment, and generation. You will need three values: the resource endpoint URL (`https://<resource>.openai.azure.com`), an API key, and the chat deployment name.
+- **Azure OpenAI resource with a chat deployment** (optional). Without it the app runs entirely on heuristic fallbacks; with it you get full AI enrichment, evidence review, and generation. You will need three values: the resource endpoint URL (`https://<resource>.openai.azure.com`), an API key, and the chat deployment name.
 - No external database server — SQLite is embedded and created on first run; Qdrant's data is a local Docker bind mount, not a separate service to provision.
 
 ### Setup
@@ -153,9 +153,100 @@ Without a usable embedding deployment, Qdrant still starts (it's harmless and id
 
 `dotnet test`'s Aspire integration tests always disable Qdrant for themselves regardless of this setting, so running the test suite never requires Docker.
 
+### Evidence coverage
+
+**Analyze** answers one question: how much of what this posting asks for do your bullets actually evidence? Every part of the answer is traceable back to a bullet you wrote.
+
+**The score is derived, not asserted.** It is always
+
+```
+coverageScore = round(100 × earnedWeight / totalWeight)
+```
+
+and both operands ship on the response. Each requirement is worth `weight × 2` points and earns `weight ×` 2 for strong evidence, 1 for weak, 0 for none — so you can recompute the number by hand from the rows on screen. Required skills and named technologies weigh 2; preferred skills weigh 1.
+
+**Strong, weak, or missing** is decided by what the bullet says:
+
+| | |
+|---|---|
+| **Strong** | the requirement is one of the bullet's extracted skills or technologies, **or** the bullet names it *and* quantifies a result |
+| **Weak** | a bullet mentions it but never shows what came of the work — half credit |
+| **Missing** | no bullet mentions it |
+
+**Diagnostics** read like editor diagnostics rather than a grade, at three severities — `warning`, `suggestion`, `info` — covering missing requirements, weak evidence, near-duplicate bullets, bullet ordering, overused wording, bullets with no measurable impact, unsupported claims, and the limits of the analysis itself. Every diagnostic and every requirement carries a **Why**: the requirement at stake, the bullets cited for it, what evidence is absent, and the reasoning connecting them. There is no recommendation anywhere in the product that does not come with one.
+
+**What the AI is and is not allowed to do.** With no AI configured the report is complete — word matching, the strength rule, and all six deterministic analyzers run, and the report says `source: Deterministic` so you know a paraphrase may have been missed. With AI configured, a reviewer may correct what word matching got wrong, but it **never returns a score**. It may lower a strength freely; it may raise one by at most a single step, only while citing a bullet it was actually given, and never to *strong* on a bullet that does not name the requirement. A bullet it cites by meaning rather than by words is shown as **AI-identified**, with the bullet's real text beside it. The worst a hallucinated match can do is move one requirement half a step — and you can see it and overrule it.
+
+**On the wording.** This measures a document. A low number means your bullets do not yet *say* something, not that you have not *done* it — and the UI says so directly, under the score, every time. The number is deliberately rendered without a red/amber/green treatment for the same reason; colour is spent on the per-requirement rows, where it points at something you can act on.
+
+**Generate** produces its own report over the bullets that made the resume, in the order the resume prints them — which is what lets it flag a stronger bullet sitting below a weaker one. It is stored with the artifact and frozen, so reopening a generation from History explains the resume you actually sent rather than re-scoring it against a library that has moved on since.
+
+### Why this resume holds these bullets
+
+A generated resume is a compiled artifact, and **Generate** shows its build log. Every candidate the ranker produced is accounted for — not only the ones that made it, since an account covering the selected bullets alone would be the flattering half of the story.
+
+Each bullet is labelled with what became of it, and expands to the reasoning:
+
+- **Kept** — in the ranker's position, in your own words.
+- **Reworded** — tailored to this posting. Your wording and the resume's are shown side by side.
+- **Moved** — deep review put it somewhere other than where the ranker did, naming both positions.
+- **Left off** — with the reason. Either it evidences nothing this posting asks for, or it ranked below the cut.
+
+A bullet left off that speaks to something the resume **does not** evidence is called out as a cost rather than listed as a neutral fact: *"This resume does not fully evidence Kubernetes, which this bullet speaks to. Raising Max Bullets, or strengthening this one, would bring it in."* That is usually the most actionable line in the panel.
+
+The explanation is deterministic and costs no AI call — the generator's choices are already made by the time it runs, so explaining them cannot disagree with the resume it describes. It is stored with the artifact, so reopening a generation from History explains the resume you actually sent.
+
+### Bullet versions and bullet quality
+
+A rewrite is a suggestion until the person who did the work says otherwise, so AngryFoot keeps rewrites **beside** a bullet rather than on top of it. Writing a version never changes your bullet; only **Use this version** does, and the wording it replaces survives as that version's source text.
+
+Each version is written for a particular audience, and a bullet can hold several at once:
+
+| Mode | What it does |
+|---|---|
+| **Grammar cleanup** | Fixes grammar, tense, and punctuation. Changes nothing else. |
+| **Stronger wording** | Same facts, sharper verbs, less filler, accomplishment before context. |
+| **STAR format** | Situation, task, action, result. Parts your bullet does not supply are left out rather than invented. |
+| **Executive** | Leads with outcome, scope, and ownership; drops detail a non-engineer skips. |
+| **Technical** | Foregrounds the systems, techniques, and the engineering decision. |
+| **ATS** | Plain wording and standard industry terms for keyword screens; spells out abbreviations. |
+
+Every mode carries the same rule into its prompt: a version may change how an accomplishment is told and never what it claims. A rewrite that invents a metric is worse than no rewrite, because you are the one who has to defend it in the room.
+
+Versions are numbered per mode, so "the ATS version" has a history rather than a single current value. A version whose source wording you have since edited is marked **Out of date** rather than quietly presenting itself as current.
+
+**Bullet quality** scores how a bullet is written, independently of any posting, and — like evidence coverage — the number is the sum of the signals shown beneath it and nothing else:
+
+| Signal | Points | What it reads |
+|---|---|---|
+| Opens with an action | 20 | The first word |
+| Measurable result | 30 | A figure anywhere in the bullet |
+| Sole credit | 5 | Wording that gives credit away |
+| Names specifics | 20 | A proper noun |
+| Names technology | 15 | The text, or the enrichment tags |
+| Maps to a role | 10 | The enrichment tags |
+
+Every signal reports **what it saw**, not just whether it passed — `States "40%"`, `Opens with "Responsible for"`, `Shared credit: "we"`. A verdict without the words behind it can't be checked, and an assessment that can't be argued with gets argued with anyway.
+
+**Sole credit is worth 5 points, and presumes you.** A resume elides its subject by convention: every bullet is read as your own work unless it says otherwise. So the check does not hunt for proof of ownership — nothing short of writing "I" would qualify, and demanding that would reject "Mentored two interns", "Developed the wrappers", and most of what anyone writes. It looks only for wording that gives credit *away*: `we`, `our team`, `assisted with`, `contributed to`, `participated in`. Possessives are deliberately not on that list — "the software team's first CI/CD server" says whose server it was, not who built it.
+
+It is also the only signal you can **dispute**. Whether work was shared is a fact no wording can establish, so when the check reads your bullet wrong, say so: the points are restored, the row reports as *Author's call* rather than pretending the text proved anything, and the check stops raising it.
+
+Dispute it when **collaboration is a fact of the work rather than a hedge in the sentence**. Shared ownership is normal and expected for platform work, incident response, migrations, and anything large enough to need more than one person. Describing that accurately is not a weakness in the bullet and is not scored as one. The alternative — quietly rewriting joint work as solo work to satisfy a checker — is how a resume becomes something you cannot defend in the room.
+
+Nothing else is disputable: whether a figure is present is not a matter of opinion.
+
+Length is advice, not a penalty: a bullet past roughly forty words gets a note, but keeps its points, because a long bullet full of evidence beats a short empty one. "Maps to a role" asks only whether enrichment could place the work in any job family at all — whether it suits *your* target posting is [evidence coverage](#evidence-coverage)'s question, and answering it twice in two ways would leave you with two numbers to reconcile.
+
+**Reassess** scores the wording in the box without saving it. Two of the six signals come from enrichment rather than the text, so a full score costs an AI call; running it on demand means you can see the score before committing to the wording, and the enrichment is kept so the save that follows does not pay for it twice.
+
+Versions are scored against their parent bullet's enrichment, since a reworded accomplishment involves the same technologies whatever words it uses.
+
+Without AI configured, writing a version tidies the text and tells you what that mode would have done — it does not attempt the rewrite, because a heuristic cannot restructure a bullet into STAR without inventing the parts that are missing.
+
 ### Occupational benchmark
 
-Alongside the fit score — which measures how well your bullets cover *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
+Alongside evidence coverage — which measures how well your bullets evidence *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
 
 The comparison set is aggregate labor-market data from the [O\*NET occupational database](https://www.onetonline.org) (U.S. Department of Labor/ETA), bundled at [`AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json`](AngryFoot.ApiService/Application/Benchmarks/Data/onet-occupations.json). No configuration, API key, or network access is required — it works offline on first run.
 
@@ -164,7 +255,7 @@ The comparison set is aggregate labor-market data from the [O\*NET occupational 
 How it works:
 
 - The **Job Title** field on `/generate` is mapped to an O\*NET occupation by exact match against the occupation's title and its published reported job titles, then by word-overlap for a fuzzy match. Seniority and ladder markers (`Senior`, `Staff`, `II`) are stripped first, since O\*NET occupations are not ladder-specific. If no title is entered, the title inferred from the job description is used.
-- Each requirement in the occupation's profile is checked against your bullets using the same evidence rule as the fit heuristic (`BulletEvidence`), weighted by O\*NET's published importance rating.
+- Each requirement in the occupation's profile is checked against your bullets using the same evidence rule as [evidence coverage](#evidence-coverage) (`BulletEvidence`), weighted by O\*NET's published importance rating.
 - No mapping is reported rather than guessed: an unrecognized title gets an explanatory message, not a wrong occupation.
 
 To refresh the snapshot from O\*NET, run the two scripts in [`tools/onet/`](tools/onet/) — `extract_onet.py` then `build_dataset.py` — and copy the regenerated `onet-occupations.json` over the bundled copy. Their comments document every transformation applied to the published data, and `onet-occupations.json` carries a `notes` block recording which values are O\*NET's and which are ours.
@@ -219,7 +310,7 @@ One rough edge worth knowing: the resume stages exchange a JSON array rather tha
 - **Markdown output only.** Generated resumes and cover letters are Markdown; there is no PDF or DOCX export yet, so final formatting happens in whatever tool you paste into.
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
 - **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
-- **Fit assessment only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
+- **Evidence coverage only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
 - **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.

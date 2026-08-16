@@ -240,11 +240,75 @@ public class ApiEndpointsTests
         var enrichResponse = await apiClient.PostAsync($"/api/bullets/{created.Id}/enrich", content: null, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, enrichResponse.StatusCode);
 
+        await AssertRevisionsRoundTripAsync(apiClient, created.Id, cancellationToken);
+
         var deleteResponse = await apiClient.DeleteAsync($"/api/bullets/{created.Id}", cancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
+        // The bullet is gone, so its revisions must be too rather than outliving what they revise.
+        var orphanedRevisions = await apiClient.GetAsync($"/api/bullets/{created.Id}/revisions", cancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, orphanedRevisions.StatusCode);
+
         var getDeletedResponse = await apiClient.GetAsync($"/api/bullets/{created.Id}", cancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getDeletedResponse.StatusCode);
+    }
+
+    /// <summary>
+    /// A revision is a variant kept beside the bullet, never an edit to it. This walks the whole
+    /// contract: write one, confirm the bullet is untouched, promote it, confirm it took.
+    /// </summary>
+    private static async Task AssertRevisionsRoundTripAsync(HttpClient apiClient, Guid bulletId, CancellationToken cancellationToken)
+    {
+        var before = await apiClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{bulletId}", cancellationToken);
+        Assert.NotNull(before);
+
+        var emptyResponse = await apiClient.GetAsync($"/api/bullets/{bulletId}/revisions", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, emptyResponse.StatusCode);
+        Assert.Empty((await emptyResponse.Content.ReadFromJsonAsync<List<BulletRevisionDto>>(cancellationToken))!);
+
+        var createResponse = await apiClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new CreateBulletRevisionRequest(BulletRevisionModeDto.Ats),
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var revision = await createResponse.Content.ReadFromJsonAsync<BulletRevisionDto>(cancellationToken);
+        Assert.NotNull(revision);
+        Assert.Equal(BulletRevisionModeDto.Ats, revision!.Mode);
+        Assert.Equal(1, revision.Version);
+        Assert.Equal(before!.BulletText, revision.SourceText);
+        Assert.False(revision.IsStale);
+        Assert.False(string.IsNullOrWhiteSpace(revision.RevisedText));
+
+        // Quality travels with a revision, and its score is the sum of the signals shown beside it.
+        Assert.NotNull(revision.Quality);
+        Assert.Equal(
+            revision.Quality!.Signals.Where(x => x.Earned).Sum(x => x.Weight),
+            revision.Quality.Score);
+
+        var unchanged = await apiClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{bulletId}", cancellationToken);
+        Assert.Equal(before.BulletText, unchanged!.BulletText);
+
+        var promoteResponse = await apiClient.PostAsync(
+            $"/api/bullets/{bulletId}/revisions/{revision.Id}/promote", content: null, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, promoteResponse.StatusCode);
+
+        var promoted = await promoteResponse.Content.ReadFromJsonAsync<PromoteBulletRevisionResponse>(cancellationToken);
+        Assert.NotNull(promoted);
+        Assert.Equal(revision.RevisedText, promoted!.Bullet.BulletText);
+        Assert.False(promoted.Revisions.Single().IsStale, "the promoted version is the current wording");
+
+        // An out-of-range mode binds fine and has to be caught by the handler; a misspelled one
+        // never gets that far, because JSON binding rejects it first.
+        var rejected = await apiClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new { mode = 99 },
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+
+        var deleteResponse = await apiClient.DeleteAsync(
+            $"/api/bullets/{bulletId}/revisions/{revision.Id}", cancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
     }
 
     [Fact]
@@ -338,7 +402,11 @@ public class ApiEndpointsTests
         var cancellationToken = TestContext.Current.CancellationToken;
         // var cancellationToken = cts.Token;
         // cts.CancelAfter(10000);
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+
+        // Deliberately unconfigured AI: everything asserted below is then the deterministic
+        // engine's own output, which is what makes this the end-to-end proof that evidence
+        // coverage is a complete feature without an AI deployment.
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestAiConfiguration.AppHostArgs, cancellationToken);
         appHost.Services.AddLogging(logging =>
         {
             logging.SetMinimumLevel(LogLevel.Warning);
@@ -353,7 +421,17 @@ public class ApiEndpointsTests
 
         var apiClient = app.CreateHttpClient("apiservice");
 
-        await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest("Implemented automated validation workflows that reduced manual review effort by 75%."), cancellationToken);
+        // A spread the report has something to say about: one quantified, one that names the
+        // posting's technologies without a result, and one opening on an assignment.
+        foreach (var bulletText in new[]
+        {
+            "Implemented automated validation workflows that reduced manual review effort by 75%.",
+            "Maintained C# services and ASP.NET Core endpoints across the platform.",
+            "Responsible for the deployment pipeline."
+        })
+        {
+            await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText), cancellationToken);
+        }
 
         var analyzeResponse = await apiClient.PostAsJsonAsync("/api/generations/analyze", new
         {
@@ -361,12 +439,49 @@ public class ApiEndpointsTests
             JobTitle = "Senior Software Engineer"
         }, cancellationToken);
         Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
-        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken);
+        var analysis = await analyzeResponse.Content.ReadFromJsonAsync<JobEvidenceAnalysisDto>(cancellationToken);
         Assert.NotNull(analysis);
         Assert.NotNull(analysis!.Job);
-        Assert.NotNull(analysis.Fit);
-        Assert.InRange(analysis.Fit.FitScore, 0, 100);
-        Assert.False(string.IsNullOrWhiteSpace(analysis.Fit.Verdict));
+
+        var coverage = analysis.Coverage;
+        Assert.NotNull(coverage);
+        Assert.Equal(CoverageSourceDto.Deterministic, coverage.Source);
+        Assert.False(string.IsNullOrWhiteSpace(coverage.Summary));
+        Assert.False(string.IsNullOrWhiteSpace(coverage.Disclaimer));
+
+        AssertScoreIsDerivedFromRequirements(coverage);
+
+        Assert.NotEmpty(coverage.Requirements);
+        Assert.All(coverage.Requirements, requirement =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(requirement.Why.Reasoning));
+            Assert.Equal(requirement.Requirement, requirement.Why.Requirement);
+
+            // Anything credited must name the bullet it was credited for.
+            if (requirement.Strength != EvidenceStrengthDto.Missing)
+            {
+                Assert.NotEmpty(requirement.Why.SupportingEvidence);
+                Assert.All(requirement.Why.SupportingEvidence,
+                    citation => Assert.False(string.IsNullOrWhiteSpace(citation.BulletText)));
+            }
+        });
+
+        // This library cannot evidence C#, ASP.NET Core, and Azure at once.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.MissingSkill);
+        // The bullet opening "Responsible for" is caught without any AI involved.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.OverusedWording);
+        // Word matching alone cannot recognise a paraphrase, and the report has to admit that.
+        Assert.Contains(coverage.Diagnostics, x => x.Code == CoverageDiagnosticCodes.AnalysisLimitation);
+
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Warning);
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Suggestion);
+        Assert.Contains(coverage.Diagnostics, x => x.Severity == DiagnosticSeverityDto.Info);
+        Assert.All(coverage.Diagnostics, diagnostic =>
+        {
+            Assert.NotNull(diagnostic.Why);
+            Assert.False(string.IsNullOrWhiteSpace(diagnostic.Why.Reasoning));
+            Assert.False(string.IsNullOrWhiteSpace(diagnostic.Message));
+        });
 
         // The occupational benchmark ships as bundled data, so it is available with no configuration.
         Assert.NotNull(analysis.Benchmark);
@@ -388,10 +503,72 @@ public class ApiEndpointsTests
         Assert.False(string.IsNullOrWhiteSpace(result!.ResumeMarkdown));
         Assert.False(string.IsNullOrWhiteSpace(result.CoverLetterMarkdown));
 
+        Assert.NotNull(result.Coverage);
+        AssertScoreIsDerivedFromRequirements(result.Coverage!);
+
+        // Every candidate is accounted for, and the ones on the resume are the ones it names.
+        Assert.NotNull(result.Explanation);
+        Assert.NotEmpty(result.Explanation!.Decisions);
+        Assert.All(result.Explanation.Decisions, decision =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(decision.Why.Reasoning));
+            Assert.Contains(decision.Why.SupportingEvidence, x => x.BulletId == decision.BulletId);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.ResumePosition is null);
+            Assert.Equal(decision.Kind == BulletDecisionKindDto.Omitted, decision.FinalText is null);
+        });
+
+        var onResume = result.Explanation.Decisions
+            .Where(x => x.Kind != BulletDecisionKindDto.Omitted)
+            .Select(x => x.BulletId)
+            .ToHashSet();
+        Assert.Equal(result.SelectedBulletIds.ToHashSet(), onResume);
+
         var artifactsResponse = await apiClient.GetAsync("/api/artifacts", cancellationToken);
         Assert.Equal(HttpStatusCode.OK, artifactsResponse.StatusCode);
         var artifacts = await artifactsResponse.Content.ReadFromJsonAsync<List<ArtifactSummaryDto>>(cancellationToken);
         Assert.NotNull(artifacts);
         Assert.Contains(artifacts!, x => x.Id == result.ArtifactId);
+
+        // The report has to survive the JSON column round trip, or History shows a resume with no
+        // record of why it holds the bullets it holds.
+        var artifactResponse = await apiClient.GetAsync($"/api/artifacts/{result.ArtifactId}", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, artifactResponse.StatusCode);
+        var artifact = await artifactResponse.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+        Assert.NotNull(artifact);
+        Assert.NotNull(artifact!.Coverage);
+        Assert.Equal(result.Coverage!.CoverageScore, artifact.Coverage!.CoverageScore);
+        Assert.Equal(result.Coverage.Requirements.Count, artifact.Coverage.Requirements.Count);
+        Assert.Equal(result.Coverage.Diagnostics.Count, artifact.Coverage.Diagnostics.Count);
+
+        Assert.NotNull(artifact.Explanation);
+        Assert.Equal(result.Explanation!.Summary, artifact.Explanation!.Summary);
+        Assert.Equal(
+            result.Explanation.Decisions.Select(x => x.BulletId),
+            artifact.Explanation.Decisions.Select(x => x.BulletId));
+    }
+
+    /// <summary>
+    /// The promise the whole feature rests on: the number is reproducible from the rows the user can
+    /// see, rather than being an opinion printed next to them.
+    /// </summary>
+    private static void AssertScoreIsDerivedFromRequirements(EvidenceCoverageReportDto coverage)
+    {
+        var expectedTotal = coverage.Requirements.Sum(x => x.Weight * 2);
+        var expectedEarned = coverage.Requirements.Sum(x => x.Weight * x.Strength switch
+        {
+            EvidenceStrengthDto.Strong => 2,
+            EvidenceStrengthDto.Weak => 1,
+            _ => 0
+        });
+
+        Assert.Equal(expectedTotal, coverage.TotalWeight);
+        Assert.Equal(expectedEarned, coverage.EarnedWeight);
+
+        var expectedScore = expectedTotal == 0
+            ? 0
+            : (int)Math.Round(100.0 * expectedEarned / expectedTotal, MidpointRounding.AwayFromZero);
+
+        Assert.Equal(expectedScore, coverage.CoverageScore);
+        Assert.InRange(coverage.CoverageScore, 0, 100);
     }
 }

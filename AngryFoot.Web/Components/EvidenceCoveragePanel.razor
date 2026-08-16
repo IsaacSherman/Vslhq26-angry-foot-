@@ -1,0 +1,103 @@
+@using AngryFoot.Contracts
+@using AngryFoot.Web.Models
+
+@*
+    Evidence coverage: how much of a posting's stated requirements the bullets actually evidence.
+    Two rules this markup exists to keep (issue #18): the number is neutral and the disclaimer sits
+    directly under it, never behind a disclosure; and nothing is asserted without the bullets it was
+    derived from being one click away.
+*@
+
+@if (Coverage is not null)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>@Title</span>
+            <span class="badge @CoverageBands.AggregateBadge">Evidence Coverage: @Coverage.CoverageScore / 100</span>
+        </div>
+        <div class="card-body">
+            <div class="progress mb-2" role="progressbar"
+                 aria-label="Evidence coverage"
+                 aria-valuenow="@Coverage.CoverageScore" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar @CoverageBands.AggregateBar" style="width: @(Coverage.CoverageScore)%"></div>
+            </div>
+
+            <p class="text-muted small mb-3">
+                @Coverage.Disclaimer
+                <br />
+                <span class="fst-italic">
+                    @Coverage.EarnedWeight of @Coverage.TotalWeight evidence points, counted from the requirements below.
+                </span>
+            </p>
+
+            <p class="lead">@Coverage.Summary</p>
+
+            @if (Coverage.Source == CoverageSourceDto.Deterministic)
+            {
+                <p class="text-muted small">
+                    Matched by wording alone, without an AI review.
+                </p>
+            }
+
+            <h6 class="mt-4">Requirements and the evidence for them</h6>
+            @if (Coverage.Requirements.Count == 0)
+            {
+                <p class="text-muted">No requirements could be extracted from this posting, so there is nothing to measure against.</p>
+            }
+            else
+            {
+                <div class="list-group mb-3">
+                    @foreach (var requirement in Coverage.Requirements)
+                    {
+                        <div class="list-group-item">
+                            <details>
+                                <summary style="cursor: pointer;">
+                                    <span class="badge @CoverageBands.StrengthBadge(requirement.Strength) me-2">
+                                        @CoverageBands.StrengthIcon(requirement.Strength) @CoverageBands.StrengthLabel(requirement.Strength)
+                                    </span>
+                                    <strong>@requirement.Requirement</strong>
+                                    <span class="text-muted small ms-1">(@CoverageBands.KindLabel(requirement.Kind))</span>
+                                </summary>
+                                <div class="mt-2">
+                                    <EvidenceRationalePanel Why="@requirement.Why" />
+                                </div>
+                            </details>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (Coverage.Diagnostics.Count > 0)
+            {
+                <h6 class="mt-4">What to look at</h6>
+                <div class="list-group">
+                    @foreach (var diagnostic in Coverage.Diagnostics)
+                    {
+                        <div class="list-group-item">
+                            <details>
+                                <summary style="cursor: pointer;">
+                                    <span class="badge @CoverageBands.SeverityBadge(diagnostic.Severity) me-2">
+                                        @CoverageBands.SeverityLabel(diagnostic.Severity)
+                                    </span>
+                                    @diagnostic.Message
+                                    <code class="text-muted small ms-1">@diagnostic.Code</code>
+                                </summary>
+                                <div class="mt-2">
+                                    <EvidenceRationalePanel Why="@diagnostic.Why" />
+                                </div>
+                            </details>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public EvidenceCoverageReportDto? Coverage { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "Evidence Coverage for This Posting";
+}

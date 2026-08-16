@@ -1,4 +1,5 @@
 using AngryFoot.ApiService.Application.Artifacts;
+using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
@@ -13,9 +14,17 @@ internal sealed class GenerationOrchestrator(
     BulletRankingService rankingService,
     BulletRewriteService rewriteService,
     ResumeMarkdownService resumeService,
-    CoverLetterService coverLetterService) : IGenerationOrchestrator
+    CoverLetterService coverLetterService,
+    IEvidenceCoverageAnalyzer coverageAnalyzer) : IGenerationOrchestrator
 {
     private const float MinimumSemanticSimilarity = 0.35f;
+
+    /// <summary>
+    /// How many bullets past the cut to retrieve purely so the explanation can account for them.
+    /// Bounded rather than proportional: the near-misses are what a reader learns from, and a list
+    /// of every bullet that lost is a list nobody reads.
+    /// </summary>
+    private const int MaxRunnersUpExplained = 10;
 
     public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken)
     {
@@ -47,12 +56,17 @@ internal sealed class GenerationOrchestrator(
         var maxBullets = Math.Clamp(request.MaxBullets.GetValueOrDefault(10), 1, 20);
 
         // Deep review is allowed to swap a weak bullet out for a better one, so it needs
-        // candidates the ranker left on the bench. Without it, retrieval stays exactly as before.
+        // candidates the ranker left on the bench.
         var benchSize = request.DeepReview ? maxBullets : 0;
+
+        // And the explanation needs runners-up whatever the mode: asking retrieval for exactly the
+        // number of bullets the resume will hold means nothing is ever left off, so "why isn't this
+        // bullet here" has no answer - including the answer worth having, that a bullet just below
+        // the cut was the only one evidencing something the resume now misses.
         var ranked = await RetrieveRankedBulletsAsync(
-            request.JobDescription, analysis, maxBullets + benchSize, cancellationToken);
+            request.JobDescription, analysis, maxBullets + benchSize + MaxRunnersUpExplained, cancellationToken);
         var selected = ranked.Take(maxBullets).ToArray();
-        var bench = ranked.Skip(maxBullets).ToArray();
+        var bench = ranked.Skip(maxBullets).Take(benchSize).ToArray();
 
         var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
         var rewriteOutcome = await rewriteService.RewriteAsync(
@@ -69,6 +83,17 @@ internal sealed class GenerationOrchestrator(
             request.DeepReview,
             cancellationToken);
 
+        // Reported over the bullets as the resume orders them, not as the ranker scored them, so
+        // an ordering note is about the document the user is holding.
+        var coverage = await coverageAnalyzer.DescribeResumeAsync(
+            analysis,
+            rewritten.Select(x => x.Bullet).ToArray(),
+            cancellationToken);
+
+        // Every candidate the ranker produced, not only the ones that made it: an account that
+        // covered the selected bullets alone would be the flattering half of the story.
+        var explanation = GenerationExplanationService.Explain(analysis, ranked, rewritten);
+
         var artifact = new GenerationArtifact
         {
             Id = Guid.NewGuid(),
@@ -80,8 +105,10 @@ internal sealed class GenerationOrchestrator(
             SelectedBulletIds = rewritten.Select(x => x.Bullet.Id).ToList(),
             JobAnalysisJson = Ai.AiJsonUtilities.ToJson(analysis),
             CreatedDate = DateTime.UtcNow,
-            ResumeRefinementJson = ArtifactRefinements.ToJson(resumeRefinement),
-            CoverLetterRefinementJson = ArtifactRefinements.ToJson(coverLetter.Refinement)
+            ResumeRefinementJson = ArtifactJsonColumns.ToJson(resumeRefinement),
+            CoverLetterRefinementJson = ArtifactJsonColumns.ToJson(coverLetter.Refinement),
+            EvidenceCoverageJson = ArtifactJsonColumns.ToJson(coverage),
+            GenerationExplanationJson = ArtifactJsonColumns.ToJson(explanation)
         };
 
         dbContext.GenerationArtifacts.Add(artifact);
@@ -94,7 +121,9 @@ internal sealed class GenerationOrchestrator(
             analysis,
             artifact.SelectedBulletIds,
             resumeRefinement,
-            coverLetter.Refinement);
+            coverLetter.Refinement,
+            coverage,
+            explanation);
     }
 
     /// <summary>

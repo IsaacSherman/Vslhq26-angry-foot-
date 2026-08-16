@@ -2,37 +2,36 @@
 
 #nullable disable
 
-namespace AngryFoot.ApiService.Data.Migrations
+namespace AngryFoot.ApiService.Data.Migrations;
+
+/// <inheritdoc />
+public partial class AddGenerationArtifactRefinements : Migration
 {
     /// <inheritdoc />
-    public partial class AddGenerationArtifactRefinements : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.AddColumn<string>(
-                name: "CoverLetterRefinementJson",
-                table: "GenerationArtifacts",
-                type: "TEXT",
-                nullable: true);
+        migrationBuilder.AddColumn<string>(
+            name: "CoverLetterRefinementJson",
+            table: "GenerationArtifacts",
+            type: "TEXT",
+            nullable: true);
 
-            migrationBuilder.AddColumn<string>(
-                name: "ResumeRefinementJson",
-                table: "GenerationArtifacts",
-                type: "TEXT",
-                nullable: true);
-        }
+        migrationBuilder.AddColumn<string>(
+            name: "ResumeRefinementJson",
+            table: "GenerationArtifacts",
+            type: "TEXT",
+            nullable: true);
+    }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropColumn(
-                name: "CoverLetterRefinementJson",
-                table: "GenerationArtifacts");
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.DropColumn(
+            name: "CoverLetterRefinementJson",
+            table: "GenerationArtifacts");
 
-            migrationBuilder.DropColumn(
-                name: "ResumeRefinementJson",
-                table: "GenerationArtifacts");
-        }
+        migrationBuilder.DropColumn(
+            name: "ResumeRefinementJson",
+            table: "GenerationArtifacts");
     }
 }

@@ -26,30 +26,29 @@ public sealed record JobAnalysisDto(
     string? InferredTitle,
     string? InferredSeniority);
 
-/// <summary>
-/// An assessment of how qualified the user is for a specific job, grounded in the
-/// user's bullet library rather than a restatement of the job description.
-/// </summary>
-public sealed record FitAssessmentDto(
-    int FitScore,
-    string Verdict,
-    IReadOnlyList<string> Strengths,
-    IReadOnlyList<string> Gaps,
-    IReadOnlyList<string> BulletSuggestions);
-
+/// <param name="Coverage">
+/// Always present. The deterministic engine produces a complete report on its own, so this is
+/// populated with no AI configured; <see cref="EvidenceCoverageReportDto.Source"/> says which
+/// path produced it.
+/// </param>
 /// <param name="Benchmark">
 /// How the library compares against aggregate occupational data for the mapped occupation.
 /// Null when no benchmark dataset is available.
 /// </param>
-public sealed record JobFitAnalysisDto(
+public sealed record JobEvidenceAnalysisDto(
     JobAnalysisDto Job,
-    FitAssessmentDto Fit,
+    EvidenceCoverageReportDto Coverage,
     OccupationBenchmarkDto? Benchmark = null);
 
 /// <param name="ResumeMarkdown">The recommended resume version; also what the artifact stores.</param>
 /// <param name="ResumeRefinement">
 /// Deep-review versions of the whole resume, one per version of the underlying bullet rewrites.
 /// Null when deep review was not requested or not applicable.
+/// </param>
+/// <param name="Coverage">
+/// Evidence coverage of the bullets that made it into this resume, in the order they appear in it.
+/// Always the deterministic engine's report - a generation already chains several AI calls, and
+/// adding an evidence review to it would cost another one per generation.
 /// </param>
 public sealed record GenerationResultDto(
     Guid ArtifactId,
@@ -58,7 +57,9 @@ public sealed record GenerationResultDto(
     JobAnalysisDto Analysis,
     IReadOnlyList<Guid> SelectedBulletIds,
     RefinementDto? ResumeRefinement = null,
-    RefinementDto? CoverLetterRefinement = null);
+    RefinementDto? CoverLetterRefinement = null,
+    EvidenceCoverageReportDto? Coverage = null,
+    GenerationExplanationDto? Explanation = null);
 
 public sealed record ArtifactSummaryDto(
     Guid Id,
@@ -66,6 +67,10 @@ public sealed record ArtifactSummaryDto(
     string? Company,
     DateTime CreatedDate);
 
+/// <param name="Coverage">
+/// The coverage report as of the moment this resume was generated. Null for artifacts created
+/// before the report existed, and for any row whose stored JSON no longer reads back.
+/// </param>
 public sealed record GenerationArtifactDto(
     Guid Id,
     string? JobTitle,
@@ -77,4 +82,6 @@ public sealed record GenerationArtifactDto(
     string JobAnalysisJson,
     DateTime CreatedDate,
     RefinementDto? ResumeRefinement = null,
-    RefinementDto? CoverLetterRefinement = null);
+    RefinementDto? CoverLetterRefinement = null,
+    EvidenceCoverageReportDto? Coverage = null,
+    GenerationExplanationDto? Explanation = null);

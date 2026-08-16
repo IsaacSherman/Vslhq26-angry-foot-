@@ -5,6 +5,7 @@ using Qdrant.Client.Grpc;
 
 namespace AngryFoot.ApiService.Application.Retrieval;
 
+
 /// <summary>
 /// Embeds bullet text via <see cref="IEmbeddingGenerator{String,Embedding}"/> and indexes it in
 /// Qdrant. The vector store only ever returns bullet ids + similarity scores; the caller
@@ -166,7 +167,7 @@ internal sealed class QdrantBulletVectorStore(
 
             return new RetrievalHealth(true, "Semantic retrieval is ready.");
         }
-        catch (OperationCanceledException) 
+        catch (OperationCanceledException)
         {
             if (cancellationToken.IsCancellationRequested)
                 throw;

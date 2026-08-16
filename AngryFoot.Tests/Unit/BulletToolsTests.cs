@@ -24,7 +24,7 @@ public class BulletToolsTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
-        var result = await BulletTools.AddBulletAsync(_bulletService.Object, "Did a thing.", "Acme");
+        var result = await BulletTools.AddBulletAsync(_bulletService.Object, "Did a thing.", "Acme", TestContext.Current.CancellationToken);
 
         result.Should().BeSameAs(expected);
         _bulletService.VerifyAll();
@@ -54,7 +54,7 @@ public class BulletToolsTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
-        var result = await BulletTools.UpdateBulletAsync(_bulletService.Object, id, "New text.");
+        var result = await BulletTools.UpdateBulletAsync(_bulletService.Object, id, "New text.", cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().BeSameAs(expected);
     }
@@ -88,7 +88,7 @@ public class BulletToolsTests
         _rewriteAssistant.Setup(x => x.RewriteAsync("meh", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
-        var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh");
+        var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh", cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().BeSameAs(expected);
     }
@@ -100,7 +100,7 @@ public class BulletToolsTests
         _rewriteAssistant.Setup(x => x.RewriteAsync("meh", true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
-        var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh", deepReview: true);
+        var result = await BulletTools.RewriteBulletAsync(_rewriteAssistant.Object, "meh", deepReview: true, TestContext.Current.CancellationToken);
 
         result.Should().BeSameAs(expected);
     }
@@ -131,7 +131,7 @@ public class BulletToolsTests
         var expected = Dto(id);
         _bulletService.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(expected);
 
-        (await BulletTools.GetBulletAsync(_bulletService.Object, id)).Should().BeSameAs(expected);
+        (await BulletTools.GetBulletAsync(_bulletService.Object, id, cancellationToken: TestContext.Current.CancellationToken)).Should().BeSameAs(expected);
 
         _bulletService.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((BulletDto?)null);
@@ -145,7 +145,7 @@ public class BulletToolsTests
         _bulletService.Setup(x => x.SearchAsync("s", "t", "sk", "tech", "cat", It.IsAny<CancellationToken>()))
             .ReturnsAsync([Dto()]);
 
-        var result = await BulletTools.ListBulletsAsync(_bulletService.Object, "s", "t", "sk", "tech", "cat");
+        var result = await BulletTools.ListBulletsAsync(_bulletService.Object, "s", "t", "sk", "tech", "cat", cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().ContainSingle();
         _bulletService.VerifyAll();
@@ -157,7 +157,7 @@ public class BulletToolsTests
         var id = Guid.NewGuid();
         _bulletService.Setup(x => x.DeleteAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
-        (await BulletTools.DeleteBulletAsync(_bulletService.Object, id)).Should().Contain(id.ToString());
+        (await BulletTools.DeleteBulletAsync(_bulletService.Object, id, cancellationToken: TestContext.Current.CancellationToken)).Should().Contain(id.ToString());
 
         _bulletService.Setup(x => x.DeleteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
         var act = () => BulletTools.DeleteBulletAsync(_bulletService.Object, Guid.NewGuid());

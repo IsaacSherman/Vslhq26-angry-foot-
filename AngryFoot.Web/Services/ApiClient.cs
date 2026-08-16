@@ -26,16 +26,21 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return await httpClient.GetFromJsonAsync<BulletDto>($"/api/bullets/{id}", cancellationToken);
     }
 
-    public async Task<BulletDto> CreateBulletAsync(string bulletText, string? sourceEmployer = null, CancellationToken cancellationToken = default)
+    /// <param name="tagging">
+    /// Enrichment from a prior assess of the same text, so saving does not pay for it again.
+    /// Ignored by the API when it describes different wording.
+    /// </param>
+    public async Task<BulletDto> CreateBulletAsync(string bulletText, string? sourceEmployer = null, BulletTaggingDto? tagging = null, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText, sourceEmployer), cancellationToken);
+        var response = await httpClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(bulletText, sourceEmployer, tagging), cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken))!;
     }
 
-    public async Task<BulletDto?> UpdateBulletAsync(Guid id, string bulletText, string? sourceEmployer = null, CancellationToken cancellationToken = default)
+    /// <param name="tagging">See <see cref="CreateBulletAsync"/>.</param>
+    public async Task<BulletDto?> UpdateBulletAsync(Guid id, string bulletText, string? sourceEmployer = null, BulletTaggingDto? tagging = null, CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PutAsJsonAsync($"/api/bullets/{id}", new UpdateBulletRequest(bulletText, sourceEmployer), cancellationToken);
+        var response = await httpClient.PutAsJsonAsync($"/api/bullets/{id}", new UpdateBulletRequest(bulletText, sourceEmployer, tagging), cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             return null;
@@ -73,6 +78,94 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         var response = await httpClient.PostAsJsonAsync("/api/bullets/rewrite/complete", request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<RewriteBulletResponse>(cancellationToken))!;
+    }
+
+    /// <summary>Scores unsaved wording. Nothing is persisted.</summary>
+    public async Task<BulletAssessmentDto> AssessBulletAsync(
+        string bulletText,
+        IReadOnlyList<string>? acknowledgedSignals = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            "/api/bullets/assess",
+            new AssessBulletRequest(bulletText, acknowledgedSignals),
+            cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<BulletAssessmentDto>(cancellationToken))!;
+    }
+
+    public async Task<BulletDto?> SetBulletQualityAcknowledgementsAsync(
+        Guid id,
+        IReadOnlyList<string> signals,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PutAsJsonAsync(
+            $"/api/bullets/{id}/quality-acknowledgements",
+            new SetBulletQualityAcknowledgementsRequest(signals),
+            cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
+    }
+
+    public async Task<List<BulletRevisionDto>> GetBulletRevisionsAsync(Guid bulletId, CancellationToken cancellationToken = default)
+    {
+        return await httpClient.GetFromJsonAsync<List<BulletRevisionDto>>($"/api/bullets/{bulletId}/revisions", cancellationToken) ?? [];
+    }
+
+    public async Task<BulletRevisionDto?> CreateBulletRevisionAsync(
+        Guid bulletId,
+        BulletRevisionModeDto mode,
+        bool deepReview = false,
+        string? guidance = null,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            $"/api/bullets/{bulletId}/revisions",
+            new CreateBulletRevisionRequest(mode, deepReview, guidance),
+            cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletRevisionDto>(cancellationToken);
+    }
+
+    public async Task<bool> DeleteBulletRevisionAsync(Guid bulletId, Guid revisionId, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.DeleteAsync($"/api/bullets/{bulletId}/revisions/{revisionId}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>Makes a revision the bullet's canonical text; returns the updated bullet and revisions.</summary>
+    public async Task<PromoteBulletRevisionResponse?> PromoteBulletRevisionAsync(
+        Guid bulletId,
+        Guid revisionId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsync($"/api/bullets/{bulletId}/revisions/{revisionId}/promote", null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PromoteBulletRevisionResponse>(cancellationToken);
     }
 
     public async Task<bool> DeleteBulletAsync(Guid id, CancellationToken cancellationToken = default)
@@ -187,11 +280,11 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
             : message);
     }
 
-    public async Task<JobFitAnalysisDto> AnalyzeJobAsync(string jobDescription, string? jobTitle = null, CancellationToken cancellationToken = default)
+    public async Task<JobEvidenceAnalysisDto> AnalyzeJobAsync(string jobDescription, string? jobTitle = null, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/generations/analyze", new { jobDescription, jobTitle }, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<JobFitAnalysisDto>(cancellationToken))!;
+        return (await response.Content.ReadFromJsonAsync<JobEvidenceAnalysisDto>(cancellationToken))!;
     }
 
     public async Task<GenerationResultDto> GenerateAsync(GenerationRequest request, CancellationToken cancellationToken = default)

@@ -54,8 +54,8 @@ public sealed class ArtifactService(AngryFootDbContext dbContext) : IArtifactSer
             return new VersionSelectionResult(VersionSelectionStatus.ArtifactNotFound, null);
         }
 
-        var resumeRefinement = ArtifactRefinements.FromJson(artifact.ResumeRefinementJson);
-        var coverLetterRefinement = ArtifactRefinements.FromJson(artifact.CoverLetterRefinementJson);
+        var resumeRefinement = ArtifactJsonColumns.FromJson<RefinementDto>(artifact.ResumeRefinementJson);
+        var coverLetterRefinement = ArtifactJsonColumns.FromJson<RefinementDto>(artifact.CoverLetterRefinementJson);
 
         var resume = FindVersion(resumeRefinement, request.ResumeVersionLabel);
         var coverLetter = FindVersion(coverLetterRefinement, request.CoverLetterVersionLabel);
@@ -70,14 +70,14 @@ public sealed class ArtifactService(AngryFootDbContext dbContext) : IArtifactSer
         if (resume is not null)
         {
             artifact.ResumeMarkdown = resume.Text;
-            artifact.ResumeRefinementJson = ArtifactRefinements.ToJson(
+            artifact.ResumeRefinementJson = ArtifactJsonColumns.ToJson(
                 resumeRefinement! with { RecommendedLabel = resume.Label });
         }
 
         if (coverLetter is not null)
         {
             artifact.CoverLetterMarkdown = coverLetter.Text;
-            artifact.CoverLetterRefinementJson = ArtifactRefinements.ToJson(
+            artifact.CoverLetterRefinementJson = ArtifactJsonColumns.ToJson(
                 coverLetterRefinement! with { RecommendedLabel = coverLetter.Label });
         }
 

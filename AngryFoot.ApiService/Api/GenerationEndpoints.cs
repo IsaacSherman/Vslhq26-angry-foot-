@@ -1,4 +1,5 @@
 using AngryFoot.ApiService.Application.Benchmarks;
+using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.Contracts;
 
@@ -26,7 +27,7 @@ public static class GenerationEndpoints
         generations.MapPost("/analyze", async (
             AnalyzeRequest request,
             IJobAnalyzer analyzer,
-            IFitAssessor fitAssessor,
+            IEvidenceCoverageAnalyzer coverageAnalyzer,
             IOccupationBenchmarkService benchmarkService,
             CancellationToken cancellationToken) =>
         {
@@ -36,9 +37,9 @@ public static class GenerationEndpoints
             }
 
             var job = await analyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
-            var fit = await fitAssessor.AssessAsync(request.JobDescription, job, cancellationToken);
+            var coverage = await coverageAnalyzer.AnalyzeLibraryAsync(request.JobDescription, job, cancellationToken);
             var benchmark = await benchmarkService.BuildAsync(request.JobTitle, job, cancellationToken);
-            return Results.Ok(new JobFitAnalysisDto(job, fit, benchmark));
+            return Results.Ok(new JobEvidenceAnalysisDto(job, coverage, benchmark));
         });
 
         return apiGroup;

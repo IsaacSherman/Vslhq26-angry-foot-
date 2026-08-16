@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AngryFoot.ApiService.Ai;
 using AngryFoot.ApiService.Application.Refinement;
 using AngryFoot.Contracts;
@@ -9,12 +8,24 @@ namespace AngryFoot.ApiService.Application.Bullets;
 
 public interface IBulletRewriteAssistant
 {
+    /// <param name="mode">
+    /// What the rewrite is for. Defaults to <see cref="BulletRevisionModeDto.StrongerWording"/>,
+    /// which is what this assistant did before it had modes.
+    /// </param>
     /// <param name="deepReview">
     /// Run the critique-and-revise pass over the AI rewrite, start to finish, with no chance for
     /// the user to weigh in. Ignored when the rewrite falls back to heuristics: there is no AI
     /// draft to critique.
     /// </param>
-    Task<RewriteBulletResponse> RewriteAsync(string bulletText, bool deepReview, CancellationToken cancellationToken);
+    /// <param name="guidance">
+    /// The candidate's clarification of anything ambiguous in the bullet, treated as fact.
+    /// </param>
+    Task<RewriteBulletResponse> RewriteAsync(
+        string bulletText,
+        bool deepReview,
+        CancellationToken cancellationToken,
+        BulletRevisionModeDto mode = BulletRevisionModeDto.StrongerWording,
+        string? guidance = null);
 
     /// <summary>
     /// Phase one of a guided deep review: draft the rewrite and have it reviewed, then stop.
@@ -30,22 +41,27 @@ public interface IBulletRewriteAssistant
     Task<RewriteBulletResponse> CompleteAsync(CompleteBulletRewriteRequest request, CancellationToken cancellationToken);
 }
 
-internal sealed partial class BulletRewriteAssistant(
+internal sealed class BulletRewriteAssistant(
     IChatClient chatClient,
     IDraftRefinementPipeline refinementPipeline,
     ILogger<BulletRewriteAssistant> logger) : IBulletRewriteAssistant
 {
-    private sealed record RewritePayload(string RewrittenText, IReadOnlyList<string> Suggestions);
+    private sealed record RewritePayload(string RewrittenText, IReadOnlyList<string> Suggestions, string? Rationale);
 
     /// <summary>The AI draft, or null when the assistant had to fall back to heuristics.</summary>
-    private sealed record Draft(string Text, IReadOnlyList<string> Suggestions);
+    private sealed record Draft(string Text, IReadOnlyList<string> Suggestions, string? Rationale);
 
-    public async Task<RewriteBulletResponse> RewriteAsync(string bulletText, bool deepReview, CancellationToken cancellationToken)
+    public async Task<RewriteBulletResponse> RewriteAsync(
+        string bulletText,
+        bool deepReview,
+        CancellationToken cancellationToken,
+        BulletRevisionModeDto mode = BulletRevisionModeDto.StrongerWording,
+        string? guidance = null)
     {
         var trimmed = bulletText.Trim();
-        var fallback = CreateFallback(trimmed);
+        var fallback = CreateFallback(trimmed, mode);
 
-        var draft = await DraftAsync(trimmed, fallback, cancellationToken);
+        var draft = await DraftAsync(trimmed, fallback, mode, guidance, cancellationToken);
         if (draft is null)
         {
             return fallback;
@@ -53,11 +69,11 @@ internal sealed partial class BulletRewriteAssistant(
 
         if (!deepReview)
         {
-            return new RewriteBulletResponse(draft.Text, draft.Suggestions);
+            return new RewriteBulletResponse(draft.Text, draft.Suggestions, Rationale: draft.Rationale);
         }
 
         var refinement = await refinementPipeline.RefineAsync(
-            BuildRefinementRequest(trimmed, draft.Text, guidance: null),
+            BuildRefinementRequest(trimmed, draft.Text, guidance, mode),
             cancellationToken);
 
         // The recommended version becomes RewrittenText so callers that ignore the version
@@ -65,20 +81,22 @@ internal sealed partial class BulletRewriteAssistant(
         return new RewriteBulletResponse(
             refinement?.Recommended?.Text ?? draft.Text,
             draft.Suggestions,
-            refinement);
+            refinement,
+            draft.Rationale);
     }
 
     public async Task<BulletRewriteCritiqueResponse?> CritiqueAsync(string bulletText, CancellationToken cancellationToken)
     {
         var trimmed = bulletText.Trim();
-        var draft = await DraftAsync(trimmed, CreateFallback(trimmed), cancellationToken);
+        const BulletRevisionModeDto mode = BulletRevisionModeDto.StrongerWording;
+        var draft = await DraftAsync(trimmed, CreateFallback(trimmed, mode), mode, guidance: null, cancellationToken);
         if (draft is null)
         {
             return null;
         }
 
         var critique = await refinementPipeline.CritiqueAsync(
-            BuildRefinementRequest(trimmed, draft.Text, guidance: null),
+            BuildRefinementRequest(trimmed, draft.Text, guidance: null, mode),
             cancellationToken);
 
         return critique is null
@@ -91,7 +109,7 @@ internal sealed partial class BulletRewriteAssistant(
         var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
 
         var refinement = await refinementPipeline.CompleteAsync(
-            BuildRefinementRequest(request.OriginalText.Trim(), request.Draft, guidance),
+            BuildRefinementRequest(request.OriginalText.Trim(), request.Draft, guidance, BulletRevisionModeDto.StrongerWording),
             new RefinementCritique(request.Critique, request.Alternative),
             cancellationToken);
 
@@ -101,10 +119,14 @@ internal sealed partial class BulletRewriteAssistant(
             refinement);
     }
 
-    private static RefinementRequest BuildRefinementRequest(string originalText, string draft, string? guidance) =>
+    private static RefinementRequest BuildRefinementRequest(
+        string originalText,
+        string draft,
+        string? guidance,
+        BulletRevisionModeDto mode) =>
         new(
             ArtifactKind: "resume bullet",
-            OutputContract: "a single resume bullet as plain text - one sentence or clause, no bullet marker, no markdown, no surrounding quotes",
+            OutputContract: BulletRevisionModes.OutputContract(mode),
             SourceMaterial: $"The bullet the candidate actually wrote: {originalText}",
             Draft: draft,
             // Retrieve against what the candidate wrote, not the AI's rewrite, so the grounding
@@ -112,15 +134,22 @@ internal sealed partial class BulletRewriteAssistant(
             GroundingQuery: originalText,
             UserGuidance: guidance);
 
-    private async Task<Draft?> DraftAsync(string trimmed, RewriteBulletResponse fallback, CancellationToken cancellationToken)
+    private async Task<Draft?> DraftAsync(
+        string trimmed,
+        RewriteBulletResponse fallback,
+        BulletRevisionModeDto mode,
+        string? guidance,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(trimmed))
         {
             return null;
         }
 
-        var systemPrompt = "You improve resume bullets while preserving factual truth. Do not invent technologies, metrics, employers, timelines, scope, or outcomes. Return strict JSON object with fields: rewrittenText (string), suggestions (string[]). Suggestions should highlight missing impact/metrics/context if relevant.";
-        var userPrompt = $"Bullet: {trimmed}";
+        var systemPrompt = BulletRevisionModes.SystemPrompt(mode);
+        var userPrompt = string.IsNullOrWhiteSpace(guidance)
+            ? $"Bullet: {trimmed}"
+            : $"Bullet: {trimmed}\n\nThe candidate clarifies, and this outranks your own reading: {guidance.Trim()}";
 
         try
         {
@@ -137,7 +166,10 @@ internal sealed partial class BulletRewriteAssistant(
             var rewritten = string.IsNullOrWhiteSpace(payload.RewrittenText) ? trimmed : payload.RewrittenText.Trim();
             var suggestions = NormalizeSuggestions(payload.Suggestions);
 
-            return new Draft(rewritten, suggestions.Count == 0 ? fallback.Suggestions : suggestions);
+            return new Draft(
+                rewritten,
+                suggestions.Count == 0 ? fallback.Suggestions : suggestions,
+                string.IsNullOrWhiteSpace(payload.Rationale) ? null : payload.Rationale.Trim());
         }
         catch (OperationCanceledException)
         {
@@ -150,21 +182,26 @@ internal sealed partial class BulletRewriteAssistant(
         }
     }
 
-    private static RewriteBulletResponse CreateFallback(string bulletText)
+    /// <summary>
+    /// What the assistant produces with no AI available: the text tidied, and advice describing what
+    /// the requested mode would have done. Deliberately does not attempt the rewrite itself - a
+    /// heuristic cannot restructure a bullet into STAR without inventing the missing parts.
+    /// </summary>
+    private static RewriteBulletResponse CreateFallback(string bulletText, BulletRevisionModeDto mode)
     {
-        var suggestions = new List<string>();
+        var suggestions = new List<string>(BulletRevisionModes.FallbackSuggestions(mode, bulletText));
 
-        if (!ImpactPattern().IsMatch(bulletText))
+        if (!BulletQualityHeuristics.HasMeasurableImpact(bulletText))
         {
             suggestions.Add("Add a measurable result (percentage, time saved, cost reduction, or volume)." );
         }
 
-        if (!ContainsOutcomeKeyword(bulletText))
+        if (!BulletQualityHeuristics.MentionsOutcome(bulletText))
         {
             suggestions.Add("Include business impact (customer value, reliability, delivery speed, or quality)." );
         }
 
-        if (!ContainsTechnologyKeyword(bulletText))
+        if (!BulletQualityHeuristics.NamesTechnology(bulletText))
         {
             suggestions.Add("Consider naming key tools/technologies used when appropriate.");
         }
@@ -187,31 +224,6 @@ internal sealed partial class BulletRewriteAssistant(
             .ToArray();
     }
 
-    private static bool ContainsOutcomeKeyword(string text)
-    {
-        var lower = text.ToLowerInvariant();
-        return lower.Contains("improv")
-            || lower.Contains("increas")
-            || lower.Contains("reduc")
-            || lower.Contains("faster")
-            || lower.Contains("quality")
-            || lower.Contains("reliab")
-            || lower.Contains("efficien");
-    }
-
-    private static bool ContainsTechnologyKeyword(string text)
-    {
-        var lower = text.ToLowerInvariant();
-        return lower.Contains(".net")
-            || lower.Contains("c#")
-            || lower.Contains("api")
-            || lower.Contains("sql")
-            || lower.Contains("azure")
-            || lower.Contains("blazor")
-            || lower.Contains("docker")
-            || lower.Contains("github");
-    }
-
     private static string ToProfessionalTone(string text)
     {
         var trimmed = text.Trim();
@@ -223,7 +235,4 @@ internal sealed partial class BulletRewriteAssistant(
         var rewritten = char.ToUpperInvariant(trimmed[0]) + trimmed[1..];
         return rewritten.EndsWith('.') ? rewritten : rewritten + ".";
     }
-
-    [GeneratedRegex("\\b(\\d+%|\\$?\\d+[\\d,]*(\\.\\d+)?|\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?))\\b", RegexOptions.IgnoreCase)]
-    private static partial Regex ImpactPattern();
 }

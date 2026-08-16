@@ -26,7 +26,9 @@ public static class ArtifactMappings
             artifact.SelectedBulletIds,
             artifact.JobAnalysisJson,
             artifact.CreatedDate,
-            ArtifactRefinements.FromJson(artifact.ResumeRefinementJson),
-            ArtifactRefinements.FromJson(artifact.CoverLetterRefinementJson));
+            ArtifactJsonColumns.FromJson<RefinementDto>(artifact.ResumeRefinementJson),
+            ArtifactJsonColumns.FromJson<RefinementDto>(artifact.CoverLetterRefinementJson),
+            ArtifactJsonColumns.FromJson<EvidenceCoverageReportDto>(artifact.EvidenceCoverageJson),
+            ArtifactJsonColumns.FromJson<GenerationExplanationDto>(artifact.GenerationExplanationJson));
     }
 }
