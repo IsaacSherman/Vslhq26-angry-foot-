@@ -54,10 +54,16 @@ internal static class GenerationExplanationService
     /// bullet is written, what ground it covered that nothing else did, and, for the ones left off,
     /// what it repeated.
     /// </summary>
+    /// <param name="titleSummary">
+    /// What the target job title did to this selection, or empty when none was given. Reported
+    /// verbatim because a title that steered nothing has to say so - otherwise a user who typed one
+    /// cannot tell whether it was ignored or whether their library simply has no such work in it.
+    /// </param>
     public static GenerationExplanationDto ExplainGeneric(
         IReadOnlyList<RankedBullet> ranked,
         IReadOnlyList<RewrittenBullet> final,
-        ResumeAudienceDto audience)
+        ResumeAudienceDto audience,
+        string titleSummary = "")
     {
         var finalPositions = final
             .Select((rewritten, index) => (rewritten.Bullet.Id, Position: index + 1))
@@ -74,7 +80,7 @@ internal static class GenerationExplanationService
             .ThenBy(x => x.RankerPosition)
             .ToArray();
 
-        return new GenerationExplanationDto(SummarizeGeneric(decisions, final, audience), decisions);
+        return new GenerationExplanationDto(SummarizeGeneric(decisions, final, audience, titleSummary), decisions);
     }
 
     private static BulletDecisionDto DescribeGeneric(
@@ -86,8 +92,13 @@ internal static class GenerationExplanationService
         var bullet = candidate.Bullet;
         var kind = ClassifyKind(bullet, rankerPosition, resumePosition, finalText);
         var reasons = candidate.Reasons ?? [];
-        var credits = reasons.Where(x => x.Kind is RankingReasonKind.Quality or RankingReasonKind.Breadth).ToArray();
-        var costs = reasons.Where(x => x.Kind is RankingReasonKind.Overlap or RankingReasonKind.Concentration).ToArray();
+        var credits = reasons
+            .Where(x => x.Kind is RankingReasonKind.Quality
+                or RankingReasonKind.Breadth
+                or RankingReasonKind.TitleRelevance
+                or RankingReasonKind.Recency)
+            .ToArray();
+        var costs = reasons.Where(x => x.Kind is RankingReasonKind.Overlap).ToArray();
 
         return new BulletDecisionDto(
             bullet.Id,
@@ -154,7 +165,8 @@ internal static class GenerationExplanationService
     private static string SummarizeGeneric(
         IReadOnlyList<BulletDecisionDto> decisions,
         IReadOnlyList<RewrittenBullet> final,
-        ResumeAudienceDto audience)
+        ResumeAudienceDto audience,
+        string titleSummary)
     {
         // Technologies only. Enrichment writes skills as phrases - "charting/data visualization
         // optimization" - which are near-unique per bullet, so counting them reports a number in
@@ -165,35 +177,30 @@ internal static class GenerationExplanationService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
 
-        var employers = final
-            .Select(x => x.Bullet.SourceEmployer)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
-
-        var parts = new List<string>
+        var counts = new List<string>
         {
-            $"No posting: {final.Count} of the {decisions.Count} bullets the ranker surfaced made this resume, "
-                + $"chosen for how they are written and for covering as much ground as your library allows"
+            $"{final.Count} of the {decisions.Count} bullets the ranker surfaced made this resume"
         };
 
         if (technologies > 0)
         {
-            parts.Add($"{technologies} distinct technolog{(technologies == 1 ? "y" : "ies")}");
-        }
-
-        if (employers > 0)
-        {
-            parts.Add($"{employers} employer{(employers == 1 ? string.Empty : "s")}");
+            counts.Add($"covering {technologies} distinct technolog{(technologies == 1 ? "y" : "ies")}");
         }
 
         var revised = decisions.Count(x => x.Kind.HasFlag(BulletDecisionKindDto.Revised));
-        if (revised > 0)
-        {
-            parts.Add($"{revised} reworded for {AudienceLabel(audience)}");
-        }
+        counts.Add(audience == ResumeAudienceDto.Verbatim
+            ? "printed exactly as you wrote them, with no AI involved"
+            : revised > 0
+                ? $"{revised} reworded for {AudienceLabel(audience)}"
+                : $"none reworded, though {AudienceLabel(audience)} was selected");
 
-        return string.Join(", ", parts) + ".";
+        // The title's own account leads, because it is the answer to the question a reader of this
+        // panel is most likely to be asking: why these bullets and not others.
+        var opening = string.IsNullOrWhiteSpace(titleSummary)
+            ? "No posting and no target title, so these were chosen on strength and breadth alone: "
+            : titleSummary + " ";
+
+        return opening + string.Join(", ", counts) + ".";
     }
 
     private static string AudienceLabel(ResumeAudienceDto audience) => audience switch
@@ -202,6 +209,7 @@ internal static class GenerationExplanationService
         ResumeAudienceDto.HiringManager => "a hiring manager",
         ResumeAudienceDto.TechnicalLeader => "a technical leader",
         ResumeAudienceDto.Executive => "an executive",
+        ResumeAudienceDto.Verbatim => "no particular reader",
         _ => "a general audience"
     };
 

@@ -13,6 +13,7 @@ internal sealed class GenerationOrchestrator(
     BulletRetrievalService retrievalService,
     BulletRankingService rankingService,
     GenericBulletRankingService genericRankingService,
+    TargetTitleRelevanceService titleRelevanceService,
     BulletRewriteService rewriteService,
     ResumeMarkdownService resumeService,
     CoverLetterService coverLetterService,
@@ -116,31 +117,42 @@ internal sealed class GenerationOrchestrator(
     {
         var profile = await LoadOrCreateProfileAsync(cancellationToken);
 
-        // No posting means no analysis to extract and no query text to retrieve against, so the
-        // ranker reads the whole library - the same thing the keyword path falls back to.
+        // No posting means no analysis to extract, so the ranker reads the whole library rather
+        // than retrieving against a description that does not exist.
         var analysis = JobAnalysis.Neutral;
         var maxBullets = ClampMaxBullets(request.MaxBullets);
-        var benchSize = request.DeepReview ? maxBullets : 0;
 
-        var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
-        var ranked = genericRankingService.Rank(bullets, maxBullets + benchSize + MaxRunnersUpExplained);
+        // Verbatim never rewrites, so deep review has nothing to critique and the bench it would
+        // have swapped from is dead weight.
+        var isVerbatim = request.Audience == ResumeAudienceDto.Verbatim;
+        var deepReview = request.DeepReview && !isVerbatim;
+        var benchSize = deepReview ? maxBullets : 0;
+
+        var targetTitle = TrimToNull(request.TargetTitle);
+        var selection = await SelectGenericBulletsAsync(
+            profile, targetTitle, maxBullets + benchSize + MaxRunnersUpExplained, cancellationToken);
+
+        var ranked = selection.Ranked;
         var selected = ranked.Take(maxBullets).ToArray();
         var bench = ranked.Skip(maxBullets).Take(benchSize).ToArray();
 
         var guidance = TrimToNull(request.Guidance);
-        var targetTitle = TrimToNull(request.TargetTitle);
-        var rewriteOutcome = await rewriteService.RewriteAsync(
-            RewriteTarget.ForAudience(targetTitle, request.Audience),
-            selected,
-            bench,
-            guidance,
-            request.DeepReview,
-            cancellationToken);
+        var rewriteOutcome = isVerbatim
+            ? BulletRewriteOutcome.WithoutRefinement(
+                selected.Select(x => new RewrittenBullet(x.Bullet, x.Bullet.BulletText)).ToArray())
+            : await rewriteService.RewriteAsync(
+                RewriteTarget.ForAudience(targetTitle, request.Audience),
+                selected,
+                bench,
+                guidance,
+                deepReview,
+                cancellationToken);
         var rewritten = rewriteOutcome.Recommended;
 
         var resumeMarkdown = resumeService.BuildResume(profile, analysis, rewritten);
         var resumeRefinement = BuildResumeRefinement(profile, analysis, rewriteOutcome);
-        var explanation = GenerationExplanationService.ExplainGeneric(ranked, rewritten, request.Audience);
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            ranked, rewritten, request.Audience, selection.TitleSummary);
 
         var artifact = new GenerationArtifact
         {
@@ -178,6 +190,48 @@ internal sealed class GenerationOrchestrator(
             CoverLetterRefinement: null,
             Coverage: null,
             explanation);
+    }
+
+    public async Task<GenericPreviewDto> PreviewGenericAsync(
+        GenericGenerationRequest request, CancellationToken cancellationToken)
+    {
+        var profile = await LoadOrCreateProfileAsync(cancellationToken);
+        var maxBullets = ClampMaxBullets(request.MaxBullets);
+
+        var selection = await SelectGenericBulletsAsync(
+            profile, TrimToNull(request.TargetTitle), maxBullets + MaxRunnersUpExplained, cancellationToken);
+
+        // A preview shows the candidate's own wording, because that is what selection actually
+        // produced. Reporting it as the resume's final text would be a guess at what an AI has not
+        // been asked to write yet.
+        var selected = selection.Ranked
+            .Take(maxBullets)
+            .Select(x => new RewrittenBullet(x.Bullet, x.Bullet.BulletText))
+            .ToArray();
+
+        return new GenericPreviewDto(
+            selected.Select(x => x.Bullet.Id).ToArray(),
+            GenerationExplanationService.ExplainGeneric(
+                selection.Ranked, selected, request.Audience, selection.TitleSummary));
+    }
+
+    private sealed record GenericSelection(IReadOnlyList<RankedBullet> Ranked, string TitleSummary);
+
+    /// <summary>
+    /// The whole deterministic half of a generic generation: score the library against the target
+    /// title, weigh it for strength, breadth, and recency, and order it. Shared by the preview and
+    /// the generation so the preview cannot drift from what a generation would actually pick.
+    /// </summary>
+    private async Task<GenericSelection> SelectGenericBulletsAsync(
+        Domain.Profile profile, string? targetTitle, int take, CancellationToken cancellationToken)
+    {
+        var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
+        var titleRelevance = await titleRelevanceService.BuildAsync(targetTitle, bullets, cancellationToken);
+        var context = new GenericRankingContext(titleRelevance, EmployerRecency.From(profile.WorkHistory));
+
+        return new GenericSelection(
+            genericRankingService.Rank(bullets, take, context),
+            titleRelevance.Summary);
     }
 
     private async Task<Domain.Profile> LoadOrCreateProfileAsync(CancellationToken cancellationToken)

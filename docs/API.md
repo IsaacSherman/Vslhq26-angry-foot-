@@ -399,17 +399,49 @@ Request:
 
 `audience` is required and is the only thing the rewrite knows about its reader. It serializes as an
 integer like the other enums here: `0` Recruiter, `1` HiringManager, `2` TechnicalLeader, `3`
-Executive. A value outside that range is a `400`. `targetTitle` is the role the candidate is aiming
-at, not one a posting advertised; it shapes wording and nothing is invented from it. `maxBullets`,
-`deepReview`, and `guidance` behave exactly as on `/api/generations`, except that deep review costs
-three extra AI calls rather than six — there is no cover letter to refine.
+Executive, `4` Verbatim. A value outside that range is a `400`.
 
-Bullet selection does **not** use semantic retrieval, which needs query text this mode has none of.
-A dedicated ranker scores every bullet in the library on how it is written (the same signals as
-`/api/bullets/assess`) and then picks greedily, giving credit for skills, technologies, and
-employers nothing selected so far covers, and penalising a bullet for repeating the wording of one
-already chosen. The result is strong bullets that cover as much ground as the library allows rather
-than the largest cluster in it.
+`4` **Verbatim** suppresses rewriting entirely: the selected bullets are returned in the
+candidate's own wording and the request makes **no AI call at all**. `deepReview` is ignored for it,
+since there are no rewrites to critique, and `resumeRefinement` is always null. Selection is
+identical for every audience value — audience changes wording only.
+
+`targetTitle` is not decoration: it decides **which** bullets are selected. Three signals are
+computed and the strongest per bullet wins:
+
+1. The subject words of the title itself, with ladder words (`Senior`, `Staff`, `Specialist`,
+   `Engineer`, …) stripped — `"Machine Learning Specialist"` searches bullet text and enrichment
+   tags for `machine learning`. A whole-phrase hit outranks a partial one.
+2. The occupation the title maps to in the bundled O*NET dataset (the same mapping
+   `/api/generations/analyze` uses for its benchmark), scored by the importance-weighted share of
+   that occupation's requirements each bullet evidences.
+3. Cosine similarity against the semantic index, when an embedding deployment is configured. Absent
+   or failing, the first two still apply.
+
+Omit `targetTitle` and none of this contributes, leaving a pure strength-and-breadth ranking. The
+returned `explanation.summary` always states which of these happened, including when the title
+matched nothing.
+
+`maxBullets`, `deepReview`, and `guidance` otherwise behave as on `/api/generations`, except that
+deep review costs three extra AI calls rather than six — there is no cover letter to refine.
+
+Beyond title relevance, the ranker scores how each bullet is written (the same signals as
+`/api/bullets/assess`), then picks greedily: credit for skills, technologies, and job families
+nothing selected so far covers; a bonus for work at a more recent employer, ranked off
+`WorkHistory` order; and a penalty for repeating the wording of a bullet already chosen. Employer
+spread is deliberately not a goal.
+
+### POST `/api/generations/generic/preview`
+Runs only the selection half of `/api/generations/generic`. Same request body, same validation. Makes
+no AI call and persists nothing.
+
+Response: `GenericPreviewDto` — `selectedBulletIds` (in ranked order) and `explanation`
+(`GenerationExplanationDto`, same shape as elsewhere). Its decisions carry the candidate's own
+wording in `finalText`, because no rewrite has happened.
+
+Selection is deterministic, so a preview and a generation issued with the same body select the same
+bullets. With any `audience` but Verbatim the generation then rewords them, so the preview's text is
+the input to that, not the output.
 
 Response: `GenerationResultDto`, with three fields that differ from a tailored generation:
 

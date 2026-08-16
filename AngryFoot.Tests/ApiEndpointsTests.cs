@@ -584,6 +584,40 @@ public class ApiEndpointsTests
             new { audience = 42, maxBullets = 3 },
             cancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, badAudience.StatusCode);
+
+        // The preview promises to select what a generation would, so the two are compared over the
+        // same request rather than each being checked for plausibility on its own.
+        var previewRequest = new GenericGenerationRequest(ResumeAudienceDto.Verbatim, "Software Engineer", MaxBullets: 2);
+        var previewResponse = await apiClient.PostAsJsonAsync(
+            "/api/generations/generic/preview", previewRequest, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, previewResponse.StatusCode);
+        var preview = await previewResponse.Content.ReadFromJsonAsync<GenericPreviewDto>(cancellationToken);
+        Assert.NotNull(preview);
+        Assert.NotEmpty(preview!.SelectedBulletIds);
+        Assert.NotNull(preview.Explanation);
+        Assert.NotEmpty(preview.Explanation.Decisions);
+
+        var artifactsBefore = await apiClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken);
+
+        var verbatimResponse = await apiClient.PostAsJsonAsync(
+            "/api/generations/generic", previewRequest, cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, verbatimResponse.StatusCode);
+        var verbatim = await verbatimResponse.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken);
+        Assert.NotNull(verbatim);
+        Assert.Equal(preview.SelectedBulletIds, verbatim!.SelectedBulletIds);
+
+        // Verbatim prints what the library holds, so every selected bullet appears in the resume
+        // exactly as it was stored.
+        var bullets = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        foreach (var id in verbatim.SelectedBulletIds)
+        {
+            Assert.Contains(bullets!.Single(x => x.Id == id).BulletText, verbatim.ResumeMarkdown);
+        }
+
+        // And the preview persisted nothing: only the generation after it added a row.
+        var artifactsAfter = await apiClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken);
+        Assert.Equal(artifactsBefore!.Count + 1, artifactsAfter!.Count);
     }
 
     /// <summary>

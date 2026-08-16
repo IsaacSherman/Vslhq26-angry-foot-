@@ -306,6 +306,17 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken))!;
     }
 
+    /// <summary>
+    /// What a generic generation would select, without generating anything. Costs no AI call, so
+    /// it can be run freely while the user tries different target titles.
+    /// </summary>
+    public async Task<GenericPreviewDto> PreviewGenericAsync(GenericGenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/generations/generic/preview", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GenericPreviewDto>(cancellationToken))!;
+    }
+
     public async Task<List<ArtifactSummaryDto>> GetArtifactsAsync(CancellationToken cancellationToken = default)
     {
         return await httpClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken) ?? [];

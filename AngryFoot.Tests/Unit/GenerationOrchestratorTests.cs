@@ -35,6 +35,8 @@ public class GenerationOrchestratorTests : IDisposable
             new BulletRetrievalService(_vectorStore),
             new BulletRankingService(),
             new GenericBulletRankingService(),
+            new TargetTitleRelevanceService(
+                new EmptyOccupationDataset(), _vectorStore, NullLogger<TargetTitleRelevanceService>.Instance),
             new BulletRewriteService(chatClient, pipeline, NullLogger<BulletRewriteService>.Instance),
             new ResumeMarkdownService(),
             new CoverLetterService(chatClient, pipeline, NullLogger<CoverLetterService>.Instance),
@@ -52,6 +54,17 @@ public class GenerationOrchestratorTests : IDisposable
             new FakeEvidenceReviewer(),
             [],
             NullLogger<EvidenceCoverageService>.Instance);
+    }
+
+    /// <summary>
+    /// No occupations, so a target title steers nothing here. Title relevance is exercised against
+    /// the real shipped data in <see cref="TargetTitleRelevanceServiceTests"/>; these tests are
+    /// about what the orchestrator does with the result.
+    /// </summary>
+    private sealed class EmptyOccupationDataset : AngryFoot.ApiService.Application.Benchmarks.IOccupationBenchmarkDataset
+    {
+        public AngryFoot.ApiService.Application.Benchmarks.OccupationBenchmarkData Data { get; } =
+            AngryFoot.ApiService.Application.Benchmarks.OccupationBenchmarkData.Empty;
     }
 
     private void SeedProfileAndBullets(params string[] bulletTexts)
@@ -358,7 +371,7 @@ public class GenerationOrchestratorTests : IDisposable
             TestContext.Current.CancellationToken);
 
         var explanation = result.Explanation!;
-        explanation.Summary.Should().StartWith("No posting:");
+        explanation.Summary.Should().Contain("no target title");
         explanation.Decisions.Should().HaveCountGreaterThan(1, "the runners-up are the point of the panel");
         explanation.Decisions.Should().Contain(x => x.Kind.HasFlag(BulletDecisionKindDto.Omitted));
         explanation.Decisions.Should().AllSatisfy(decision =>
@@ -403,6 +416,108 @@ public class GenerationOrchestratorTests : IDisposable
         result.ResumeRefinement.Versions.Should().AllSatisfy(
             x => x.Text.Should().Contain("Ada", "each version is a whole rendered resume, not a JSON payload"));
         result.CoverLetterRefinement.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_WithVerbatim_MakesNoAiCallAndKeepsYourWording()
+    {
+        SeedProfileAndBullets("Cut Azure spend by 30%.", "Rebuilt the Postgres pipeline.");
+        var chatClient = ChatClientMocks.Throwing(new InvalidOperationException("must not be called"));
+        var pipeline = new FakeRefinementPipeline(TwoVersionsOf);
+        var sut = CreateSut(chatClient.Object, pipeline);
+
+        // Deep review asked for and ignored: there are no rewrites for it to critique.
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Verbatim, DeepReview: true, MaxBullets: 2),
+            TestContext.Current.CancellationToken);
+
+        chatClient.Verify(
+            x => x.GetResponseAsync(
+                It.IsAny<IEnumerable<Microsoft.Extensions.AI.ChatMessage>>(),
+                It.IsAny<Microsoft.Extensions.AI.ChatOptions?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        pipeline.Requests.Should().BeEmpty();
+        result.ResumeRefinement.Should().BeNull();
+        result.ResumeMarkdown.Should().Contain("Cut Azure spend by 30%.");
+
+        result.Explanation!.Decisions.Should().AllSatisfy(decision =>
+            decision.Kind.Should().NotHaveFlag(BulletDecisionKindDto.Revised));
+        result.Explanation.Summary.Should().Contain("printed exactly as you wrote them");
+    }
+
+    [Fact]
+    public async Task PreviewGenericAsync_SelectsWithoutAiAndPersistsNothing()
+    {
+        SeedProfileAndBullets("Cut Azure spend by 30%.", "Rebuilt the Postgres pipeline.", "Organised the offsite.");
+        var chatClient = ChatClientMocks.Throwing(new InvalidOperationException("must not be called"));
+        var sut = CreateSut(chatClient.Object, new FakeRefinementPipeline());
+
+        var preview = await sut.PreviewGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Recruiter, MaxBullets: 2),
+            TestContext.Current.CancellationToken);
+
+        preview.SelectedBulletIds.Should().HaveCount(2);
+        preview.Explanation.Decisions.Should().HaveCountGreaterThan(2, "the runners-up are shown too");
+        preview.Explanation.Decisions.Should().AllSatisfy(decision =>
+            decision.Kind.Should().NotHaveFlag(BulletDecisionKindDto.Revised),
+            "a preview reports the candidate's own wording, since nothing has been rewritten");
+
+        _database.Context.GenerationArtifacts.Should().BeEmpty("a preview is not a generation");
+    }
+
+    /// <summary>
+    /// The promise the preview makes: what it lists is what a generation would build from. If these
+    /// two could disagree, the button would be worse than not having one.
+    /// </summary>
+    [Fact]
+    public async Task PreviewGenericAsync_SelectsTheSameBulletsAGenerationWould()
+    {
+        SeedProfileAndBullets(
+            "Cut Azure spend by 30%.",
+            "Rebuilt the Postgres pipeline, cutting query time 60%.",
+            "Tuned Kubernetes autoscaling, halving cold starts.",
+            "Organised the offsite.");
+        var sut = CreateSut();
+        var request = new GenericGenerationRequest(ResumeAudienceDto.Verbatim, MaxBullets: 2);
+
+        var preview = await sut.PreviewGenericAsync(request, TestContext.Current.CancellationToken);
+        var generated = await sut.GenerateGenericAsync(request, TestContext.Current.CancellationToken);
+
+        generated.SelectedBulletIds.Should().Equal(preview.SelectedBulletIds);
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_PrefersBulletsFromTheMostRecentEmployer()
+    {
+        var profile = new Profile { Id = Guid.NewGuid(), Name = "Ada" };
+        profile.WorkHistory.Add(new WorkHistory { Id = Guid.NewGuid(), Employer = "Contoso", SortOrder = 0 });
+        profile.WorkHistory.Add(new WorkHistory { Id = Guid.NewGuid(), Employer = "Initech", SortOrder = 1 });
+        _database.Context.Profiles.Add(profile);
+        _database.Context.Bullets.AddRange(
+            new Bullet
+            {
+                Id = Guid.NewGuid(),
+                BulletText = "Shipped the billing rewrite, cutting disputes 25%.",
+                SourceEmployer = "Contoso",
+                ModifiedDate = DateTime.UtcNow
+            },
+            new Bullet
+            {
+                Id = Guid.NewGuid(),
+                BulletText = "Delivered the audit remediation, closing 25% of findings.",
+                SourceEmployer = "Initech",
+                ModifiedDate = DateTime.UtcNow
+            });
+        _database.Context.SaveChanges();
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Verbatim, MaxBullets: 1),
+            TestContext.Current.CancellationToken);
+
+        var selected = _database.Context.Bullets.Single(x => x.Id == result.SelectedBulletIds[0]);
+        selected.SourceEmployer.Should().Be("Contoso");
     }
 
     [Fact]

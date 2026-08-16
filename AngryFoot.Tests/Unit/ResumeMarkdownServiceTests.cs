@@ -44,7 +44,10 @@ public class ResumeMarkdownServiceTests
 
         var result = sut.BuildResume(profile, EmptyAnalysis, [Bullet("Freelance win.", employer: null)]);
 
-        result.Should().Contain("- Experience details pending.", "Acme Corp has no mapped bullets");
+        result.Should().Contain("### Acme Corp", "the role still belongs on the timeline");
+        result.Should().NotContain("Experience details pending",
+            "selection weights recent work, so older roles routinely have no bullets and a placeholder "
+            + "under each of them reads as an unfinished document");
         result.Should().Contain("### Selected Experience");
         result.Should().Contain("- Freelance win.");
     }
@@ -122,5 +125,57 @@ public class ResumeMarkdownServiceTests
         result.Should().Contain("- State U, BS (CS) - 2016");
         result.Should().Contain("- Night School");
         result.Should().Contain("- AZ-204 (Microsoft) - 2025");
+    }
+
+    private static Profile ProfileWith(WorkHistory work)
+        => new() { Id = Guid.NewGuid(), Name = "Ada Lovelace", WorkHistory = [work] };
+
+    [Fact]
+    public void BuildResume_PrintsTheRoleAndItsDatesUnderTheEmployer()
+    {
+        var profile = ProfileWith(new WorkHistory
+        {
+            Id = Guid.NewGuid(),
+            Employer = "Acme Corp",
+            Title = "Senior Engineer",
+            StartDate = "Jan 2020",
+            EndDate = "Mar 2024",
+            SortOrder = 0
+        });
+        var sut = new ResumeMarkdownService();
+
+        var result = sut.BuildResume(profile, EmptyAnalysis, [Bullet("Shipped the widget line.", "Acme Corp")]);
+
+        result.Should().Contain("### Acme Corp");
+        result.Should().Contain("*Senior Engineer | Jan 2020 - Mar 2024*");
+    }
+
+    [Fact]
+    public void BuildResume_ReadsAMissingEndDateAsTheCurrentRole()
+    {
+        var profile = ProfileWith(new WorkHistory
+        {
+            Id = Guid.NewGuid(),
+            Employer = "Acme Corp",
+            StartDate = "Jan 2020",
+            SortOrder = 0
+        });
+        var sut = new ResumeMarkdownService();
+
+        var result = sut.BuildResume(profile, EmptyAnalysis, []);
+
+        result.Should().Contain("*Jan 2020 - Present*");
+    }
+
+    [Fact]
+    public void BuildResume_WithNoTitleOrDates_PrintsNoRoleLine()
+    {
+        var profile = ProfileWith(new WorkHistory { Id = Guid.NewGuid(), Employer = "Acme Corp", SortOrder = 0 });
+        var sut = new ResumeMarkdownService();
+
+        var result = sut.BuildResume(profile, EmptyAnalysis, [Bullet("Shipped the widget line.", "Acme Corp")]);
+
+        result.Should().Contain("### Acme Corp");
+        result.Should().NotContain("*", "an employer with neither a title nor dates gets no subtitle");
     }
 }

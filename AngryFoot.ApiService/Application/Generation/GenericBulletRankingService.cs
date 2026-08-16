@@ -5,6 +5,17 @@ using AngryFoot.Contracts;
 namespace AngryFoot.ApiService.Application.Generation;
 
 /// <summary>
+/// Everything the generic ranker weighs that is not a property of the bullet itself: what the
+/// candidate is aiming at, and where each of their employers sits in time.
+/// </summary>
+internal sealed record GenericRankingContext(TitleRelevance Title, EmployerRecency Recency)
+{
+    /// <summary>No target title and no work history - a pure strength-and-breadth ranking.</summary>
+    public static GenericRankingContext Neutral { get; } =
+        new(TitleRelevance.None, EmployerRecency.None);
+}
+
+/// <summary>
 /// Picks bullets for a resume with no posting to aim at: the strongest ones, spread deliberately
 /// across skills, technologies, and employers.
 /// <para>
@@ -21,11 +32,29 @@ namespace AngryFoot.ApiService.Application.Generation;
 internal sealed class GenericBulletRankingService
 {
     /// <summary>
+    /// What full relevance to the target job title is worth, on the same 0-100 scale as
+    /// <see cref="BulletQualityScorer"/>. The largest weight here, and larger than any single
+    /// quality signal, because a title is a statement about what the resume is <em>for</em>: asked
+    /// for a machine learning role, a solid machine learning bullet has to beat a beautifully
+    /// written one about something else. Zero for every bullet when no title was given, which is
+    /// what makes the blank-title case a pure strength-and-breadth ranking.
+    /// </summary>
+    private const double TitleRelevanceWeight = 60;
+
+    /// <summary>
     /// What full novelty is worth, on the same 0-100 scale as <see cref="BulletQualityScorer"/>.
     /// Deliberately below the 30 a measurable result earns: breadth is the tie-breaker between
     /// good bullets, not a reason to print a weak one.
     /// </summary>
     private const double DiversityWeight = 35;
+
+    /// <summary>
+    /// What the current role is worth over the earliest one. Small: old work that is the best
+    /// evidence of something still belongs on the resume, and this only settles which of two
+    /// comparable bullets goes in. Bullets whose employer is not in the work history score the
+    /// midpoint, so this never becomes a penalty for untagged material.
+    /// </summary>
+    private const double RecencyWeight = 22;
 
     /// <summary>
     /// What identical wording costs. The largest of the three, and larger than any single quality
@@ -41,16 +70,6 @@ internal sealed class GenericBulletRankingService
     /// </summary>
     private const double RedundancyFloor = 0.25;
 
-    /// <summary>
-    /// What a resume drawn entirely from one employer costs. Small, and reached slowly: bullets are
-    /// printed grouped under their employer, so several from one job is the normal shape of a
-    /// resume rather than a flaw in it.
-    /// </summary>
-    private const double EmployerConcentrationWeight = 20;
-
-    /// <summary>Bullets from one employer past which the penalty stops growing.</summary>
-    private const int ComfortableBulletsPerEmployer = 4;
-
     /// <summary>How many newly covered facets to name in a reason before it stops being read.</summary>
     private const int MaxNewFacetsNamed = 3;
 
@@ -62,12 +81,17 @@ internal sealed class GenericBulletRankingService
     /// the runners-up are ordered too; bullets past that are never reached, which is what keeps
     /// this quadratic loop bounded by the resume's size rather than by the library's.
     /// </param>
-    public IReadOnlyList<RankedBullet> Rank(IReadOnlyList<Bullet> bullets, int take)
+    /// <param name="context">
+    /// What the candidate said they are aiming at, and where each employer sits in their history.
+    /// <see cref="GenericRankingContext.Neutral"/> for neither, which reduces this to strength and
+    /// breadth.
+    /// </param>
+    public IReadOnlyList<RankedBullet> Rank(
+        IReadOnlyList<Bullet> bullets, int take, GenericRankingContext context)
     {
-        var remaining = bullets.Select(Candidate.From).ToList();
+        var remaining = bullets.Select(bullet => Candidate.From(bullet, context)).ToList();
         var selected = new List<RankedBullet>();
         var coveredFacets = new HashSet<string>(StringComparer.Ordinal);
-        var employerCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var chosen = new List<Candidate>();
 
         var slots = Math.Min(Math.Max(1, take), remaining.Count);
@@ -75,7 +99,7 @@ internal sealed class GenericBulletRankingService
         for (var slot = 0; slot < slots; slot++)
         {
             var best = remaining
-                .Select(candidate => Assess(candidate, coveredFacets, employerCounts, chosen))
+                .Select(candidate => Assess(candidate, coveredFacets, chosen))
                 .OrderByDescending(x => x.Marginal)
                 .ThenByDescending(x => x.Candidate.Quality)
                 .ThenByDescending(x => x.Candidate.Bullet.ModifiedDate)
@@ -92,10 +116,6 @@ internal sealed class GenericBulletRankingService
             remaining.Remove(best.Candidate);
             chosen.Add(best.Candidate);
             coveredFacets.UnionWith(best.Candidate.Facets.Select(x => x.Key));
-            if (best.Candidate.Employer is { } employer)
-            {
-                employerCounts[employer] = employerCounts.GetValueOrDefault(employer) + 1;
-            }
         }
 
         return selected;
@@ -104,7 +124,6 @@ internal sealed class GenericBulletRankingService
     private static Assessment Assess(
         Candidate candidate,
         HashSet<string> coveredFacets,
-        Dictionary<string, int> employerCounts,
         IReadOnlyList<Candidate> chosen)
     {
         var reasons = new List<RankingReason>();
@@ -130,6 +149,16 @@ internal sealed class GenericBulletRankingService
                 $"The only bullet so far covering {string.Join(", ", named)}."));
         }
 
+        if (candidate.TitleRelevanceReason is { } titleReason)
+        {
+            reasons.Add(new RankingReason(RankingReasonKind.TitleRelevance, titleReason));
+        }
+
+        if (candidate.RecencyReason is { } recencyReason)
+        {
+            reasons.Add(new RankingReason(RankingReasonKind.Recency, recencyReason));
+        }
+
         var (redundancy, rival) = Redundancy(candidate, chosen);
         if (rival is not null)
         {
@@ -138,19 +167,11 @@ internal sealed class GenericBulletRankingService
                 $"Repeats {Percent(rival.Value.Overlap)} of the wording of \"{Quote(rival.Value.Text)}\", which is already selected."));
         }
 
-        var concentration = 0.0;
-        if (candidate.Employer is { } employer && employerCounts.TryGetValue(employer, out var already))
-        {
-            concentration = Math.Min(1, already / (double)ComfortableBulletsPerEmployer);
-            reasons.Add(new RankingReason(
-                RankingReasonKind.Concentration,
-                $"{candidate.Bullet.SourceEmployer} already has {already} bullet{(already == 1 ? string.Empty : "s")} among those selected."));
-        }
-
         var marginal = candidate.Quality
+            + (TitleRelevanceWeight * candidate.TitleRelevance)
             + (DiversityWeight * novelty)
-            - (RedundancyWeight * redundancy)
-            - (EmployerConcentrationWeight * concentration);
+            + (RecencyWeight * candidate.Recency)
+            - (RedundancyWeight * redundancy);
 
         return new Assessment(candidate, marginal, reasons);
     }
@@ -214,9 +235,12 @@ internal sealed class GenericBulletRankingService
         IReadOnlyList<string> EarnedSignals,
         IReadOnlyList<Facet> Facets,
         IReadOnlyCollection<string> Tokens,
-        string? Employer)
+        double TitleRelevance,
+        string? TitleRelevanceReason,
+        double Recency,
+        string? RecencyReason)
     {
-        public static Candidate From(Bullet bullet)
+        public static Candidate From(Bullet bullet, GenericRankingContext context)
         {
             var quality = BulletQualityScorer.Score(bullet);
 
@@ -229,7 +253,10 @@ internal sealed class GenericBulletRankingService
                     .ToArray(),
                 FacetsOf(bullet),
                 BulletQualityHeuristics.ContentTokens(bullet.BulletText),
-                string.IsNullOrWhiteSpace(bullet.SourceEmployer) ? null : bullet.SourceEmployer.Trim());
+                context.Title.For(bullet.Id),
+                context.Title.Describe(bullet.Id),
+                context.Recency.For(bullet.SourceEmployer),
+                context.Recency.Describe(bullet.SourceEmployer));
         }
 
         /// <summary>

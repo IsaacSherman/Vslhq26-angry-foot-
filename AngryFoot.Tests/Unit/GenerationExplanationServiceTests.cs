@@ -307,9 +307,7 @@ public class GenerationExplanationServiceTests
     public void ExplainGeneric_ReportsTheBreadthTheResumeActuallyAchieved()
     {
         var azure = Bullet("Cut Azure spend by 30%.", ["azure"]);
-        azure.SourceEmployer = "Contoso";
         var postgres = Bullet("Rebuilt the Postgres pipeline.", ["postgres"]);
-        postgres.SourceEmployer = "Fabrikam";
 
         var explanation = GenerationExplanationService.ExplainGeneric(
             [RankedGeneric(azure), RankedGeneric(postgres)],
@@ -318,7 +316,38 @@ public class GenerationExplanationServiceTests
 
         explanation.Summary.Should().Contain("2 of the 2");
         explanation.Summary.Should().Contain("2 distinct technologies");
-        explanation.Summary.Should().Contain("2 employers");
+        explanation.Summary.Should().Contain("no target title",
+            "with nothing to steer by, the summary has to say what it ranked on instead");
+    }
+
+    /// <summary>
+    /// The title's account leads the summary, because "why these bullets and not others" is the
+    /// question the panel exists to answer.
+    /// </summary>
+    [Fact]
+    public void ExplainGeneric_LeadsWithWhatTheTargetTitleDid()
+    {
+        var bullet = Bullet("Trained a churn model on 2M rows.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(bullet)],
+            [Kept(bullet)],
+            ResumeAudienceDto.Recruiter,
+            titleSummary: "Selected for \"Machine Learning Specialist\", matched on \"machine learning\".");
+
+        explanation.Summary.Should().StartWith("Selected for \"Machine Learning Specialist\"");
+    }
+
+    [Fact]
+    public void ExplainGeneric_WithVerbatim_SaysNothingWasReworded()
+    {
+        var bullet = Bullet("Cut Azure spend by 30%.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(bullet)], [Kept(bullet)], ResumeAudienceDto.Verbatim);
+
+        explanation.Summary.Should().Contain("printed exactly as you wrote them, with no AI involved");
+        explanation.Decisions.Single().Kind.Should().NotHaveFlag(BulletDecisionKindDto.Revised);
     }
 
     [Fact]

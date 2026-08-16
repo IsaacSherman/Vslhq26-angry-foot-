@@ -12,11 +12,14 @@ internal enum RankingReasonKind
     /// <summary>Ground it covered that nothing already selected did.</summary>
     Breadth,
 
-    /// <summary>Wording it repeats from a bullet already selected.</summary>
-    Overlap,
+    /// <summary>What the target job title asks for and this bullet evidences.</summary>
+    TitleRelevance,
 
-    /// <summary>Employers already well represented by the selected bullets.</summary>
-    Concentration
+    /// <summary>Where in the candidate's history the work sits.</summary>
+    Recency,
+
+    /// <summary>Wording it repeats from a bullet already selected.</summary>
+    Overlap
 }
 
 internal sealed record RankingReason(RankingReasonKind Kind, string Text);

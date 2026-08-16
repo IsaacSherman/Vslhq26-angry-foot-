@@ -63,6 +63,7 @@ builder.Services.AddScoped<IOccupationBenchmarkService, OccupationBenchmarkServi
 builder.Services.AddScoped<BulletRetrievalService>();
 builder.Services.AddScoped<BulletRankingService>();
 builder.Services.AddScoped<GenericBulletRankingService>();
+builder.Services.AddScoped<TargetTitleRelevanceService>();
 builder.Services.AddScoped<BulletRewriteService>();
 builder.Services.AddScoped<ResumeMarkdownService>();
 builder.Services.AddScoped<CoverLetterService>();

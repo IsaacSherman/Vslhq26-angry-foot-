@@ -32,16 +32,29 @@ public static class GenerationEndpoints
             IGenerationOrchestrator orchestrator,
             CancellationToken cancellationToken) =>
         {
-            if (!Enum.IsDefined(request.Audience))
+            if (InvalidAudience(request) is { } error)
             {
-                return Results.BadRequest(new
-                {
-                    error = $"audience must be one of: {string.Join(", ", Enum.GetNames<ResumeAudienceDto>())}."
-                });
+                return error;
             }
 
             var result = await orchestrator.GenerateGenericAsync(request, cancellationToken);
             return Results.Ok(result);
+        });
+
+        // Selection only. Deterministic, so it costs no AI call and persists nothing - which is
+        // what makes it safe to offer as a "show me what you would pick" button.
+        generations.MapPost("/generic/preview", async (
+            GenericGenerationRequest request,
+            IGenerationOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            if (InvalidAudience(request) is { } error)
+            {
+                return error;
+            }
+
+            var preview = await orchestrator.PreviewGenericAsync(request, cancellationToken);
+            return Results.Ok(preview);
         });
 
         generations.MapPost("/analyze", async (
@@ -63,5 +76,19 @@ public static class GenerationEndpoints
         });
 
         return apiGroup;
+    }
+
+    /// <summary>
+    /// A cast integer outside the enum binds without complaint, so the value is checked rather
+    /// than trusted. Null when the request is fine.
+    /// </summary>
+    private static IResult? InvalidAudience(GenericGenerationRequest request)
+    {
+        return Enum.IsDefined(request.Audience)
+            ? null
+            : Results.BadRequest(new
+            {
+                error = $"audience must be one of: {string.Join(", ", Enum.GetNames<ResumeAudienceDto>())}."
+            });
     }
 }

@@ -26,6 +26,23 @@ public class GenericBulletRankingServiceTests
     private static IReadOnlyList<string> TextsOf(IEnumerable<RankedBullet> ranked)
         => ranked.Select(x => x.Bullet.BulletText).ToArray();
 
+    /// <summary>Work history most recent first, matching how SortOrder is used everywhere else.</summary>
+    private static EmployerRecency Recency(params string[] employersNewestFirst)
+        => EmployerRecency.From(employersNewestFirst
+            .Select((employer, index) => new WorkHistory { Employer = employer, SortOrder = index }));
+
+    private static GenericRankingContext WithRecency(params string[] employersNewestFirst)
+        => new(TitleRelevance.None, Recency(employersNewestFirst));
+
+    /// <summary>Hand-built relevance, so these tests never depend on the bundled O*NET data.</summary>
+    private static GenericRankingContext WithTitleRelevance(params (Bullet Bullet, double Score)[] scores)
+        => new(
+            new TitleRelevance(
+                scores.ToDictionary(x => x.Bullet.Id, x => x.Score),
+                scores.ToDictionary(x => x.Bullet.Id, x => $"Evidences what {x.Bullet.BulletText} is about."),
+                Summary: "Selected for a test role."),
+            EmployerRecency.None);
+
     [Fact]
     public void Rank_PrefersTheBulletThatQuantifiesItsResult()
     {
@@ -33,7 +50,7 @@ public class GenericBulletRankingServiceTests
         var measured = CreateBullet("Cut deployment time by 40% at Contoso.", technologies: ["azure"]);
         var unmeasured = CreateBullet("Improved the deployment process somewhat.", technologies: ["azure"]);
 
-        var result = sut.Rank([unmeasured, measured], take: 2);
+        var result = sut.Rank([unmeasured, measured], take: 2, GenericRankingContext.Neutral);
 
         result[0].Bullet.Should().BeSameAs(measured);
         result[0].Score.Should().BeGreaterThan(result[1].Score);
@@ -47,7 +64,7 @@ public class GenericBulletRankingServiceTests
         var paraphrase = CreateBullet("Migrated 40 payment services to Kubernetes at Contoso.", technologies: ["kubernetes"]);
         var distinct = CreateBullet("Rebuilt the Postgres reporting pipeline, cutting query time 60%.", technologies: ["postgres"]);
 
-        var result = sut.Rank([original, paraphrase, distinct], take: 3);
+        var result = sut.Rank([original, paraphrase, distinct], take: 3, GenericRankingContext.Neutral);
 
         TextsOf(result).Take(2).Should().Contain(distinct.BulletText,
             "a bullet that repeats one already selected should lose its slot to a distinct one");
@@ -61,7 +78,7 @@ public class GenericBulletRankingServiceTests
         var original = CreateBullet("Migrated 40 payment services onto Kubernetes at Contoso.");
         var paraphrase = CreateBullet("Migrated 40 payment services to Kubernetes at Contoso.");
 
-        var result = sut.Rank([original, paraphrase], take: 2);
+        var result = sut.Rank([original, paraphrase], take: 2, GenericRankingContext.Neutral);
 
         result[1].Reasons.Should().Contain(x => x.Kind == RankingReasonKind.Overlap);
         result[0].Reasons.Should().NotContain(x => x.Kind == RankingReasonKind.Overlap,
@@ -83,24 +100,97 @@ public class GenericBulletRankingServiceTests
         };
         var outlier = CreateBullet("Rebuilt the Postgres reporting pipeline, cutting query time 60% at Contoso.", technologies: ["postgres"]);
 
-        var result = sut.Rank([.. cluster, outlier], take: 3);
+        var result = sut.Rank([.. cluster, outlier], take: 3, GenericRankingContext.Neutral);
 
         TextsOf(result).Should().Contain(outlier.BulletText,
             "the only bullet covering a second technology should reach the top three");
     }
 
+    /// <summary>
+    /// The opposite of the employer-spread rule this replaced: several bullets from the current
+    /// role is the right shape for a resume, and old work should not be pulled in to balance it.
+    /// </summary>
     [Fact]
-    public void Rank_SpreadsAcrossEmployersWhenQualityIsComparable()
+    public void Rank_PrefersRecentWorkWhenBulletsAreOtherwiseComparable()
     {
         var sut = new GenericBulletRankingService();
-        var contoso = Enumerable.Range(0, 5)
-            .Select(i => CreateBullet($"Shipped release {i}, cutting defects 20%.", employer: "Contoso"))
-            .ToArray();
-        var fabrikam = CreateBullet("Launched the billing rewrite, cutting disputes 25%.", employer: "Fabrikam");
+        var recent = CreateBullet("Shipped the billing rewrite, cutting disputes 25%.", employer: "Contoso");
+        var old = CreateBullet("Delivered the audit remediation, closing 25% of findings.", employer: "Initech");
 
-        var result = sut.Rank([.. contoso, fabrikam], take: 4);
+        var result = sut.Rank([old, recent], take: 2, WithRecency("Contoso", "Initech"));
 
-        result.Select(x => x.Bullet.SourceEmployer).Should().Contain("Fabrikam");
+        result[0].Bullet.Should().BeSameAs(recent);
+        result[0].Reasons.Should().Contain(x =>
+            x.Kind == RankingReasonKind.Recency && x.Text.Contains("most recent"));
+        result[1].Reasons.Should().Contain(x =>
+            x.Kind == RankingReasonKind.Recency && x.Text.Contains("earliest"));
+    }
+
+    [Fact]
+    public void Rank_DoesNotPenaliseABulletForNamingNoEmployer()
+    {
+        var sut = new GenericBulletRankingService();
+        var placed = CreateBullet("Shipped the billing rewrite, cutting disputes 25%.", employer: "Initech");
+        var unplaced = CreateBullet("Shipped the payments rewrite, cutting disputes 25%.");
+
+        // Initech is the earliest of three roles, so it scores the recency floor; an unplaceable
+        // bullet takes the midpoint and should therefore come out ahead of it, not behind.
+        var result = sut.Rank([placed, unplaced], take: 2, WithRecency("Contoso", "Fabrikam", "Initech"));
+
+        result[0].Bullet.Should().BeSameAs(unplaced);
+        result[0].Reasons.Should().NotContain(x => x.Kind == RankingReasonKind.Recency);
+    }
+
+    [Fact]
+    public void Rank_WithASingleEmployer_SaysNothingAboutRecency()
+    {
+        var sut = new GenericBulletRankingService();
+        var bullet = CreateBullet("Cut deployment time by 40%.", employer: "Contoso");
+
+        var result = sut.Rank([bullet], take: 1, WithRecency("Contoso"));
+
+        result[0].Reasons.Should().NotContain(x => x.Kind == RankingReasonKind.Recency,
+            "with one role there is no more or less recent to report");
+    }
+
+    /// <summary>
+    /// The point of the target title: asked for a machine learning role, a solid machine learning
+    /// bullet has to beat a better-written one about something else.
+    /// </summary>
+    [Fact]
+    public void Rank_PutsTitleRelevanceAheadOfRawQuality()
+    {
+        var sut = new GenericBulletRankingService();
+        var relevant = CreateBullet("Trained a churn model on 2M rows.", technologies: ["python"]);
+        var polished = CreateBullet(
+            "Rebuilt the Contoso billing pipeline in six weeks, cutting disputes 40% and saving 12 hours a month.",
+            technologies: ["c#"]);
+
+        var neutral = sut.Rank([relevant, polished], take: 2, GenericRankingContext.Neutral);
+        neutral[0].Bullet.Should().BeSameAs(polished, "on writing alone the polished bullet wins");
+
+        var steered = sut.Rank([relevant, polished], take: 2, WithTitleRelevance((relevant, 1.0), (polished, 0.0)));
+
+        steered[0].Bullet.Should().BeSameAs(relevant);
+        steered[0].Reasons.Should().Contain(x => x.Kind == RankingReasonKind.TitleRelevance);
+    }
+
+    [Fact]
+    public void Rank_WithNoTitleRelevance_ScoresExactlyAsItDidWithout()
+    {
+        var sut = new GenericBulletRankingService();
+        var bullets = new[]
+        {
+            CreateBullet("Cut Azure spend by 30%.", technologies: ["azure"]),
+            CreateBullet("Rebuilt the Postgres pipeline, cutting query time 60%.", technologies: ["postgres"])
+        };
+
+        var withNone = sut.Rank(bullets, take: 2, GenericRankingContext.Neutral);
+        var withEmpty = sut.Rank(bullets, take: 2, new GenericRankingContext(TitleRelevance.None, EmployerRecency.None));
+
+        withNone.Select(x => x.Score).Should().Equal(withEmpty.Select(x => x.Score));
+        withNone.Should().AllSatisfy(x =>
+            x.Reasons.Should().NotContain(y => y.Kind == RankingReasonKind.TitleRelevance));
     }
 
     [Fact]
@@ -115,7 +205,7 @@ public class GenericBulletRankingServiceTests
             ModifiedDate = DateTime.UtcNow
         };
 
-        var result = sut.Rank([unenriched], take: 1);
+        var result = sut.Rank([unenriched], take: 1, GenericRankingContext.Neutral);
 
         result.Should().ContainSingle();
         result[0].Reasons.Should().NotContain(x => x.Kind == RankingReasonKind.Breadth);
@@ -128,9 +218,9 @@ public class GenericBulletRankingServiceTests
         var sut = new GenericBulletRankingService();
         var bullets = Enumerable.Range(0, 10).Select(i => CreateBullet($"Delivered project {i}.")).ToArray();
 
-        sut.Rank(bullets, take: 3).Should().HaveCount(3);
-        sut.Rank(bullets, take: 50).Should().HaveCount(10);
-        sut.Rank(bullets, take: 0).Should().ContainSingle("zero is treated the way the keyword ranker treats it");
+        sut.Rank(bullets, take: 3, GenericRankingContext.Neutral).Should().HaveCount(3);
+        sut.Rank(bullets, take: 50, GenericRankingContext.Neutral).Should().HaveCount(10);
+        sut.Rank(bullets, take: 0, GenericRankingContext.Neutral).Should().ContainSingle("zero is treated the way the keyword ranker treats it");
     }
 
     [Fact]
@@ -145,8 +235,8 @@ public class GenericBulletRankingServiceTests
             CreateBullet("Cut costs by 30%.", modified: stamp)
         };
 
-        var first = sut.Rank(bullets, take: 3).Select(x => x.Bullet.Id);
-        var second = sut.Rank(bullets, take: 3).Select(x => x.Bullet.Id);
+        var first = sut.Rank(bullets, take: 3, GenericRankingContext.Neutral).Select(x => x.Bullet.Id);
+        var second = sut.Rank(bullets, take: 3, GenericRankingContext.Neutral).Select(x => x.Bullet.Id);
 
         first.Should().Equal(second);
     }
@@ -156,7 +246,7 @@ public class GenericBulletRankingServiceTests
     {
         var sut = new GenericBulletRankingService();
 
-        sut.Rank([], take: 5).Should().BeEmpty();
+        sut.Rank([], take: 5, GenericRankingContext.Neutral).Should().BeEmpty();
     }
 
     [Fact]
@@ -166,7 +256,7 @@ public class GenericBulletRankingServiceTests
         var first = CreateBullet("Cut Azure spend by 30% at Contoso.", technologies: ["azure"]);
         var second = CreateBullet("Rebuilt the Postgres pipeline, cutting query time 60%.", technologies: ["postgres"]);
 
-        var result = sut.Rank([first, second], take: 2);
+        var result = sut.Rank([first, second], take: 2, GenericRankingContext.Neutral);
 
         // Which of the two leads is a quality question and not the point here; what matters is that
         // the second one is credited with the technology it was the first to bring.
