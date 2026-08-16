@@ -27,8 +27,8 @@ else
                 @foreach (var item in artifacts)
                 {
                     <button class="list-group-item list-group-item-action @(selectedId == item.Id ? "active" : null)" @onclick="() => SelectAsync(item.Id)">
-                        <div><strong>@(string.IsNullOrWhiteSpace(item.JobTitle) ? "Untitled Role" : item.JobTitle)</strong></div>
-                        <div>@item.Company</div>
+                        <div><strong>@Title(item.JobTitle, item.IsGeneric)</strong></div>
+                        <div>@(item.IsGeneric ? AudienceLine(item.Audience) : item.Company)</div>
                         <small>@item.CreatedDate.ToLocalTime()</small>
                     </button>
                 }
@@ -43,29 +43,44 @@ else
             else
             {
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h3 class="mb-0">@(selectedArtifact.JobTitle ?? "Generated Artifact")</h3>
+                    <h3 class="mb-0">@Title(selectedArtifact.JobTitle, selectedArtifact.IsGeneric)</h3>
                     <div>
                         <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyResumeAsync">Copy Resume</button>
-                        <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyCoverLetterAsync">Copy Cover Letter</button>
+                        @if (!selectedArtifact.IsGeneric)
+                        {
+                            <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyCoverLetterAsync">Copy Cover Letter</button>
+                        }
                         <button class="btn btn-outline-danger btn-sm" @onclick="DeleteSelectedAsync">Delete</button>
                     </div>
                 </div>
 
-                <p><strong>Company:</strong> @selectedArtifact.Company</p>
+                @if (selectedArtifact.IsGeneric)
+                {
+                    <p><strong>Written for:</strong> @AudienceLine(selectedArtifact.Audience)</p>
+                }
+                else
+                {
+                    <p><strong>Company:</strong> @selectedArtifact.Company</p>
+                }
                 <p><strong>Created:</strong> @selectedArtifact.CreatedDate.ToLocalTime()</p>
 
-                <label class="form-label">Original Job Description</label>
-                <textarea class="form-control mb-3" rows="6" readonly>@selectedArtifact.JobDescription</textarea>
+                @* Nothing to show for a generic generation: there was no posting. *@
+                @if (!selectedArtifact.IsGeneric)
+                {
+                    <label class="form-label">Original Job Description</label>
+                    <textarea class="form-control mb-3" rows="6" readonly>@selectedArtifact.JobDescription</textarea>
+                }
 
                 @* Null for artifacts generated before coverage was recorded; the panel renders nothing. *@
                 <EvidenceCoveragePanel Coverage="@selectedArtifact.Coverage"
                                        Title="Evidence Coverage when this resume was generated" />
 
                 <GenerationExplanationPanel Explanation="@selectedArtifact.Explanation"
-                                            Title="Why this resume held these bullets" />
+                                            Title="Why this resume held these bullets"
+                                            IsGeneric="@selectedArtifact.IsGeneric" />
 
                 <div class="row g-3">
-                    <div class="col-md-6">
+                    <div class="@(selectedArtifact.IsGeneric ? "col-12" : "col-md-6")">
                         <DraftVersionPicker Refinement="@selectedArtifact.ResumeRefinement"
                                             Title="Deep review: pick a resume"
                                             SelectedLabel="@selectedArtifact.ResumeRefinement?.RecommendedLabel"
@@ -73,14 +88,17 @@ else
                                             SelectedLabelChanged="OnResumeVersionSelected" />
                         <MarkdownPane Title="Resume" Markdown="@selectedArtifact.ResumeMarkdown" Rows="18" />
                     </div>
-                    <div class="col-md-6">
-                        <DraftVersionPicker Refinement="@selectedArtifact.CoverLetterRefinement"
-                                            Title="Deep review: pick a cover letter"
-                                            SelectedLabel="@selectedArtifact.CoverLetterRefinement?.RecommendedLabel"
-                                            Disabled="@isSavingSelection"
-                                            SelectedLabelChanged="OnCoverLetterVersionSelected" />
-                        <MarkdownPane Title="Cover Letter" Markdown="@selectedArtifact.CoverLetterMarkdown" Rows="18" />
-                    </div>
+                    @if (!selectedArtifact.IsGeneric)
+                    {
+                        <div class="col-md-6">
+                            <DraftVersionPicker Refinement="@selectedArtifact.CoverLetterRefinement"
+                                                Title="Deep review: pick a cover letter"
+                                                SelectedLabel="@selectedArtifact.CoverLetterRefinement?.RecommendedLabel"
+                                                Disabled="@isSavingSelection"
+                                                SelectedLabelChanged="OnCoverLetterVersionSelected" />
+                            <MarkdownPane Title="Cover Letter" Markdown="@selectedArtifact.CoverLetterMarkdown" Rows="18" />
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -100,6 +118,32 @@ else
     {
         await LoadAsync();
     }
+
+    /// <summary>
+    /// A generic generation's title is the role the candidate was aiming at, not one a posting
+    /// advertised, so it is labelled as such rather than shown as if a job had been applied to.
+    /// </summary>
+    private static string Title(string? jobTitle, bool isGeneric)
+    {
+        if (!isGeneric)
+        {
+            return string.IsNullOrWhiteSpace(jobTitle) ? "Untitled Role" : jobTitle;
+        }
+
+        return string.IsNullOrWhiteSpace(jobTitle)
+            ? "Generic resume"
+            : $"Generic resume - {jobTitle}";
+    }
+
+    private static string AudienceLine(AngryFoot.Contracts.ResumeAudienceDto? audience) => audience switch
+    {
+        AngryFoot.Contracts.ResumeAudienceDto.Recruiter => "Recruiters",
+        AngryFoot.Contracts.ResumeAudienceDto.HiringManager => "Hiring managers",
+        AngryFoot.Contracts.ResumeAudienceDto.TechnicalLeader => "Technical managers and leads",
+        AngryFoot.Contracts.ResumeAudienceDto.Executive => "Executives",
+        // Recorded under a name this build no longer has, or before audiences were stored.
+        _ => "A general audience"
+    };
 
     private async Task LoadAsync()
     {

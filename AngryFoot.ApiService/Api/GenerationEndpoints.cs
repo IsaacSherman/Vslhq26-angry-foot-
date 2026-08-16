@@ -24,6 +24,26 @@ public static class GenerationEndpoints
             return Results.Ok(result);
         });
 
+        // A resume for a recruiter with no posting in hand. Deliberately its own route rather than
+        // a nullable jobDescription on the one above: half the tailored request's fields mean
+        // nothing here, and a shape whose validity depends on a flag is a shape nobody can read.
+        generations.MapPost("/generic", async (
+            GenericGenerationRequest request,
+            IGenerationOrchestrator orchestrator,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.IsDefined(request.Audience))
+            {
+                return Results.BadRequest(new
+                {
+                    error = $"audience must be one of: {string.Join(", ", Enum.GetNames<ResumeAudienceDto>())}."
+                });
+            }
+
+            var result = await orchestrator.GenerateGenericAsync(request, cancellationToken);
+            return Results.Ok(result);
+        });
+
         generations.MapPost("/analyze", async (
             AnalyzeRequest request,
             IJobAnalyzer analyzer,

@@ -29,7 +29,7 @@ public enum BulletDecisionKindDto
     /// <summary>Kept. On its own, means kept in the ranker's position and in the candidate's words.</summary>
     Selected = 1 << 0,
 
-    /// <summary>Its wording was tailored to the posting.</summary>
+    /// <summary>Its wording was tailored - to the posting, or to the audience of a generic resume.</summary>
     Revised = 1 << 1,
 
     /// <summary>It moved from where the ranker put it.</summary>

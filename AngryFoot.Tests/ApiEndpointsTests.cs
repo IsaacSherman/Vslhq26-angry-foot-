@@ -545,6 +545,45 @@ public class ApiEndpointsTests
         Assert.Equal(
             result.Explanation.Decisions.Select(x => x.BulletId),
             artifact.Explanation.Decisions.Select(x => x.BulletId));
+
+        // The same library, with no posting at all: the generic route takes no job description and
+        // still produces a resume, an explanation, and a browsable artifact.
+        var genericResponse = await apiClient.PostAsJsonAsync(
+            "/api/generations/generic",
+            new GenericGenerationRequest(ResumeAudienceDto.TechnicalLeader, "Staff Engineer", MaxBullets: 3),
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, genericResponse.StatusCode);
+        var generic = await genericResponse.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken);
+        Assert.NotNull(generic);
+        Assert.False(string.IsNullOrWhiteSpace(generic!.ResumeMarkdown));
+        Assert.Equal(string.Empty, generic.CoverLetterMarkdown);
+        Assert.Null(generic.Coverage);
+        Assert.NotNull(generic.Explanation);
+        Assert.NotEmpty(generic.Explanation!.Decisions);
+
+        var genericArtifactResponse = await apiClient.GetAsync($"/api/artifacts/{generic.ArtifactId}", cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, genericArtifactResponse.StatusCode);
+        var genericArtifact = await genericArtifactResponse.Content.ReadFromJsonAsync<GenerationArtifactDto>(cancellationToken);
+        Assert.NotNull(genericArtifact);
+        Assert.True(genericArtifact!.IsGeneric);
+        Assert.Equal(ResumeAudienceDto.TechnicalLeader, genericArtifact.Audience);
+        Assert.Equal("Staff Engineer", genericArtifact.JobTitle);
+        Assert.Equal(string.Empty, genericArtifact.JobDescription);
+        Assert.Null(genericArtifact.Coverage);
+
+        // The flag has to survive the summary projection too, or History cannot tell the two kinds
+        // of generation apart in its list.
+        var mixedArtifacts = await apiClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken);
+        Assert.NotNull(mixedArtifacts);
+        Assert.True(mixedArtifacts!.Single(x => x.Id == generic.ArtifactId).IsGeneric);
+        Assert.False(mixedArtifacts.Single(x => x.Id == result.ArtifactId).IsGeneric);
+
+        var badAudience = await apiClient.PostAsJsonAsync(
+            "/api/generations/generic",
+            new { audience = 42, maxBullets = 3 },
+            cancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, badAudience.StatusCode);
     }
 
     /// <summary>

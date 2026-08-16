@@ -34,6 +34,7 @@ public class GenerationOrchestratorTests : IDisposable
             _analyzer.Object,
             new BulletRetrievalService(_vectorStore),
             new BulletRankingService(),
+            new GenericBulletRankingService(),
             new BulletRewriteService(chatClient, pipeline, NullLogger<BulletRewriteService>.Instance),
             new ResumeMarkdownService(),
             new CoverLetterService(chatClient, pipeline, NullLogger<CoverLetterService>.Instance),
@@ -275,6 +276,146 @@ public class GenerationOrchestratorTests : IDisposable
 
         pipeline.Requests.Should().HaveCount(2, "the bullet set and the cover letter are each refined");
         pipeline.Requests.Should().AllSatisfy(x => x.UserGuidance.Should().Be("ACME was a startup"));
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_NeedsNoJobDescription_AndStillProducesAResume()
+    {
+        SeedProfileAndBullets("Cut Azure spend by 30%.", "Rebuilt the Postgres pipeline, cutting query time 60%.");
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Recruiter, MaxBullets: 5),
+            TestContext.Current.CancellationToken);
+
+        result.ArtifactId.Should().NotBeEmpty();
+        result.ResumeMarkdown.Should().NotBeNullOrWhiteSpace();
+        result.SelectedBulletIds.Should().HaveCount(2);
+        _analyzer.Verify(
+            x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "there is no posting to analyze");
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_PersistsAGenericArtifactWithNoLetterAndNoCoverage()
+    {
+        SeedProfileAndBullets("Cut Azure spend by 30%.");
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.TechnicalLeader, TargetTitle: "  Staff Engineer  "),
+            TestContext.Current.CancellationToken);
+
+        result.CoverLetterMarkdown.Should().BeEmpty();
+        result.CoverLetterRefinement.Should().BeNull();
+        result.Coverage.Should().BeNull("coverage is a statement about a posting, and there is none");
+
+        var artifact = _database.Context.GenerationArtifacts.Single();
+        artifact.IsGeneric.Should().BeTrue();
+        artifact.Audience.Should().Be(nameof(ResumeAudienceDto.TechnicalLeader));
+        artifact.JobTitle.Should().Be("Staff Engineer", "the target title is trimmed before persisting");
+        artifact.Company.Should().BeNull();
+        artifact.JobDescription.Should().BeEmpty();
+        artifact.CoverLetterMarkdown.Should().BeEmpty();
+        artifact.EvidenceCoverageJson.Should().BeNull();
+        artifact.GenerationExplanationJson.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_PrefersBreadthOverASecondBulletFromOneCluster()
+    {
+        SeedProfileAndBullets(
+            "Tuned Kubernetes autoscaling, halving cold starts at Contoso.",
+            "Hardened Kubernetes ingress, dropping 5xx rates 30% at Contoso.",
+            "Rebuilt the Postgres reporting pipeline, cutting query time 60% at Contoso.");
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Recruiter, MaxBullets: 2),
+            TestContext.Current.CancellationToken);
+
+        var selected = _database.Context.Bullets
+            .Where(x => result.SelectedBulletIds.Contains(x.Id))
+            .Select(x => x.BulletText)
+            .ToArray();
+
+        selected.Should().Contain(x => x.Contains("Postgres"));
+        selected.Should().ContainSingle(x => x.Contains("Kubernetes"));
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_ExplainsItselfWithoutReferringToRequirements()
+    {
+        SeedProfileAndBullets(
+            "Cut Azure spend by 30%.",
+            "Rebuilt the Postgres pipeline, cutting query time 60%.",
+            "Organised the team offsite.");
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.HiringManager, MaxBullets: 1),
+            TestContext.Current.CancellationToken);
+
+        var explanation = result.Explanation!;
+        explanation.Summary.Should().StartWith("No posting:");
+        explanation.Decisions.Should().HaveCountGreaterThan(1, "the runners-up are the point of the panel");
+        explanation.Decisions.Should().Contain(x => x.Kind.HasFlag(BulletDecisionKindDto.Omitted));
+        explanation.Decisions.Should().AllSatisfy(decision =>
+            decision.Why.Reasoning.Should().NotContain("posting", "there was no posting to reason about"));
+        explanation.Decisions.Should().AllSatisfy(decision =>
+            decision.Why.SupportingEvidence.Should().ContainSingle()
+                .Which.Because.Should().Contain("of 100 on how it is written"));
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_TellsTheRewriteWhoTheResumeIsFor()
+    {
+        SeedProfileAndBullets("Cut Azure spend by 30%.");
+        var pipeline = new FakeRefinementPipeline(TwoVersionsOf);
+        var sut = CreateSut(DeepReviewChatClient(), pipeline);
+
+        await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(
+                ResumeAudienceDto.Executive, TargetTitle: "Director of Engineering", DeepReview: true),
+            TestContext.Current.CancellationToken);
+
+        var request = pipeline.Requests.Should()
+            .ContainSingle(x => x.ArtifactKind == "ordered set of resume bullets").Subject;
+        request.SourceMaterial.Should().Contain("There is no job posting.");
+        request.SourceMaterial.Should().Contain("Director of Engineering");
+        request.SourceMaterial.Should().Contain("an executive");
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_WithDeepReview_RefinesTheResumeAndNoCoverLetter()
+    {
+        SeedProfileAndBullets("Built C# services.");
+        var pipeline = new FakeRefinementPipeline(TwoVersionsOf);
+        var sut = CreateSut(DeepReviewChatClient(), pipeline);
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Recruiter, DeepReview: true),
+            TestContext.Current.CancellationToken);
+
+        pipeline.Requests.Should().ContainSingle("a generic generation has no cover letter to refine");
+        result.ResumeRefinement!.Versions.Should().HaveCount(2);
+        result.ResumeRefinement.Versions.Should().AllSatisfy(
+            x => x.Text.Should().Contain("Ada", "each version is a whole rendered resume, not a JSON payload"));
+        result.CoverLetterRefinement.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GenerateGenericAsync_OnAnEmptyLibrary_StillProducesAResume()
+    {
+        var sut = CreateSut();
+
+        var result = await sut.GenerateGenericAsync(
+            new GenericGenerationRequest(ResumeAudienceDto.Recruiter),
+            TestContext.Current.CancellationToken);
+
+        result.SelectedBulletIds.Should().BeEmpty();
+        result.ResumeMarkdown.Should().Contain("Candidate Name", "an empty profile renders placeholders");
     }
 
     /// <summary>

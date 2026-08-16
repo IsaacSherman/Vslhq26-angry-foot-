@@ -294,6 +294,18 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken))!;
     }
 
+    /// <summary>
+    /// Generates from the whole bullet library with no posting to aim at. The result's
+    /// <see cref="GenerationResultDto.CoverLetterMarkdown"/> is empty and its
+    /// <see cref="GenerationResultDto.Coverage"/> null by design; see the API's /generic route.
+    /// </summary>
+    public async Task<GenerationResultDto> GenerateGenericAsync(GenericGenerationRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/generations/generic", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GenerationResultDto>(cancellationToken))!;
+    }
+
     public async Task<List<ArtifactSummaryDto>> GetArtifactsAsync(CancellationToken cancellationToken = default)
     {
         return await httpClient.GetFromJsonAsync<List<ArtifactSummaryDto>>("/api/artifacts", cancellationToken) ?? [];

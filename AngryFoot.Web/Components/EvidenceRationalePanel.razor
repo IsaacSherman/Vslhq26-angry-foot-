@@ -41,7 +41,7 @@
 
         @if (Why.MissingEvidence.Count > 0)
         {
-            <p class="text-muted mb-1">What would close this:</p>
+            <p class="text-muted mb-1">@MissingHeading</p>
             <ul class="mb-0">
                 @foreach (var missing in Why.MissingEvidence)
                 {
@@ -55,6 +55,14 @@
 @code {
     [Parameter]
     public EvidenceRationaleDto? Why { get; set; }
+
+    /// <summary>
+    /// What the missing list is a list of. Defaults to the gap-closing sense every requirement-based
+    /// rationale uses; a caller whose entries are reasons a bullet lost rather than gaps to close
+    /// says so, because the same list under the wrong heading reads as advice nobody can act on.
+    /// </summary>
+    [Parameter]
+    public string MissingHeading { get; set; } = "What would close this:";
 
     /// <summary>
     /// The bullets under a wording or ordering note are what the note is about rather than proof of

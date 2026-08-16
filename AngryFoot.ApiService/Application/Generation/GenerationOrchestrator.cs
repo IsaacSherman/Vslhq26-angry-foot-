@@ -12,6 +12,7 @@ internal sealed class GenerationOrchestrator(
     IJobAnalyzer jobAnalyzer,
     BulletRetrievalService retrievalService,
     BulletRankingService rankingService,
+    GenericBulletRankingService genericRankingService,
     BulletRewriteService rewriteService,
     ResumeMarkdownService resumeService,
     CoverLetterService coverLetterService,
@@ -33,27 +34,11 @@ internal sealed class GenerationOrchestrator(
             throw new ArgumentException("Job description is required.", nameof(request));
         }
 
-        var profile = await dbContext.Profiles
-            .Include(x => x.WorkHistory)
-            .Include(x => x.Education)
-            .Include(x => x.Certifications)
-            .FirstOrDefaultAsync(cancellationToken)
-            ?? Domain.Profile.CreateEmpty();
-
-        if (profile.Id == Guid.Empty || !await dbContext.Profiles.AnyAsync(x => x.Id == profile.Id, cancellationToken))
-        {
-            if (profile.Id == Guid.Empty)
-            {
-                profile.Id = Guid.NewGuid();
-            }
-
-            dbContext.Profiles.Add(profile);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
+        var profile = await LoadOrCreateProfileAsync(cancellationToken);
 
         var analysis = await jobAnalyzer.AnalyzeAsync(request.JobDescription, cancellationToken);
 
-        var maxBullets = Math.Clamp(request.MaxBullets.GetValueOrDefault(10), 1, 20);
+        var maxBullets = ClampMaxBullets(request.MaxBullets);
 
         // Deep review is allowed to swap a weak bullet out for a better one, so it needs
         // candidates the ranker left on the bench.
@@ -68,9 +53,9 @@ internal sealed class GenerationOrchestrator(
         var selected = ranked.Take(maxBullets).ToArray();
         var bench = ranked.Skip(maxBullets).Take(benchSize).ToArray();
 
-        var guidance = string.IsNullOrWhiteSpace(request.Guidance) ? null : request.Guidance.Trim();
+        var guidance = TrimToNull(request.Guidance);
         var rewriteOutcome = await rewriteService.RewriteAsync(
-            analysis, selected, bench, guidance, request.DeepReview, cancellationToken);
+            RewriteTarget.ForPosting(analysis), selected, bench, guidance, request.DeepReview, cancellationToken);
         var rewritten = rewriteOutcome.Recommended;
 
         var resumeMarkdown = resumeService.BuildResume(profile, analysis, rewritten);
@@ -125,6 +110,102 @@ internal sealed class GenerationOrchestrator(
             coverage,
             explanation);
     }
+
+    public async Task<GenerationResultDto> GenerateGenericAsync(
+        GenericGenerationRequest request, CancellationToken cancellationToken)
+    {
+        var profile = await LoadOrCreateProfileAsync(cancellationToken);
+
+        // No posting means no analysis to extract and no query text to retrieve against, so the
+        // ranker reads the whole library - the same thing the keyword path falls back to.
+        var analysis = JobAnalysis.Neutral;
+        var maxBullets = ClampMaxBullets(request.MaxBullets);
+        var benchSize = request.DeepReview ? maxBullets : 0;
+
+        var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
+        var ranked = genericRankingService.Rank(bullets, maxBullets + benchSize + MaxRunnersUpExplained);
+        var selected = ranked.Take(maxBullets).ToArray();
+        var bench = ranked.Skip(maxBullets).Take(benchSize).ToArray();
+
+        var guidance = TrimToNull(request.Guidance);
+        var targetTitle = TrimToNull(request.TargetTitle);
+        var rewriteOutcome = await rewriteService.RewriteAsync(
+            RewriteTarget.ForAudience(targetTitle, request.Audience),
+            selected,
+            bench,
+            guidance,
+            request.DeepReview,
+            cancellationToken);
+        var rewritten = rewriteOutcome.Recommended;
+
+        var resumeMarkdown = resumeService.BuildResume(profile, analysis, rewritten);
+        var resumeRefinement = BuildResumeRefinement(profile, analysis, rewriteOutcome);
+        var explanation = GenerationExplanationService.ExplainGeneric(ranked, rewritten, request.Audience);
+
+        var artifact = new GenerationArtifact
+        {
+            Id = Guid.NewGuid(),
+            JobTitle = targetTitle,
+            Company = null,
+            JobDescription = string.Empty,
+            ResumeMarkdown = resumeMarkdown,
+            // No posting, no role, no company: a letter built from those would be three blanks and
+            // a paragraph the user has to delete.
+            CoverLetterMarkdown = string.Empty,
+            SelectedBulletIds = rewritten.Select(x => x.Bullet.Id).ToList(),
+            JobAnalysisJson = Ai.AiJsonUtilities.ToJson(analysis),
+            CreatedDate = DateTime.UtcNow,
+            ResumeRefinementJson = ArtifactJsonColumns.ToJson(resumeRefinement),
+            // Coverage measures a library against a posting's requirements. With no requirements
+            // extracted, a report would score 0% and read as a failure rather than as a question
+            // that was never asked.
+            EvidenceCoverageJson = null,
+            GenerationExplanationJson = ArtifactJsonColumns.ToJson(explanation),
+            IsGeneric = true,
+            Audience = request.Audience.ToString()
+        };
+
+        dbContext.GenerationArtifacts.Add(artifact);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new GenerationResultDto(
+            artifact.Id,
+            artifact.ResumeMarkdown,
+            artifact.CoverLetterMarkdown,
+            analysis,
+            artifact.SelectedBulletIds,
+            resumeRefinement,
+            CoverLetterRefinement: null,
+            Coverage: null,
+            explanation);
+    }
+
+    private async Task<Domain.Profile> LoadOrCreateProfileAsync(CancellationToken cancellationToken)
+    {
+        var profile = await dbContext.Profiles
+            .Include(x => x.WorkHistory)
+            .Include(x => x.Education)
+            .Include(x => x.Certifications)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? Domain.Profile.CreateEmpty();
+
+        if (profile.Id == Guid.Empty || !await dbContext.Profiles.AnyAsync(x => x.Id == profile.Id, cancellationToken))
+        {
+            if (profile.Id == Guid.Empty)
+            {
+                profile.Id = Guid.NewGuid();
+            }
+
+            dbContext.Profiles.Add(profile);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return profile;
+    }
+
+    private static int ClampMaxBullets(int? requested) => Math.Clamp(requested.GetValueOrDefault(10), 1, 20);
+
+    private static string? TrimToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     /// <summary>
     /// Turns the deep-review versions of the bullet rewrites into versions of the whole resume.

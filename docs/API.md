@@ -382,6 +382,52 @@ For an omitted bullet that speaks to a requirement the resume does not fully evi
 `why.missingEvidence` says what leaving it off cost. Like `coverage`, this is computed
 deterministically and needs no AI call.
 
+### POST `/api/generations/generic`
+Generates a resume from the whole bullet library with **no posting** to aim at — the case where a
+recruiter wants a resume today and there is nothing to tailor to.
+
+Request:
+```json
+{
+  "audience": 2,
+  "targetTitle": "Staff Engineer",
+  "maxBullets": 8,
+  "deepReview": false,
+  "guidance": "\"systems\" in my bullets means HVAC controls, not software."
+}
+```
+
+`audience` is required and is the only thing the rewrite knows about its reader. It serializes as an
+integer like the other enums here: `0` Recruiter, `1` HiringManager, `2` TechnicalLeader, `3`
+Executive. A value outside that range is a `400`. `targetTitle` is the role the candidate is aiming
+at, not one a posting advertised; it shapes wording and nothing is invented from it. `maxBullets`,
+`deepReview`, and `guidance` behave exactly as on `/api/generations`, except that deep review costs
+three extra AI calls rather than six — there is no cover letter to refine.
+
+Bullet selection does **not** use semantic retrieval, which needs query text this mode has none of.
+A dedicated ranker scores every bullet in the library on how it is written (the same signals as
+`/api/bullets/assess`) and then picks greedily, giving credit for skills, technologies, and
+employers nothing selected so far covers, and penalising a bullet for repeating the wording of one
+already chosen. The result is strong bullets that cover as much ground as the library allows rather
+than the largest cluster in it.
+
+Response: `GenerationResultDto`, with three fields that differ from a tailored generation:
+
+- `coverLetterMarkdown` is always `""`. A letter needs a role and a company, and there are neither.
+- `coverage` is always `null`, as is `coverLetterRefinement`. Coverage measures a library against a
+  posting's extracted requirements; with no posting there are none, and a report would score 0% and
+  read as a failed test rather than as a question never asked.
+- `analysis` is an empty `JobAnalysisDto` — the neutral object the pipeline carries where a tailored
+  generation carries a posting's, not a posting that turned out to be blank.
+
+`explanation` is present and has the same shape, but reasons in the ranker's terms rather than a
+posting's: `why.supportingEvidence[].because` names the quality score and the signals the bullet
+earned, and for an omitted bullet `why.missingEvidence` says what it repeated or which employer was
+already well represented. `kind`'s `"Revised"` means "reworded for this audience" here.
+
+The stored artifact carries `isGeneric: true` and the `audience`, on both the full artifact and the
+`/api/artifacts` summaries, with `jobDescription` empty.
+
 ## Artifacts
 
 ### GET `/api/artifacts`
@@ -398,6 +444,11 @@ would no longer explain the resume beside it. Null for artifacts generated befor
 
 `explanation` is frozen for the same reason: it describes decisions taken over a candidate set that
 has since changed. Null for artifacts generated before it was recorded.
+
+`isGeneric` marks an artifact produced by `/api/generations/generic`. For those, `jobDescription`
+and `coverLetterMarkdown` are empty, `coverage` is null, `jobTitle` is the title the candidate was
+aiming at rather than one a posting advertised, and `audience` says who it was written for. Both
+fields also appear on the `/api/artifacts` summaries.
 
 ### PUT `/api/artifacts/{id}/selection`
 Promotes a stored deep-review version to be the artifact's resume and/or cover letter, so history

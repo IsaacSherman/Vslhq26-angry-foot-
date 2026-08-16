@@ -25,9 +25,10 @@ internal sealed class BulletRewriteService(
     /// Runner-up bullets the ranker did not select. Deep review may swap these in; the initial
     /// draft never sees them.
     /// </param>
+    /// <param name="target">The posting, or the audience when there is no posting.</param>
     /// <param name="guidance">The candidate's clarification of their own material, if any.</param>
     public async Task<BulletRewriteOutcome> RewriteAsync(
-        JobAnalysisDto analysis,
+        RewriteTarget target,
         IReadOnlyList<RankedBullet> selected,
         IReadOnlyList<RankedBullet> bench,
         string? guidance,
@@ -43,7 +44,7 @@ internal sealed class BulletRewriteService(
         }
 
         var systemPrompt = "You rewrite resume bullets. Preserve factual accuracy. Do not invent technologies, metrics, employers, or responsibilities. Return strict JSON: { \"bullets\": [ { \"bulletId\", \"rewritten\" } ] } with one entry per bullet given.";
-        var userPrompt = $"Job analysis: {AiJsonUtilities.ToJson(analysis)}\nBullets: {AiJsonUtilities.ToJson(ToPayload(selected))}{FormatGuidance(guidance)}";
+        var userPrompt = $"{target.Brief}\nBullets: {AiJsonUtilities.ToJson(ToPayload(selected))}{FormatGuidance(guidance)}";
 
         try
         {
@@ -63,7 +64,7 @@ internal sealed class BulletRewriteService(
                 .ToArray();
 
             return deepReview
-                ? await RefineAsync(analysis, selected, bench, applied, guidance, cancellationToken)
+                ? await RefineAsync(target, selected, bench, applied, guidance, cancellationToken)
                 : BulletRewriteOutcome.WithoutRefinement(applied);
         }
         catch (OperationCanceledException)
@@ -84,7 +85,7 @@ internal sealed class BulletRewriteService(
     /// top-down, so sequencing is as much of an editorial choice as wording.
     /// </summary>
     private async Task<BulletRewriteOutcome> RefineAsync(
-        JobAnalysisDto analysis,
+        RewriteTarget target,
         IReadOnlyList<RankedBullet> selected,
         IReadOnlyList<RankedBullet> bench,
         IReadOnlyList<RewrittenBullet> applied,
@@ -94,7 +95,7 @@ internal sealed class BulletRewriteService(
         var pool = selected.Concat(bench).ToDictionary(x => x.Bullet.Id, x => x.Bullet);
 
         var sourceMaterial = $"""
-            Job analysis: {AiJsonUtilities.ToJson(analysis)}
+            {target.Brief}
             The bullets currently on the resume, in order, as the candidate actually wrote them: {AiJsonUtilities.ToJson(ToPayload(selected))}
             Other bullets in the candidate's library that were not selected, available to swap in: {AiJsonUtilities.ToJson(ToPayload(bench))}
             The resume holds exactly {selected.Count} bullet(s). Every bulletId you return must come from one of the two lists above.
@@ -105,7 +106,7 @@ internal sealed class BulletRewriteService(
                 ArtifactKind: "ordered set of resume bullets",
                 OutputContract:
                     $"a JSON array of at most {selected.Count} objects with exactly the fields bulletId and rewritten, each rewritten value a single plain-text resume bullet. " +
-                    "Array order is the order the bullets appear on the resume, strongest evidence for this job first. " +
+                    $"Array order is the order the bullets appear on the resume, {target.OrderingRule}. " +
                     "You may reorder them, and you may drop a weak bullet and swap in a stronger one from the unselected list, but only bulletIds from the lists provided",
                 SourceMaterial: sourceMaterial,
                 Draft: ToDraftJson(applied),

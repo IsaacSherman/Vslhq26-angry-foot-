@@ -17,6 +17,41 @@ public sealed record GenerationRequest(
     bool DeepReview = false,
     string? Guidance = null);
 
+/// <summary>
+/// Who the generic resume is being written for. There is no posting to tailor to, so this is the
+/// only thing the rewrite knows about its reader - it changes wording, never selection.
+/// </summary>
+public enum ResumeAudienceDto
+{
+    /// <summary>Screening for role fit, at speed, without domain depth.</summary>
+    Recruiter,
+
+    /// <summary>Hiring for their own team; reads for outcomes and scope.</summary>
+    HiringManager,
+
+    /// <summary>Reads for depth, systems, and named technologies.</summary>
+    TechnicalLeader,
+
+    /// <summary>Reads for business impact and the size of what was owned.</summary>
+    Executive
+}
+
+/// <summary>
+/// A resume built from the whole bullet library with no posting to aim at - the strongest bullets,
+/// spread deliberately across skills, technologies, and employers.
+/// </summary>
+/// <param name="TargetTitle">
+/// The role the candidate is aiming at, or null. Shapes the rewrite's wording; unlike
+/// <see cref="GenerationRequest.JobTitle"/> it describes an ambition rather than a posting.
+/// </param>
+/// <param name="Guidance">The same clarification of the candidate's own material as on a tailored generation.</param>
+public sealed record GenericGenerationRequest(
+    ResumeAudienceDto Audience,
+    string? TargetTitle = null,
+    int? MaxBullets = null,
+    bool DeepReview = false,
+    string? Guidance = null);
+
 public sealed record JobAnalysisDto(
     IReadOnlyList<string> RequiredSkills,
     IReadOnlyList<string> PreferredSkills,
@@ -61,15 +96,27 @@ public sealed record GenerationResultDto(
     EvidenceCoverageReportDto? Coverage = null,
     GenerationExplanationDto? Explanation = null);
 
+/// <param name="IsGeneric">
+/// True when this was generated with no posting. <paramref name="JobTitle"/> is then the title the
+/// candidate was aiming at rather than one a posting advertised, and <paramref name="Company"/> is
+/// always null.
+/// </param>
 public sealed record ArtifactSummaryDto(
     Guid Id,
     string? JobTitle,
     string? Company,
-    DateTime CreatedDate);
+    DateTime CreatedDate,
+    bool IsGeneric = false,
+    ResumeAudienceDto? Audience = null);
 
 /// <param name="Coverage">
 /// The coverage report as of the moment this resume was generated. Null for artifacts created
-/// before the report existed, and for any row whose stored JSON no longer reads back.
+/// before the report existed, for any row whose stored JSON no longer reads back, and for generic
+/// generations, which have no posting to be covered against.
+/// </param>
+/// <param name="IsGeneric">
+/// True when this was generated with no posting. <paramref name="JobDescription"/> and
+/// <paramref name="CoverLetterMarkdown"/> are then both empty.
 /// </param>
 public sealed record GenerationArtifactDto(
     Guid Id,
@@ -84,4 +131,6 @@ public sealed record GenerationArtifactDto(
     RefinementDto? ResumeRefinement = null,
     RefinementDto? CoverLetterRefinement = null,
     EvidenceCoverageReportDto? Coverage = null,
-    GenerationExplanationDto? Explanation = null);
+    GenerationExplanationDto? Explanation = null,
+    bool IsGeneric = false,
+    ResumeAudienceDto? Audience = null);

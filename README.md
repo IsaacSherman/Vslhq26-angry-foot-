@@ -51,6 +51,8 @@ flowchart LR
 
 The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `EvidenceCoverageService` (link each requirement to the bullets that evidence it) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
 
+There is a second entry point for when there is no posting at all: `GenerateGenericAsync` skips analysis, coverage, retrieval, and the cover letter, and picks bullets with `GenericBulletRankingService` — quality plus a diversity bonus and a near-duplicate penalty — before rejoining the same rewrite and assembly stages. See [Generic resume: when there is no posting](#generic-resume-when-there-is-no-posting).
+
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
@@ -195,6 +197,25 @@ Each bullet is labelled with what became of it, and expands to the reasoning:
 A bullet left off that speaks to something the resume **does not** evidence is called out as a cost rather than listed as a neutral fact: *"This resume does not fully evidence Kubernetes, which this bullet speaks to. Raising Max Bullets, or strengthening this one, would bring it in."* That is usually the most actionable line in the panel.
 
 The explanation is deterministic and costs no AI call — the generator's choices are already made by the time it runs, so explaining them cannot disagree with the resume it describes. It is stored with the artifact, so reopening a generation from History explains the resume you actually sent.
+
+### Generic resume: when there is no posting
+
+Sometimes a recruiter wants a resume today and there is nothing to tailor to. **Generate** has a second mode for that, labelled as what it is: a generic resume, not a targeted one. Switching to it hides the job description and company, and asks for two things instead — the job title you are *aiming* at, and who the resume is going to: a recruiter, a hiring manager, a technical manager or lead, or an executive.
+
+**The audience changes the wording, never the selection.** A technical lead reads for depth and named systems; an executive reads for cost, revenue, and the size of what was owned. That is a real difference in how a bullet should be phrased, and the rewrite is told which reader it is writing for. What it is deliberately *not* allowed to do is change which bullets get picked — the ranker stays audience-neutral so its output is auditable, and so the explanation panel can be checked against it.
+
+**How bullets are picked.** With no posting, keyword and semantic matching have nothing to match against, so a different ranker runs. It scores every bullet on how it is written — the same signals the quality panel shows — and then picks greedily, asking at each slot not "which bullet is best" but "which bullet is best *given the ones already chosen*":
+
+- **Strength first.** A bullet's quality score is the base, so a measurable result still beats a vague one.
+- **Credit for new ground.** A bullet gets a bonus for skills, technologies, and job families nothing selected so far covers. This is what stops six excellent Kubernetes bullets from becoming the whole resume.
+- **A penalty for repeating yourself.** Wording overlap against the bullets already chosen, over the same content-word comparison the overused-wording diagnostic uses. Ordinary shared vocabulary is ignored; a paraphrase of a bullet already on the page is heavily penalised.
+- **A mild penalty for one employer.** Small and slow to bite, because bullets print grouped under their employer and several from one job is the normal shape of a resume, not a flaw.
+
+The explanation panel works the same way it does for a targeted resume, but reasons in those terms: *"Scores 90 of 100 on how it is written: opens with an action, measurable result, names specifics. The only bullet so far covering Postgres."* — and for one left off, *"Repeats 84% of the wording of 'Migrated 40 payment services onto Kubernetes.', which is already selected."*
+
+**What you do not get, and why.** No cover letter: it needs a role and a company, and a letter addressed to nobody is a paragraph you would delete. No evidence coverage score and no occupational benchmark: both measure your library against a posting's stated requirements, and with no posting there are none to measure against — a 0% would read as a failure rather than as a question that was never asked. Deep review still works, and costs three extra AI calls here instead of six.
+
+**This is the worse workflow, and the UI says so.** A resume written against a real posting beats a generic one, every time. This exists because sometimes there is no posting, not because generic resumes are a good idea.
 
 ### Bullet versions and bullet quality
 

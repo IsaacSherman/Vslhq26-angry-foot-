@@ -41,7 +41,7 @@
                                         <blockquote class="fst-italic mb-0">@finalText</blockquote>
                                     </div>
                                 }
-                                <EvidenceRationalePanel Why="@decision.Why" />
+                                <EvidenceRationalePanel Why="@decision.Why" MissingHeading="@MissingHeading" />
                             </div>
                         </details>
                     </div>
@@ -57,6 +57,15 @@
 
     [Parameter]
     public string Title { get; set; } = "Why this resume holds these bullets";
+
+    /// <summary>
+    /// A generic generation's omitted bullets carry what they repeated rather than a requirement
+    /// they would have closed, so the list needs a heading that describes a cost and not a remedy.
+    /// </summary>
+    [Parameter]
+    public bool IsGeneric { get; set; }
+
+    private string MissingHeading => IsGeneric ? "Why it lost its slot:" : "What would close this:";
 
     /// <summary>
     /// The wording as it appears on the resume, since that is what the reader is looking at; the
