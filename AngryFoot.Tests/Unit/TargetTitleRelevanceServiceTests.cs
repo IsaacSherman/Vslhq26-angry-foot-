@@ -148,25 +148,84 @@ public class TargetTitleRelevanceServiceTests
     }
 
     /// <summary>
-    /// Broad titles reach almost every bullet, because the occupational dataset's skill terms are
-    /// clipped stems most software work satisfies. The summary has to report that as the null
-    /// result it is rather than as a strong match.
+    /// When every bullet scores the same there is no spread to read, so they are all equally
+    /// relevant - and the summary has to report that as the null result it is rather than as a
+    /// library full of matches.
     /// </summary>
     [Fact]
-    public async Task BuildAsync_WhenATitleMatchesNearlyEverything_SaysItNarrowedNothing()
+    public async Task BuildAsync_WhenEveryBulletScoresTheSame_SaysTheTitleNarrowedNothing()
     {
         var sut = CreateSut();
         var bullets = new[]
         {
-            CreateBullet("Designed and built the deployment system.", skills: ["programming"]),
-            CreateBullet("Developed the reporting application.", skills: ["programming"]),
-            CreateBullet("Architected the integration workflow.", skills: ["programming"])
+            CreateBullet("Organised the annual team offsite."),
+            CreateBullet("Chaired the weekly planning meeting."),
+            CreateBullet("Maintained the shared calendar.")
         };
 
-        var relevance = await sut.BuildAsync("Software Engineer", bullets, TestContext.Current.CancellationToken);
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults = bullets.Select(x => new BulletSimilarityMatch(x.Id, 0.62f)).ToArray();
 
-        Assert.SkipUnless(relevance.IsActive, "The bundled O*NET dataset does not cover this occupation.");
+        var relevance = await sut.BuildAsync(
+            "Assistant Regional Manager of Beets", bullets, TestContext.Current.CancellationToken);
+
         relevance.Summary.Should().Contain("narrowed the field very little");
+    }
+
+    /// <summary>
+    /// The defect this normalisation exists to prevent: a three-word title is close to most of one
+    /// person's technical writing, so scaling against the maximum alone left every bullet between
+    /// 0.76 and 1.0 and the relevance term stopped separating anything.
+    /// </summary>
+    [Fact]
+    public async Task BuildAsync_SpreadsCloselyBunchedSemanticScoresAcrossTheWholeRange()
+    {
+        var sut = CreateSut();
+        var best = CreateBullet("Trained a churn model.");
+        var middle = CreateBullet("Built the reporting service.");
+        var worst = CreateBullet("Organised the team offsite.");
+
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults =
+        [
+            new BulletSimilarityMatch(best.Id, 0.72f),
+            new BulletSimilarityMatch(middle.Id, 0.63f),
+            new BulletSimilarityMatch(worst.Id, 0.55f)
+        ];
+
+        var relevance = await sut.BuildAsync(
+            "Assistant Regional Manager of Beets", [best, middle, worst], TestContext.Current.CancellationToken);
+
+        relevance.For(best.Id).Should().BeGreaterThan(0.9);
+        relevance.For(worst.Id).Should().Be(0);
+        (relevance.For(best.Id) - relevance.For(middle.Id)).Should().BeGreaterThan(0.3,
+            "raw scores nine hundredths apart have to reach the ranker as a difference it can act on");
+    }
+
+    /// <summary>
+    /// And the guard on that spreading: a library whose best match is barely above the floor should
+    /// not have its least-far-away bullet promoted to full relevance.
+    /// </summary>
+    [Fact]
+    public async Task BuildAsync_DampsTheWholeSemanticSignalWhenNothingIsActuallyClose()
+    {
+        var sut = CreateSut();
+        var best = CreateBullet("Organised the annual team offsite.");
+        var worst = CreateBullet("Maintained the shared calendar.");
+
+        _vectorStore.IsAvailable = true;
+        _vectorStore.SearchResults =
+        [
+            new BulletSimilarityMatch(best.Id, 0.38f),
+            new BulletSimilarityMatch(worst.Id, 0.36f)
+        ];
+
+        var relevance = await sut.BuildAsync(
+            "Assistant Regional Manager of Beets", [best, worst], TestContext.Current.CancellationToken);
+
+        relevance.For(best.Id).Should().BeLessThan(0.7,
+            "nothing here is close to the title, so the top of a weak field is not fully relevant");
+        relevance.For(best.Id).Should().BeGreaterThan(0);
     }
 
     [Fact]

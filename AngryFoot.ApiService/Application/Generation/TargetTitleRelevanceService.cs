@@ -51,8 +51,9 @@ internal sealed record TitleRelevance(
 /// The word signal exists because the occupational dataset is uneven and small. It covers 21
 /// technology occupations and no machine-learning role at all, and some of the occupations it does
 /// carry - Data Scientists among them - list only named products, with no skill or knowledge
-/// descriptors. Without this signal, "Machine Learning Specialist" would steer nothing on a machine
-/// running without a semantic index, which is the configuration this app degrades to by default.
+/// descriptors. Without this signal, "Machine Learning Specialist" would steer nothing at all
+/// wherever the semantic index is unavailable - no embedding deployment configured, Qdrant not
+/// running, or bullets added before either was set up and never reindexed.
 /// </para>
 /// </summary>
 internal sealed class TargetTitleRelevanceService(
@@ -72,11 +73,25 @@ internal sealed class TargetTitleRelevanceService(
     private const float MinimumSemanticSimilarity = 0.35f;
 
     /// <summary>
+    /// Cosine similarity at which a bullet is genuinely about the title, rather than merely the
+    /// closest thing in the library to it. Used to damp the whole semantic signal when nothing
+    /// reaches it, since similarity to a three-word title is high for most technical writing.
+    /// </summary>
+    private const double StrongSemanticSimilarity = 0.6;
+
+    /// <summary>
     /// Share of the library above which a title has matched so much that it has discriminated
     /// nothing. Reached easily by broad titles: the occupational dataset's skill descriptors are
     /// clipped stems like "develop" and "system", which most of a software library satisfies.
     /// </summary>
     private const double BroadMatchShare = 0.9;
+
+    /// <summary>
+    /// Normalized relevance at or above which a bullet is worth counting as relevant to the user.
+    /// Half the observed range: below that, the bullet is nearer the library's floor than its
+    /// ceiling for this title.
+    /// </summary>
+    private const double ClearlyRelevant = 0.5;
 
     /// <summary>
     /// Words that name a rung rather than a subject. Stripped so "Machine Learning Specialist"
@@ -127,7 +142,18 @@ internal sealed class TargetTitleRelevanceService(
         return new TitleRelevance(
             scores,
             explanations,
-            Summarize(title, words.Subject, occupational.OccupationTitle, semantic.Count > 0, scores.Count, bullets.Count));
+            Summarize(
+                title,
+                words.Subject,
+                occupational.OccupationTitle,
+                semantic.Count > 0,
+                // Counted at the reporting threshold rather than at "scored anything at all": with a
+                // semantic index every bullet in a technical library scores something, and "51 of
+                // your 51 bullets carry relevant work" reads as a strong result when it means the
+                // title barely separated them.
+                scores.Values.Count(score => score >= ClearlyRelevant),
+                scores.Count,
+                bullets.Count));
     }
 
     /// <summary>Names the strongest of the three signals, since that is the one that placed the bullet.</summary>
@@ -287,7 +313,18 @@ internal sealed class TargetTitleRelevanceService(
                 .Where(x => x.Score >= MinimumSemanticSimilarity)
                 .ToDictionary(x => x.BulletId, x => (double)x.Score);
 
-            return Normalize(scores) ?? scores;
+            if (scores.Count == 0)
+            {
+                return scores;
+            }
+
+            // A three-word title is close to everything in one person's library - measured against a
+            // real 51-bullet library, every bullet cleared the floor for "DevOps Engineer". So the
+            // signal is in the spread, not the level: damped by how close the best match actually
+            // got, so a library with nothing near the title cannot hand out full marks for being
+            // the least far away.
+            var confidence = Math.Min(1, scores.Values.Max() / StrongSemanticSimilarity);
+            return Normalize(scores)?.ToDictionary(x => x.Key, x => x.Value * confidence) ?? scores;
         }
         catch (OperationCanceledException)
         {
@@ -303,9 +340,16 @@ internal sealed class TargetTitleRelevanceService(
     }
 
     /// <summary>
-    /// Rescales onto 0-1 against the best-scoring bullet, so the two signals are comparable before
-    /// they are compared. Null when there is nothing to scale.
+    /// Rescales onto 0-1 across the observed range, so the signals are comparable before they are
+    /// compared. Null when there is nothing to scale.
     /// </summary>
+    /// <remarks>
+    /// Against the range rather than against the maximum. Dividing by the maximum leaves scores
+    /// sitting between 0.76 and 1.0 when the raw ones sit between 0.55 and 0.72 - every bullet then
+    /// collects most of the relevance weight, the term stops separating anything, and whatever
+    /// signal comes next silently decides the ranking. Spreading the range is what makes the
+    /// ordering the ranker sees the ordering this actually measured.
+    /// </remarks>
     private static IReadOnlyDictionary<Guid, double>? Normalize(IReadOnlyDictionary<Guid, double> scores)
     {
         if (scores.Count == 0)
@@ -314,14 +358,29 @@ internal sealed class TargetTitleRelevanceService(
         }
 
         var best = scores.Values.Max();
-        return best <= 0 ? null : scores.ToDictionary(x => x.Key, x => x.Value / best);
+        if (best <= 0)
+        {
+            return null;
+        }
+
+        var worst = scores.Values.Min();
+        var span = best - worst;
+
+        // One hit, or a dead heat: there is no spread to read, so everything that scored is equally
+        // and fully relevant.
+        return span <= 0
+            ? scores.ToDictionary(x => x.Key, _ => 1.0)
+            : scores.ToDictionary(x => x.Key, x => (x.Value - worst) / span);
     }
 
+    /// <param name="relevantCount">Bullets clearly relevant to the title.</param>
+    /// <param name="scoredCount">Bullets that scored anything at all, however faintly.</param>
     private static string Summarize(
         string title,
         string? subject,
         string? occupationTitle,
         bool usedSemantic,
+        int relevantCount,
         int scoredCount,
         int bulletCount)
     {
@@ -329,6 +388,13 @@ internal sealed class TargetTitleRelevanceService(
         {
             return $"No bullet in your library matched what \"{title}\" work involves, so your target title did not "
                 + "steer this selection - it was made on strength, breadth, and recency alone.";
+        }
+
+        if (relevantCount == 0)
+        {
+            return $"Nothing in your library stands out as \"{title}\" work - the bullets scored close enough "
+                + "together that your target title barely separated them, so this selection is mostly strength, "
+                + "breadth, and recency.";
         }
 
         var bases = new List<string>();
@@ -350,10 +416,10 @@ internal sealed class TargetTitleRelevanceService(
         // A title that matches nearly everything has not narrowed anything, and "51 of your 51
         // bullets carry relevant work" reads like a strong result rather than a null one. Say which
         // it was, since the ordering the user is looking at came from strength and recency instead.
-        var reach = scoredCount >= bulletCount * BroadMatchShare
-            ? $"{scoredCount} of your {bulletCount} bullets carry relevant work - nearly all of them, so this title "
+        var reach = relevantCount >= bulletCount * BroadMatchShare
+            ? $"{relevantCount} of your {bulletCount} bullets carry relevant work - nearly all of them, so this title "
               + "narrowed the field very little and the order below is mostly strength, breadth, and recency."
-            : $"{scoredCount} of your {bulletCount} bullets carry relevant work.";
+            : $"{relevantCount} of your {bulletCount} bullets carry relevant work.";
 
         return $"Selected for \"{title}\", matched {string.Join(" and ", bases)}: {reach}";
     }
