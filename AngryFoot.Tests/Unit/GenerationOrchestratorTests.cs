@@ -170,6 +170,33 @@ public class GenerationOrchestratorTests : IDisposable
         artifact.CoverLetterRefinementJson.Should().BeNull();
     }
 
+    /// <summary>
+    /// Retrieval has to surface more bullets than the resume will hold, or nothing is ever left off
+    /// and "why isn't this bullet here" has no answer - including the answer worth having, that a
+    /// bullet just below the cut was the only one evidencing something the resume now misses.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_ExplainsTheRunnersUpAndNotOnlyTheBulletsItKept()
+    {
+        SeedProfileAndBullets(
+            "Cut Azure spend by 30%.",
+            "Migrated 40 services to Azure.",
+            "Tuned Kubernetes autoscaling, halving cold starts.",
+            "Organised the team offsite.");
+        _analyzer.Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new JobAnalysisDto(["azure"], [], [], [], [], null, null));
+        var sut = CreateSut();
+
+        var result = await sut.GenerateAsync(
+            new GenerationRequest("A role.", null, null, MaxBullets: 1),
+            TestContext.Current.CancellationToken);
+
+        var decisions = result.Explanation!.Decisions;
+        decisions.Should().HaveCountGreaterThan(1, "the runners-up are the point of the panel");
+        decisions.Should().Contain(x => x.Kind.HasFlag(BulletDecisionKindDto.Omitted));
+        decisions.Count(x => !x.Kind.HasFlag(BulletDecisionKindDto.Omitted)).Should().Be(1);
+    }
+
     [Fact]
     public async Task GenerateAsync_WithDeepReview_RendersEachBulletSetVersionAsAWholeResume()
     {

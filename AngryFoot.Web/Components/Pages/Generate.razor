@@ -75,6 +75,8 @@
 
 <EvidenceCoveragePanel Coverage="@coverage" Title="@coverageTitle" />
 
+<GenerationExplanationPanel Explanation="@explanation" />
+
 <OccupationBenchmarkPanel Benchmark="@benchmark" />
 
 @if (analysis is not null)
@@ -144,6 +146,7 @@
 
     private AngryFoot.Contracts.JobAnalysisDto? analysis;
     private AngryFoot.Contracts.EvidenceCoverageReportDto? coverage;
+    private AngryFoot.Contracts.GenerationExplanationDto? explanation;
 
     // Analyze reports on the whole library; Generate reports on the bullets that made the resume.
     // Same panel, and the heading is what tells the two apart.
@@ -189,6 +192,8 @@
             analysis = evidenceAnalysis.Job;
             coverage = evidenceAnalysis.Coverage;
             coverageTitle = LibraryCoverageTitle;
+            // Analyze picks no bullets, so there are no decisions to explain.
+            explanation = null;
             benchmark = evidenceAnalysis.Benchmark;
         }
         catch (Exception ex)
@@ -215,6 +220,7 @@
         // the resume rather than the library, so anything on screen from a previous Analyze
         // belongs to whatever job was in the form then - not this one.
         coverage = null;
+        explanation = null;
         benchmark = null;
         selectionError = null;
 
@@ -232,6 +238,7 @@
             analysis = result.Analysis;
             coverage = result.Coverage;
             coverageTitle = ResumeCoverageTitle;
+            explanation = result.Explanation;
             resumeVersionLabel = result.ResumeRefinement?.RecommendedLabel;
             coverLetterVersionLabel = result.CoverLetterRefinement?.RecommendedLabel;
         }
