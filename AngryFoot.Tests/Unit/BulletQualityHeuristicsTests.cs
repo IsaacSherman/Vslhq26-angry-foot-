@@ -17,6 +17,12 @@ public class BulletQualityHeuristicsTests
     [InlineData("Reduced deploys from 6 hours to 40 minutes.")]
     [InlineData("Shipped in 3 weeks.")]
     [InlineData("Handled 1,250 requests per second.")]
+    // Spelled out, because the check is about the claim and not about how it is typed.
+    [InlineData("Authored five acceptance tests across three products.")]
+    [InlineData("Cut the release cycle from twelve weeks to two.")]
+    [InlineData("Mentored twenty-five engineers.")]
+    [InlineData("Processed millions of telemetry records.")]
+    [InlineData("Ran a dozen migrations without an outage.")]
     public void HasMeasurableImpact_WithAFigure_IsTrue(string text)
     {
         BulletQualityHeuristics.HasMeasurableImpact(text).Should().BeTrue();
@@ -26,9 +32,35 @@ public class BulletQualityHeuristicsTests
     [InlineData("Led the migration to a new platform.")]
     [InlineData("Responsible for the deployment pipeline.")]
     [InlineData("Improved reliability considerably.")]
+    // "One" is a pronoun far more often than a count, and an ordinal is a claim to specificity
+    // rather than to measurement.
+    [InlineData("Rebuilt the pipeline, one of which needed a rewrite.")]
+    [InlineData("Built the first CI/CD server the team had.")]
+    [InlineData("Delivered several improvements to the platform.")]
     public void HasMeasurableImpact_WithoutAFigure_IsFalse(string text)
     {
         BulletQualityHeuristics.HasMeasurableImpact(text).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The defect this pair was written for: two wordings of one accomplishment, differing only in
+    /// whether the counts are spelled out. Scoring them differently made the thirty points for a
+    /// measurable result winnable by find-and-replace, and docked the longer, more specific wording
+    /// for being written in prose.
+    /// </summary>
+    [Fact]
+    public void HasMeasurableImpact_DoesNotDependOnWhetherCountsAreSpelledOut()
+    {
+        const string spelledOut =
+            "Developed five C# Factory Acceptance Tests (FATs) across three hardware products, providing "
+            + "circuit- and component-level validation for manufacturing and RMA diagnostics; designed "
+            + "three coordinated component tests for a complex multi-board product.";
+        const string numerals =
+            "Authored(C#) five FATs for three products, one of which necessitated 3 separate component tests";
+
+        BulletQualityHeuristics.HasMeasurableImpact(numerals).Should().BeTrue();
+        BulletQualityHeuristics.HasMeasurableImpact(spelledOut).Should().BeTrue(
+            "the same facts stated in words are the same facts");
     }
 
     [Theory]
@@ -158,6 +190,9 @@ public class BulletQualityHeuristicsTests
     {
         BulletQualityHeuristics.MeasurableImpact("Cut build times by 40%.").Should().Be("40%");
         BulletQualityHeuristics.MeasurableImpact("Led the migration.").Should().BeNull();
+        BulletQualityHeuristics.MeasurableImpact("Authored five acceptance tests.").Should().Be("five");
+        BulletQualityHeuristics.MeasurableImpact("Mentored twenty-five engineers.").Should().Be("twenty-five",
+            "a compound number is quoted whole rather than clipped to its tens");
     }
 
     [Fact]

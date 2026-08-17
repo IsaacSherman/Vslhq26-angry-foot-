@@ -143,12 +143,16 @@ public class EvidenceDiagnosticAnalyzerTests
         [Fact]
         public async Task ShortensALongBulletOnAWordBoundary()
         {
-            const string text = "Led the platform migration across every team in the organisation over eighteen months.";
+            // Deliberately free of any quantity, spelled out or otherwise: the analyzer only reports
+            // bullets with no measurable result, so a fixture that smuggles one in ("over eighteen
+            // months") stops being reported at all and this test's real subject - where the excerpt
+            // is cut - never gets exercised.
+            const string text = "Led the platform migration across every team in the organisation during the reorganisation.";
             var context = Context(Analysis(), DiagnosticScope.Library([Bullet(text)]));
 
             var message = (await RunAsync(new MeasurableImpactAnalyzer(), context)).Single().Message;
 
-            message.Should().Contain("...").And.NotContain("eighteen");
+            message.Should().Contain("...").And.NotContain("reorganisation");
 
             // Whatever was kept must be a whole-word prefix of the bullet: the original continues
             // with a space at exactly that point, so no word was cut in half.
