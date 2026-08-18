@@ -186,6 +186,33 @@ The container is called over MCP — the API service is an MCP client here as we
 so the document is sent as a `data:` URI and no volume is shared with it. Conversion is capped at 60
 seconds and uploads at 10 MB.
 
+### Reviewing a resume you already have
+
+**Review** (`/review`) reads an existing resume &mdash; uploaded or pasted &mdash; and says what it
+finds. **Nothing is saved.** The document is read to answer the request and then discarded, so the
+page has no history and the bullet library is untouched; reviewing is not importing.
+
+It is mostly composition rather than new analysis. The bullets are found by the same
+`ResumeBulletParser` the import flow uses, judged by the same `IEvidenceDiagnosticAnalyzer` plugin
+list the evidence report uses, and described with the same diagnostic type and the same "Why" panel,
+so a problem is worded identically wherever you meet it. On top of that sit checks that only make
+sense about a whole document: a header with no way to reply to it, two date formats in one resume, no
+heading over the work history, and bullets long enough to be skipped rather than read.
+
+With AI configured, a review pass adds what a rule cannot &mdash; whether the bullets read as one
+story, which one would gain most from what. It is constrained the same way [evidence
+coverage](#evidence-coverage) is: it may add to the deterministic findings and explain them, never
+remove one, and any note pointing at a bullet it was not shown is discarded and logged. Without AI
+the deterministic report stands on its own, which is the whole report rather than a stub.
+
+Pasting a target job description is optional. Supplying one adds the evidence-coverage report for the
+resume as written, using the same engine `/generate` uses.
+
+The review reports findings, not a score. `BulletQualityScorer` draws a quarter of its points from
+enrichment metadata an unsaved bullet cannot have, so any number here would be wrong by construction
+&mdash; and a single number over someone's resume reads as a grade on them rather than as a list of
+things they can fix.
+
 ### Evidence coverage
 
 **Analyze** answers one question: how much of what this posting asks for do your bullets actually evidence? Every part of the answer is traceable back to a bullet you wrote.
@@ -382,6 +409,7 @@ One rough edge worth knowing: the resume stages exchange a JSON array rather tha
 - **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
 - **Evidence coverage only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
 - **The occupational benchmark is a hand-refreshed snapshot of 21 U.S. technology occupations.** It does not update itself, covers technology and technology-adjacent roles only, and reflects the U.S. labor market; a title outside that set reports no match rather than a wrong one. Matching a bullet to a requirement is substring-based, so it credits the wrong bullet occasionally and misses paraphrases, and technology weightings are ours rather than O\*NET's (the dataset's `notes` block spells out exactly which values are which). Wage and employment context from BLS OEWS is not included.
+- **Resume review is advice, not editing.** It says what a bullet is missing; it never proposes replacement wording, because wording it did not earn would have to invent the facts that are missing. There is no ATS-compatibility scoring, and nothing is persisted, so there is no history of past reviews to compare against.
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.

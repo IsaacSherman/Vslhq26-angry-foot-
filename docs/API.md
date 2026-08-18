@@ -544,6 +544,70 @@ already well represented. `kind`'s `"Revised"` means "reworded for this audience
 The stored artifact carries `isGeneric: true` and the `audience`, on both the full artifact and the
 `/api/artifacts` summaries, with `jobDescription` empty.
 
+## Resume review
+
+Reads a resume and returns findings about it. **Nothing is persisted by either route** — no bullet is
+created, no artifact is stored, and the text is not retained past the response.
+
+### POST `/api/resume-review`
+Reviews pasted resume text.
+
+Request:
+```json
+{ "resumeText": "MILDRED WAFFLE
+mildred@example.invalid
+
+EXPERIENCE
+- Worked on the reconciliation job.", "jobDescription": null }
+```
+
+`jobDescription` is optional. Supplying one additionally returns the evidence-coverage report for the
+resume as written, in the same shape `POST /api/generations/analyze` returns.
+
+Response (`ResumeReviewReportDto`):
+```json
+{
+  "summary": "Read 2 bullets and found 3 things worth a look. Each one names the bullet it is about and what would settle it.",
+  "spotChecks": [
+    {
+      "severity": "Suggestion",
+      "code": "inconsistent-dates",
+      "message": "Dates are written two ways in this resume: numeric months (09/2019) and named months (September 2019).",
+      "why": { "requirement": null, "supportingEvidence": [], "missingEvidence": ["One date format used throughout."], "reasoning": "..." },
+      "bulletIds": []
+    }
+  ],
+  "bullets": [
+    {
+      "index": 0,
+      "text": "Worked on the reconciliation job.",
+      "employer": "Marmot Signal Works",
+      "findings": [ { "severity": "Suggestion", "code": "no-measurable-impact", "message": "...", "why": { }, "bulletIds": ["3f2a..."] } ],
+      "suggestions": ["Say how much time the automation saved."]
+    }
+  ],
+  "source": "Deterministic",
+  "disclaimer": "...",
+  "coverage": null
+}
+```
+
+`spotChecks` are findings about the document, which cite no bullet; a finding about one bullet appears
+under that bullet in `bullets` instead. `bulletIds` are generated per request to join findings to
+bullets within one response and mean nothing outside it. `suggestions` is empty without AI configured,
+and `source` is `Deterministic`; `AiReviewed` means the review pass added something. `coverage` is
+present only when `jobDescription` was supplied.
+
+Returns `400` with a plain-string message when `resumeText` is blank.
+
+### POST `/api/resume-review/file`
+The same review for an uploaded `.pdf` or `.docx`. `multipart/form-data` with a `file` part and an
+optional `jobDescription` field. The document is converted to Markdown by the markitdown container and
+then takes the identical path, so the response is the shape above.
+
+Returns the same `400` conditions as
+[`POST /api/bullets/import/resume/preview/file`](#post-apibulletsimportresumepreviewfile).
+
 ## Artifacts
 
 ### GET `/api/artifacts`

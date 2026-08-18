@@ -230,6 +230,29 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<ResumeImportPreviewResponse>(cancellationToken))!;
     }
 
+    public async Task<ResumeReviewReportDto> ReviewResumeAsync(string resumeText, string? jobDescription, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/resume-review", new ResumeReviewRequest(resumeText, jobDescription), cancellationToken);
+        await EnsureImportSucceededAsync(response, "Resume review", cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ResumeReviewReportDto>(cancellationToken))!;
+    }
+
+    public async Task<ResumeReviewReportDto> ReviewResumeFromFileAsync(Stream fileStream, string fileName, string? jobDescription, CancellationToken cancellationToken = default)
+    {
+        using var content = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        content.Add(fileContent, "file", fileName);
+
+        if (!string.IsNullOrWhiteSpace(jobDescription))
+        {
+            content.Add(new StringContent(jobDescription), "jobDescription");
+        }
+
+        var response = await httpClient.PostAsync("/api/resume-review/file", content, cancellationToken);
+        await EnsureImportSucceededAsync(response, "Resume review", cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ResumeReviewReportDto>(cancellationToken))!;
+    }
+
     public async Task<ResumeImportResultDto> ConfirmResumeImportAsync(IReadOnlyList<ImportBulletItem> bullets, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/bullets/import/resume", new ConfirmResumeImportRequest(bullets), cancellationToken);

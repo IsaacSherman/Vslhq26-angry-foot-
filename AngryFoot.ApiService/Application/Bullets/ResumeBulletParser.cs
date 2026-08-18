@@ -732,7 +732,9 @@ public static class ResumeBulletParser
         return line.Length < MinimumUnmarkedBulletLength && line.EndsWith(':');
     }
 
-    private static bool IsContactLine(string line)
+    /// <summary>Internal rather than private because the resume review asks the same question of a
+    /// whole document: a resume with no contact channel at all is worth saying out loud.</summary>
+    internal static bool IsContactLine(string line)
     {
         return line.Contains('@', StringComparison.Ordinal)
             || line.Contains("linkedin.com", StringComparison.OrdinalIgnoreCase)
@@ -740,7 +742,7 @@ public static class ResumeBulletParser
             || PhonePattern.IsMatch(line);
     }
 
-    private static bool IsDateLine(string line)
+    internal static bool IsDateLine(string line)
     {
         return DateLinePattern.IsMatch(line) || YearOnlyPattern.IsMatch(line);
     }
