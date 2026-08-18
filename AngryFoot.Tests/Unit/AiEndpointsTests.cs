@@ -1,5 +1,6 @@
 using AngryFoot.ApiService.Ai;
 using AngryFoot.ApiService.Api;
+using AngryFoot.ApiService.Application.Conversion;
 using AngryFoot.ApiService.Application.Retrieval;
 using AngryFoot.Tests.Fakes;
 using AwesomeAssertions;
@@ -19,6 +20,7 @@ public class AiEndpointsTests
         var result = await AiEndpoints.GetAiStatus(
             new AiConfigurationStatus(true, "AI configured."),
             new RetrievalConfigurationStatus(true, "Retrieval configured."),
+            new ConversionConfigurationStatus(false, "File import disabled."),
             vectorStore,
             CancellationToken.None);
 
@@ -37,10 +39,25 @@ public class AiEndpointsTests
         var result = await AiEndpoints.GetAiStatus(
             new AiConfigurationStatus(true, "AI configured."),
             new RetrievalConfigurationStatus(true, "Retrieval configured."),
+            new ConversionConfigurationStatus(false, "File import disabled."),
             vectorStore,
             CancellationToken.None);
 
         result.Value!.RetrievalEnabled.Should().BeTrue();
         result.Value.RetrievalMessage.Should().Be("Semantic retrieval is ready.");
+    }
+
+    [Fact]
+    public async Task GetAiStatus_ReportsFileImportSeparatelyFromAi()
+    {
+        var result = await AiEndpoints.GetAiStatus(
+            new AiConfigurationStatus(false, "AI is not configured."),
+            new RetrievalConfigurationStatus(false, "Retrieval disabled."),
+            new ConversionConfigurationStatus(true, "File import enabled via markitdown."),
+            new FakeBulletVectorStore(),
+            CancellationToken.None);
+
+        result.Value!.FileImportEnabled.Should().BeTrue("converting an upload does not need a chat deployment");
+        result.Value.FileImportMessage.Should().Be("File import enabled via markitdown.");
     }
 }

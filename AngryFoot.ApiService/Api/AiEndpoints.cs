@@ -1,5 +1,7 @@
 using AngryFoot.ApiService.Ai;
+using AngryFoot.ApiService.Application.Conversion;
 using AngryFoot.ApiService.Application.Retrieval;
+using AngryFoot.Contracts;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace AngryFoot.ApiService.Api;
@@ -19,6 +21,7 @@ public static class AiEndpoints
     internal static async Task<Ok<AiStatusResponse>> GetAiStatus(
         AiConfigurationStatus status,
         RetrievalConfigurationStatus retrievalStatus,
+        ConversionConfigurationStatus conversionStatus,
         IBulletVectorStore vectorStore,
         CancellationToken cancellationToken)
     {
@@ -33,6 +36,8 @@ public static class AiEndpoints
             Status: status.IsConfigured ? "Healthy" : "Unhealthy",
             Message: status.Message,
             RetrievalEnabled: retrievalEnabled,
-            RetrievalMessage: retrievalMessage));
+            RetrievalMessage: retrievalMessage,
+            FileImportEnabled: conversionStatus.IsEnabled,
+            FileImportMessage: conversionStatus.Message));
     }
 }

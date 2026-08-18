@@ -3,6 +3,7 @@ using AngryFoot.ApiService.Api;
 using AngryFoot.ApiService.Application.Artifacts;
 using AngryFoot.ApiService.Application.Benchmarks;
 using AngryFoot.ApiService.Application.Bullets;
+using AngryFoot.ApiService.Application.Conversion;
 using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Application.Evidence.Diagnostics;
 using AngryFoot.ApiService.Application.Generation;
@@ -38,6 +39,7 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddAngryFootAi(builder.Configuration);
 builder.AddAngryFootRetrieval();
+builder.AddAngryFootDocumentConversion();
 builder.Services.AddScoped<IRefinementGrounding, BulletLibraryGrounding>();
 builder.Services.AddScoped<IDraftRefinementPipeline, DraftRefinementPipeline>();
 builder.Services.AddScoped<IBulletTagger, OpenAiBulletTagger>();

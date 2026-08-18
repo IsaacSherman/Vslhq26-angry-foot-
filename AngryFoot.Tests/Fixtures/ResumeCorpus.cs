@@ -14,10 +14,16 @@ public sealed record ResumeCase(string Name, string ResumeText, IReadOnlyList<Ex
 /// <summary>
 /// Pairs each <c>ResumeN.txt</c> in Fixtures/Resumes with its expected <c>BulletsN.txt</c> output so
 /// a resume that parses badly can be pinned as a regression by dropping in two files.
+/// <para>
+/// A number may also carry a <c>ResumeN.md</c>: the same resume as converted from PDF or DOCX,
+/// checked against the same expectations. That pairing is the assertion issue #14 is really about -
+/// uploading a document has to yield what pasting its text yields - and it is expressed as a shared
+/// expectation file rather than a second copy so the two can never be updated apart.
+/// </para>
 /// </summary>
 public static class ResumeCorpus
 {
-    private static readonly Regex ResumeFileName = new(@"^Resume(\d+)\.txt$", RegexOptions.IgnoreCase);
+    private static readonly Regex ResumeFileName = new(@"^Resume(\d+)\.(?<format>txt|md)$", RegexOptions.IgnoreCase);
 
     /// <summary>Marks a bullet the resume gives no employer for, only a position title.</summary>
     public const string NoEmployer = "(none)";
@@ -47,7 +53,7 @@ public static class ResumeCorpus
         if (!File.Exists(path))
         {
             throw new InvalidOperationException(
-                $"Resume{number}.txt has no matching {prefix}{number}.txt. Every corpus resume needs {describes}.");
+                $"Resume{number} has no matching {prefix}{number}.txt. Every corpus resume needs {describes}.");
         }
 
         return File.ReadAllLines(path)
@@ -59,13 +65,16 @@ public static class ResumeCorpus
     private static IEnumerable<ResumeCase> EnumerateCases()
     {
         var resumeFiles = System.IO.Directory
-            .EnumerateFiles(Directory, "Resume*.txt")
+            .EnumerateFiles(Directory, "Resume*")
             .Where(path => ResumeFileName.IsMatch(Path.GetFileName(path)))
-            .OrderBy(path => int.Parse(ResumeFileName.Match(Path.GetFileName(path)).Groups[1].Value));
+            .OrderBy(path => int.Parse(ResumeFileName.Match(Path.GetFileName(path)).Groups[1].Value))
+            .ThenBy(path => Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
         foreach (var resumePath in resumeFiles)
         {
-            var number = ResumeFileName.Match(Path.GetFileName(resumePath)).Groups[1].Value;
+            var match = ResumeFileName.Match(Path.GetFileName(resumePath));
+            var number = match.Groups[1].Value;
+            var isMarkdown = string.Equals(match.Groups["format"].Value, "md", StringComparison.OrdinalIgnoreCase);
 
             var bullets = ReadLines(number, "Bullets", "its expected bullets");
             var pairs = ReadLines(number, "Employers", "the employer each bullet belongs to");
@@ -95,7 +104,8 @@ public static class ResumeCorpus
                     $"Employers{number}.txt and Bullets{number}.txt disagree. Their bullets must match exactly, in order.");
             }
 
-            yield return new ResumeCase($"Resume{number}", File.ReadAllText(resumePath), expected);
+            var name = isMarkdown ? $"Resume{number} (converted)" : $"Resume{number}";
+            yield return new ResumeCase(name, File.ReadAllText(resumePath), expected);
         }
     }
 }

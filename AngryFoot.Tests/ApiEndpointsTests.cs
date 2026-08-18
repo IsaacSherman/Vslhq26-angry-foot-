@@ -70,6 +70,73 @@ public class ApiEndpointsTests
         Assert.Single(putProfile.Certifications);
     }
 
+    /// <summary>
+    /// The guards, with the converter switched off - which is how every default test run sees it, so
+    /// this is also the check that an unavailable container is a readable refusal rather than a 500.
+    /// </summary>
+    [Theory]
+    [InlineData("resume.pdf", 16, "markitdown")]
+    [InlineData("resume.rtf", 16, "Expected")]
+    [InlineData("resume.pdf", 0, "No file")]
+    public async Task ResumeFileImportEndpointRefusesWhatItCannotRead(string fileName, int contentLength, string expected)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        using var content = new MultipartFormDataContent();
+        using var fileContent = new ByteArrayContent(new byte[contentLength]);
+        content.Add(fileContent, "file", fileName);
+
+        var response = await apiClient.PostAsync("/api/bullets/import/resume/preview/file", content, cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var message = await response.Content.ReadFromJsonAsync<string>(cancellationToken);
+        Assert.Contains(expected, message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Paste is the path that must keep working without Docker, and the status endpoint is what the
+    /// import page reads to decide whether to offer the upload control at all.
+    /// </summary>
+    [Fact]
+    public async Task AiStatusEndpointReportsFileImportDisabledWhenTheConverterIsNotConfigured()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        var status = await apiClient.GetFromJsonAsync<AiStatusResponse>("/api/ai/status", cancellationToken);
+
+        Assert.NotNull(status);
+        Assert.False(status!.FileImportEnabled);
+        Assert.Contains("pasting", status.FileImportMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ImportLinkedInProfileEndpointParsesExportWithoutPersisting()
     {

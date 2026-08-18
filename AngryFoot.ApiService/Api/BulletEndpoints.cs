@@ -1,4 +1,5 @@
 using AngryFoot.ApiService.Application.Bullets;
+using AngryFoot.ApiService.Application.Conversion;
 using AngryFoot.Contracts;
 
 namespace AngryFoot.ApiService.Api;
@@ -111,6 +112,31 @@ public static class BulletEndpoints
                 ? Results.BadRequest("We couldn't find any bullets in that text. Check that the achievement lines were included.")
                 : Results.Ok(result);
         });
+
+        // A sibling of the JSON preview rather than a replacement: conversion is the only extra
+        // step, and everything downstream - parsing, duplicate detection, the confirm call - is the
+        // path a pasted resume already takes.
+        bullets.MapPost("/import/resume/preview/file", async (
+            IFormFile file,
+            IResumeDocumentConverter converter,
+            IResumeBulletImportService importService,
+            CancellationToken cancellationToken) =>
+        {
+            string markdown;
+            try
+            {
+                markdown = await ResumeUploads.ReadMarkdownAsync(file, converter, cancellationToken);
+            }
+            catch (ResumeConversionException ex)
+            {
+                return Results.BadRequest(ex.Message);
+            }
+
+            var result = await importService.PreviewAsync(markdown, cancellationToken);
+            return result.Candidates.Count == 0
+                ? Results.BadRequest($"We couldn't find any bullets in {file.FileName}. A resume saved as scanned images has no text to extract.")
+                : Results.Ok(result);
+        }).DisableAntiforgery();
 
         bullets.MapPost("/import/resume", async (
             ConfirmResumeImportRequest request,

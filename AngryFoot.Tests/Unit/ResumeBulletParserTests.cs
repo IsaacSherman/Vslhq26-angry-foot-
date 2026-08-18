@@ -174,4 +174,132 @@ public class ResumeBulletParserTests
     {
         ResumeBulletParser.Parse(text).Should().BeEmpty();
     }
+
+    [Fact]
+    public void ReadsMarkdownEmphasisAsPlainText()
+    {
+        // A converted DOCX marks employer and role lines with bold rather than capitals, so the
+        // employer is only findable once the delimiters are gone.
+        const string text = """
+            **Experience**
+
+            **Senior Engineer at Gigglebyte Controls July 2018 - Present**
+
+            * Rebuilt the *deployment* pipeline and cut release time from six hours to forty minutes.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        var candidate = result.Should().ContainSingle().Which;
+        candidate.Text.Should().Be(
+            "Rebuilt the deployment pipeline and cut release time from six hours to forty minutes.");
+        candidate.SuggestedEmployer.Should().Be("Gigglebyte Controls");
+    }
+
+    [Fact]
+    public void LeavesAnAsteriskSeparatorAlone()
+    {
+        // "8896 Streetroad Way * Boring Springs * 555-010-5151" is a contact line, not emphasis:
+        // the asterisks never pair, and reading them as emphasis would swallow the separators.
+        const string text = """
+            8896 Streetroad Way * Boring Springs, ZZ 00042 * 555-010-5151
+
+            * Consolidated four reporting jobs into one, saving eleven hours of manual work a month.
+            * Rewrote the ingest validator and cut malformed-record incidents to zero for two quarters.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Select(x => x.Text).Should().BeEquivalentTo(
+            "Consolidated four reporting jobs into one, saving eleven hours of manual work a month.",
+            "Rewrote the ingest validator and cut malformed-record incidents to zero for two quarters.");
+    }
+
+    [Fact]
+    public void UnescapesMarkdownEscapesRatherThanReadingThemAsEmphasis()
+    {
+        const string text = """
+            * Shipped the modernization plan without spawning any folders named final\_really\_final.
+            * Retired the legacy exporter and moved its four consumers onto the shared API.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result[0].Text.Should().Be(
+            "Shipped the modernization plan without spawning any folders named final_really_final.");
+    }
+
+    [Fact]
+    public void StripsAtxHeadingMarkersWithoutTreatingThemAsSectionBreaks()
+    {
+        // A converter marks a job title with a heading as readily as a section, and the dated-title
+        // nesting this parser already does is the thing that reads it correctly.
+        const string text = """
+            Interstate Compliance Patrol (2005-2011)
+
+            # Client Systems Custodian (2005-2009)
+
+            * Maintained workstation compliance across a busy unit with no missing baselines.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Should().ContainSingle().Which.SuggestedEmployer.Should().Be("Interstate Compliance Patrol");
+    }
+
+    [Fact]
+    public void ReadsAMarkdownLinkAsItsText()
+    {
+        const string text = """
+            Reach me at [pat@totally-real-mail.invalid](mailto:pat@totally-real-mail.invalid)
+
+            * Delivered the billing rewrite two weeks early and retired the nightly reconciliation job.
+            * Introduced contract tests that caught nine breaking changes before they reached staging.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Should().HaveCount(2, "the contact line is a contact line once the link syntax is gone");
+    }
+
+    [Fact]
+    public void ReadsEachTableCellAsItsOwnLine()
+    {
+        // A skills table is laid out to be read cell by cell; joining the row would invent a
+        // sentence that pairs unrelated entries.
+        const string text = """
+            EXPERIENCE
+
+            * Ported the prototype scoring logic into production with careful bit handling throughout.
+
+            SKILLS
+
+            | C#/.NET, REST APIs | WPF, WinForms, UI triage |
+            | --- | --- |
+            | SQLite, SQL, data cleanup | C++, gRPC, native interop |
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Should().ContainSingle("table cells in a skills section are not achievements")
+            .Which.Text.Should().StartWith("Ported the prototype");
+    }
+
+    [Fact]
+    public void KeepsAnInlinePipeOnOneLine()
+    {
+        // "QA Lead / SDET | 2020 - 2021" separates fields inside a heading. Only a row fenced by
+        // pipes at both ends is a table.
+        const string text = """
+            Paperclip Galaxy LLC - Mild Panic, OH
+
+            QA Manager | 09/2019 - 03/2020
+
+            - Coached a twenty-person engineering group on review habits and defect prevention.
+            """;
+
+        var result = ResumeBulletParser.Parse(text);
+
+        result.Should().ContainSingle().Which.SuggestedEmployer.Should().Be("Paperclip Galaxy LLC");
+    }
 }

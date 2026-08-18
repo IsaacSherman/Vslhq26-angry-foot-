@@ -86,6 +86,39 @@ public static class ResumeBulletParser
 
     private static readonly Regex WhitespaceRun = new(@"\s+", RegexOptions.Compiled);
 
+    // Markdown, because a converted PDF or DOCX arrives as Markdown and a resume can be pasted as
+    // Markdown too. Only the inline syntax is removed: the block structure a converter emits - list
+    // markers, blank lines between entries, a heading on its own line - is already the structure
+    // this parser reads, so flattening the rest to plain text is the whole adaptation.
+
+    /// <summary>An ATX heading marker. Stripped rather than treated as a section break: converters
+    /// emit them for job titles as readily as for sections, and a bare dated title line is something
+    /// <c>FindEmployerHeadings</c> already reads correctly.</summary>
+    private static readonly Regex AtxHeading = new(@"^\s{0,3}#{1,6}\s+", RegexOptions.Compiled);
+
+    private static readonly Regex MarkdownImage = new(@"!\[[^\]]*\]\([^)]*\)", RegexOptions.Compiled);
+
+    private static readonly Regex MarkdownLink = new(@"\[([^\]]*)\]\([^)]*\)", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Paired emphasis only, and never an escaped delimiter. The pairing is what leaves a list marker
+    /// ("* Built...") and a separator ("Boring Springs * 555-010-5151") alone: neither has a closing
+    /// delimiter, and both put whitespace where an opening one may not be.
+    /// </summary>
+    private static readonly Regex[] EmphasisPatterns =
+    [
+        new(@"(?<!\\)\*{1,3}(?!\s)(.+?)(?<![\s\\])\*{1,3}", RegexOptions.Compiled),
+        new(@"(?<![\w\\])_{1,3}(?!\s)(.+?)(?<![\s\\])_{1,3}(?![\w])", RegexOptions.Compiled)
+    ];
+
+    private static readonly Regex MarkdownEscape = new(@"\\([\\`*_{}\[\]()#+\-.!|])", RegexOptions.Compiled);
+
+    /// <summary>A table row has pipes at both ends. An inline pipe ("Boring Springs, ZZ | 555-010-4242",
+    /// "QA Lead / SDET | 2020 - 2021") separates fields within one line and must stay one line.</summary>
+    private static readonly Regex TableRow = new(@"^\|.*\|$", RegexOptions.Compiled);
+
+    private static readonly Regex TableDivider = new(@"^:?-{3,}:?$", RegexOptions.Compiled);
+
     private static readonly char[] EmployerSeparators = ['—', '–', '|', ',', '/'];
 
     private static readonly char[] NameWordSeparators = [' ', '\t', ',', '.', '/', '&', '-'];
@@ -147,7 +180,7 @@ public static class ResumeBulletParser
             return [];
         }
 
-        var lines = resumeText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var lines = ReadLines(resumeText);
 
         // Decide by whether the resume is written with markers, not by whether the marked pass found
         // anything: a marked resume whose bullets all sit in skipped sections must still be read as
@@ -159,6 +192,56 @@ public static class ResumeBulletParser
         return markerLines >= 2
             ? ExtractMarkedBullets(lines, employerHeadings)
             : ExtractUnmarkedBullets(lines, employerHeadings);
+    }
+
+    /// <summary>
+    /// Splits the resume into lines, flattening any Markdown on the way. A table row becomes one line
+    /// per cell: a resume laid out in a table means its cells to be read one after another, and
+    /// leaving the row whole would run unrelated entries together into a sentence.
+    /// </summary>
+    private static string[] ReadLines(string resumeText)
+    {
+        var raw = resumeText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var lines = new List<string>(raw.Length);
+
+        foreach (var line in raw)
+        {
+            if (TableRow.IsMatch(line.Trim()))
+            {
+                lines.AddRange(ReadTableCells(line));
+                continue;
+            }
+
+            lines.Add(StripMarkdown(line));
+        }
+
+        return [.. lines];
+    }
+
+    private static IEnumerable<string> ReadTableCells(string line)
+    {
+        var cells = line.Trim().Trim('|').Split('|');
+
+        // A divider row carries no content, and emitting it would break the run of cells in two.
+        return cells.All(cell => TableDivider.IsMatch(cell.Trim()))
+            ? []
+            : cells.Select(StripMarkdown).Where(cell => cell.Trim().Length > 0);
+    }
+
+    private static string StripMarkdown(string line)
+    {
+        var text = AtxHeading.Replace(line, string.Empty);
+        text = MarkdownImage.Replace(text, string.Empty);
+        text = MarkdownLink.Replace(text, "$1");
+
+        foreach (var emphasis in EmphasisPatterns)
+        {
+            text = emphasis.Replace(text, "$1");
+        }
+
+        // Last, so an escaped delimiter is never mistaken for emphasis on the way here: markitdown
+        // writes a literal underscore as "\_", and "final\_really\_final" is one word, not italics.
+        return MarkdownEscape.Replace(text, "$1");
     }
 
     private static List<ParsedCandidate> ExtractMarkedBullets(string[] lines, IReadOnlySet<string> employerHeadings)

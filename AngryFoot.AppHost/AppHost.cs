@@ -55,6 +55,25 @@ if (builder.Configuration.GetValue("Qdrant:Enabled", true))
     apiService = apiService.WithReference(qdrant).WaitFor(qdrant);
 }
 
+// markitdown converts uploaded PDF and DOCX resumes to Markdown, which keeps every document
+// parsing dependency out of the API service and covers both formats with one container instead of
+// a library per format. Aspire runs the image the same way it runs Qdrant, and the first launch
+// pulls it. Without the container the app is unchanged: resumes are still imported by pasting their
+// text. Set Markitdown:Enabled=false (user-secrets on this AppHost project, or a
+// `Markitdown__Enabled` env var) to skip starting it, e.g. in environments without Docker.
+if (builder.Configuration.GetValue("Markitdown:Enabled", true))
+{
+    // The image is markitdown-mcp with no CMD, so these become its arguments. It binds inside the
+    // container only; Aspire is what maps it to a host port.
+    var markitdown = builder.AddContainer("markitdown", "mcp/markitdown")
+        .WithHttpEndpoint(targetPort: 3001, name: "http")
+        .WithArgs("--http", "--host", "0.0.0.0", "--port", "3001");
+
+    apiService = apiService
+        .WithEnvironment("Markitdown__Endpoint", markitdown.GetEndpoint("http"))
+        .WaitFor(markitdown);
+}
+
 builder.AddProject<Projects.AngryFoot_Web>("webfrontend")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")

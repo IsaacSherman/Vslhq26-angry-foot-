@@ -1,10 +1,5 @@
 namespace AngryFoot.ApiService.Ai;
 
-public sealed record AiStatusResponse(
-    bool IsHealthy,
-    string Status,
-    string? Message = null,
-    bool RetrievalEnabled = false,
-    string? RetrievalMessage = null);
-
+/// <summary>Whether a chat deployment is configured, and why not when it is not. Surfaced by
+/// <c>/api/ai/status</c>; never a branch, because every feature falls back on its own.</summary>
 public sealed record AiConfigurationStatus(bool IsConfigured, string Message);

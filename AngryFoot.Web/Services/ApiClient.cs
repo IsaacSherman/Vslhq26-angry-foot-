@@ -219,6 +219,17 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return (await response.Content.ReadFromJsonAsync<ResumeImportPreviewResponse>(cancellationToken))!;
     }
 
+    public async Task<ResumeImportPreviewResponse> PreviewResumeImportFromFileAsync(Stream fileStream, string fileName, CancellationToken cancellationToken = default)
+    {
+        using var content = new MultipartFormDataContent();
+        using var fileContent = new StreamContent(fileStream);
+        content.Add(fileContent, "file", fileName);
+
+        var response = await httpClient.PostAsync("/api/bullets/import/resume/preview/file", content, cancellationToken);
+        await EnsureImportSucceededAsync(response, "Resume import", cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ResumeImportPreviewResponse>(cancellationToken))!;
+    }
+
     public async Task<ResumeImportResultDto> ConfirmResumeImportAsync(IReadOnlyList<ImportBulletItem> bullets, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/bullets/import/resume", new ConfirmResumeImportRequest(bullets), cancellationToken);
@@ -395,11 +406,4 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         }
     }
 }
-
-public sealed record AiStatusResponse(
-    bool IsHealthy,
-    string Status,
-    string? Message = null,
-    bool RetrievalEnabled = false,
-    string? RetrievalMessage = null);
 

@@ -1,4 +1,5 @@
 @page "/profile/import"
+@using AngryFoot.Contracts
 @inject AngryFoot.Web.Services.ApiClient ApiClient
 @inject NavigationManager Navigation
 
@@ -69,8 +70,6 @@ else
 }
 
 @code {
-    private const long MaxFileSizeBytes = 25 * 1024 * 1024;
-
     private EditableProfile? model;
     private bool isImporting;
     private bool isSaving;
@@ -85,7 +84,7 @@ else
 
         try
         {
-            await using var stream = e.File.OpenReadStream(MaxFileSizeBytes);
+            await using var stream = e.File.OpenReadStream(ImportLimits.MaxLinkedInFileSizeBytes);
             var imported = await ApiClient.ImportLinkedInProfileAsync(stream, e.File.Name);
             model = EditableProfile.FromDto(imported.Profile);
 

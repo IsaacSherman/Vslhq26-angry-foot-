@@ -11,7 +11,8 @@
         "--launch-profile",
         "https",
         "--",
-        "--Qdrant:Enabled=false"
+        "--Qdrant:Enabled=false",
+        "--Markitdown:Enabled=false"
       ],
       "port": 15205
     },

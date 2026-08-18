@@ -56,16 +56,16 @@ There is a second entry point for when there is no posting at all: `GenerateGene
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
-- **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` and `IEmbeddingGenerator` abstractions), Qdrant.Client + Aspire.Hosting.Qdrant/Aspire.Qdrant.Client (optional semantic retrieval), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5. Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
+- **Frameworks/libraries:** ASP.NET Core Minimal APIs, Blazor Server, .NET Aspire 13.4 (orchestration, service discovery, dashboard), Entity Framework Core 10 + SQLite, Microsoft.Extensions.AI (`IChatClient` and `IEmbeddingGenerator` abstractions), Qdrant.Client + Aspire.Hosting.Qdrant/Aspire.Qdrant.Client (optional semantic retrieval), ModelContextProtocol C# SDK (MCP server + client), Serilog (rolling file logs), Markdig (Markdown rendering), Bootstrap 5, markitdown (containerized PDF/DOCX-to-Markdown conversion). Tests: xUnit v3, Moq, AwesomeAssertions, Aspire.Hosting.Testing.
 - **AI models/services:** Azure OpenAI chat completions (default deployment `gpt-5-mini`) for bullet enrichment, job analysis, evidence review, bullet rewriting, and cover-letter drafting. Optionally, an Azure OpenAI embedding deployment + Qdrant for semantic bullet retrieval. Every AI feature has a deterministic heuristic fallback, so the app remains fully functional with no AI (and no Qdrant) configured.
-- **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports, plus a Docker-hosted Qdrant container it starts and stops automatically for semantic bullet retrieval. No cloud deployment required. Data lives in a per-user SQLite database; Qdrant's vector data is bind-mounted to a local folder next to it. Set `Qdrant:Enabled=false` to skip the container entirely (see Configuration).
+- **Hosting:** Local-first. The Aspire AppHost runs both services on Kestrel with dynamically assigned ports, plus Docker-hosted containers it starts and stops automatically: Qdrant for semantic bullet retrieval and markitdown for reading uploaded PDF/DOCX resumes. No cloud deployment required. Data lives in a per-user SQLite database; Qdrant's vector data is bind-mounted to a local folder next to it. Set `Qdrant:Enabled=false` and `Markitdown:Enabled=false` to skip the containers entirely (see Configuration).
 
 ## Getting started
 
 ### Prerequisites
 
 - **.NET 10 SDK** (the repo builds with a 10.0.4xx preview SDK; Aspire 13.4 is pulled in via the AppHost project SDK — no separate workload install needed)
-- **Docker** (running). The AppHost automatically starts a Qdrant container (`qdrant/qdrant:latest`) on `dotnet run` for semantic bullet retrieval. Without Docker running, set `Qdrant:Enabled=false` (see Configuration) — the app then runs exactly as before, with keyword-overlap ranking and no Qdrant.
+- **Docker** (running). The AppHost automatically starts a Qdrant container (`qdrant/qdrant:latest`) on `dotnet run` for semantic bullet retrieval. It also starts a markitdown container (`mcp/markitdown`) for reading uploaded PDF/DOCX resumes. Without Docker running, set `Qdrant:Enabled=false` and `Markitdown:Enabled=false` (see Configuration) — the app then runs exactly as before, with keyword-overlap ranking and paste-only resume import.
 - **Azure OpenAI resource with a chat deployment** (optional). Without it the app runs entirely on heuristic fallbacks; with it you get full AI enrichment, evidence review, and generation. You will need three values: the resource endpoint URL (`https://<resource>.openai.azure.com`), an API key, and the chat deployment name.
 - No external database server — SQLite is embedded and created on first run; Qdrant's data is a local Docker bind mount, not a separate service to provision.
 
@@ -154,6 +154,37 @@ Without a usable embedding deployment, Qdrant still starts (it's harmless and id
 ```
 
 `dotnet test`'s Aspire integration tests always disable Qdrant for themselves regardless of this setting, so running the test suite never requires Docker.
+
+### Resume import from PDF and DOCX
+
+The **Import Resume** flow on the Bullets page reads an existing resume and offers its achievement
+bullets for review before anything is saved. Pasting the text always works. Uploading a `.pdf` or
+`.docx` additionally needs [markitdown](https://github.com/microsoft/markitdown), which Aspire runs
+as a Docker container (`mcp/markitdown`) alongside Qdrant and starts on `dotnet run`:
+
+```json
+{
+  "Markitdown": {
+    "Enabled": false
+  }
+}
+```
+
+Set that in [`AngryFoot.AppHost/appsettings.json`](AngryFoot.AppHost/appsettings.json) (it defaults to
+`true`) to skip the container in environments without Docker. The upload control then disables itself
+and says why; the textarea is untouched.
+
+markitdown converts the document to Markdown and the *same* `ResumeBulletParser` reads it, so an
+uploaded document and a pasted one go through one code path from parsing onward — including
+near-duplicate detection against your existing library. The parser strips Markdown's inline syntax
+(headings, emphasis, links, escapes) and reads a table one cell per line; a converted resume has to
+produce exactly what pasting its text produces, and the golden-file corpus in
+`AngryFoot.Tests/Fixtures/Resumes` asserts that for two real documents by checking both formats
+against one set of expectations.
+
+The container is called over MCP — the API service is an MCP client here as well as an MCP server —
+so the document is sent as a `data:` URI and no volume is shared with it. Conversion is capped at 60
+seconds and uploads at 10 MB.
 
 ### Evidence coverage
 
@@ -346,6 +377,7 @@ One rough edge worth knowing: the resume stages exchange a JSON array rather tha
 - **MCP integration is not completely implemented.** The app only supports a single MCP service (`apiservice`) with no multi-service support or service discovery, and the MCP tools currently cover bullet management only — profile editing and resume generation are not yet exposed as tools.
 - **Single user, no authentication.** The REST API and MCP endpoint are unauthenticated and the database holds exactly one profile, so the app is local-use only; anything that can reach the ports can read and write.
 - **Markdown output only.** Generated resumes and cover letters are Markdown; there is no PDF or DOCX export yet, so final formatting happens in whatever tool you paste into.
+- **Imported documents are only as good as their text layer.** A resume saved as scanned images has no text to extract and is refused with a message rather than silently importing nothing. Heavily table-based or multi-column layouts convert in reading order, which is usually right and occasionally interleaves two columns; the review step before import exists partly for that. Uploading needs Docker, pasting never does.
 - **Bullets map to employers by exact name match.** A bullet lands under a work-history entry only when its employer field matches the profile entry (case-insensitive); unassigned bullets fall into a generic "Selected Experience" section.
 - **Generation is synchronous.** A full generation chains several AI calls inside one HTTP request (typically 30-90 seconds) with no progress streaming, background queue, or cancellation UI. Deep review roughly quadruples that — two to two and a half minutes — inside the same single request, which is why it is opt-in. The client allows up to 10 minutes before giving up, and there is no server-side per-call timeout on the generation path, so a stalled AI call holds the request open until that ceiling.
 - **Evidence coverage only sees the bullet library.** It does not weigh work-history dates, education, or certifications, so requirements like "7+ years of experience" are not evaluated.
@@ -366,6 +398,7 @@ AngryFoot is built on the following open-source packages. Versions and licenses 
 | .NET / ASP.NET Core / Blazor | net10.0 | MIT | <https://github.com/dotnet> |
 | Aspire (AppHost SDK, orchestration) | 13.4.6 | MIT | <https://github.com/microsoft/aspire> |
 | Aspire.Hosting.Qdrant | 13.4.6 | MIT | Aspire container resource that runs Qdrant automatically (`Qdrant:Enabled=false` to disable) |
+| [markitdown](https://github.com/microsoft/markitdown) (`mcp/markitdown` container image) | 1.8.1 | MIT | Converts uploaded PDF/DOCX resumes to Markdown; run as a container and called over MCP, so no parsing library enters the API service (`Markitdown:Enabled=false` to disable) |
 
 ### Bundled data
 

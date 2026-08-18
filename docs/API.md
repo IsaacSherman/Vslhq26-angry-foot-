@@ -153,6 +153,90 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
 }
 ```
 
+### Resume import
+
+Two-step by design: the preview reads a resume and returns candidate bullets with near-duplicate
+warnings, and nothing is written until the confirm call. The two preview routes differ only in how
+the text arrives.
+
+#### POST `/api/bullets/import/resume/preview`
+Parses pasted resume text. Persists nothing.
+
+Request:
+```json
+{ "resumeText": "EXPERIENCE
+
+Acme Corp
+Staff Engineer, 2021 - Present
+- Cut warehouse costs by $280,000 per year." }
+```
+
+Response (`ResumeImportPreviewResponse`):
+```json
+{
+  "candidates": [
+    {
+      "index": 0,
+      "bulletText": "Cut warehouse costs by $280,000 per year.",
+      "suggestedEmployer": "Acme Corp",
+      "duplicates": [
+        {
+          "kind": "ExistingBullet",
+          "existingBulletId": "0f8f...",
+          "candidateIndex": null,
+          "matchedText": "Reduced warehouse spend by $280k annually.",
+          "similarity": 0.87
+        }
+      ]
+    }
+  ],
+  "detectionMode": "Semantic",
+  "detectionMessage": null
+}
+```
+
+`detectionMode` is `Lexical` when semantic retrieval is unavailable, and `detectionMessage` explains
+why. Returns `400` with a plain-string message when the text is blank or no bullets were found.
+
+#### POST `/api/bullets/import/resume/preview/file`
+The same thing for an uploaded `.pdf` or `.docx`. `multipart/form-data` with a single `file` part;
+the document is converted to Markdown by the markitdown container and then takes the identical path,
+so the response is byte-for-byte the shape above. Persists nothing.
+
+Returns `400` with a plain-string message when the file is empty, is over 10 MB, is not a `.pdf` or
+`.docx`, has no extractable text (a resume saved as scanned images), or when the converter is not
+configured — in which case the message points at pasting instead. `GET /api/ai/status` reports
+`fileImportEnabled` so a client can disable the control before the user picks a file.
+
+#### POST `/api/bullets/import/resume`
+Creates the selected bullets. This is the only call in the flow that writes.
+
+Request:
+```json
+{
+  "bullets": [
+    {
+      "index": 0,
+      "bulletText": "Cut warehouse costs by $280,000 per year.",
+      "sourceEmployer": "Acme Corp",
+      "reviewedBulletText": "Cut warehouse costs by $280,000 per year.",
+      "ignoredDuplicates": [{ "existingBulletId": "0f8f...", "candidateIndex": null, "similarity": 0.87 }]
+    }
+  ]
+}
+```
+
+Each bullet goes through the same create path as `POST /api/bullets`, so it is tagged, enriched, and
+indexed. `ignoredDuplicates` records pairs the user marked as distinct so they are not flagged again;
+a decision is dropped when `reviewedBulletText` no longer matches the text being imported.
+
+Response (`ResumeImportResultDto`):
+```json
+{ "created": [ { "id": "9a2c...", "bulletText": "Cut warehouse costs by $280,000 per year." } ], "ignoredPairCount": 1 }
+```
+
+Returns `400` when no bullet in the request has text.
+
 ### Bullet versions
 
 A version is an alternative wording of a bullet, kept alongside it. Creating one never modifies the
