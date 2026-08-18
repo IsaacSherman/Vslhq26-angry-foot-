@@ -9,6 +9,7 @@ using AngryFoot.ApiService.Application.Evidence.Diagnostics;
 using AngryFoot.ApiService.Application.Generation;
 using AngryFoot.ApiService.Application.Profile;
 using AngryFoot.ApiService.Application.Refinement;
+using AngryFoot.ApiService.Application.Review;
 using AngryFoot.ApiService.Data;
 using AngryFoot.ApiService.Mcp;
 using Microsoft.EntityFrameworkCore;
@@ -54,6 +55,8 @@ builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
 builder.Services.AddScoped<IEvidenceReviewer, AiEvidenceReviewer>();
 builder.Services.AddScoped<IEvidenceCoverageAnalyzer, EvidenceCoverageService>();
+builder.Services.AddScoped<IResumeReviewer, AiResumeReviewer>();
+builder.Services.AddScoped<IResumeReviewService, ResumeReviewService>();
 builder.Services.AddScoped<IEvidenceDiagnosticAnalyzer, MissingSkillAnalyzer>();
 builder.Services.AddScoped<IEvidenceDiagnosticAnalyzer, WeakEvidenceAnalyzer>();
 builder.Services.AddScoped<IEvidenceDiagnosticAnalyzer, DuplicateBulletAnalyzer>();
@@ -126,6 +129,7 @@ api.MapProfileEndpoints();
 api.MapBulletEndpoints();
 api.MapArtifactEndpoints();
 api.MapGenerationEndpoints();
+api.MapResumeReviewEndpoints();
 
 app.MapDefaultEndpoints();
 

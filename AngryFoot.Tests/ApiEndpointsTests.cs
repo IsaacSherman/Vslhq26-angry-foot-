@@ -71,6 +71,58 @@ public class ApiEndpointsTests
     }
 
     /// <summary>
+    /// The whole point of the review is that it reads without keeping: run against the heuristic
+    /// path so the result does not depend on whose secrets are on the machine, and check the
+    /// database is exactly as it was.
+    /// </summary>
+    [Fact]
+    public async Task ResumeReviewEndpointReportsFindingsWithoutPersistingAnything()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestAiConfiguration.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        const string resume = """
+            MILDRED WAFFLE
+            mildred.waffle@totally-real-mail.invalid
+
+            EXPERIENCE
+
+            Marmot Signal Works
+            Staff Data Engineer, 2021 - Present
+            - Cut warehouse costs by $280,000 per year by migrating cold partitions to object storage.
+            - Worked on the nightly reconciliation job and the reporting pipeline for the team.
+            """;
+
+        var response = await apiClient.PostAsJsonAsync("/api/resume-review", new ResumeReviewRequest(resume), cancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var report = await response.Content.ReadFromJsonAsync<ResumeReviewReportDto>(cancellationToken);
+        Assert.NotNull(report);
+        Assert.Equal(CoverageSourceDto.Deterministic, report!.Source);
+        Assert.Equal(2, report.Bullets.Count);
+        Assert.Contains(report.Bullets[1].Findings, x => x.Code == CoverageDiagnosticCodes.NoMeasurableImpact);
+        Assert.False(string.IsNullOrWhiteSpace(report.Summary));
+        Assert.Null(report.Coverage);
+
+        // Reviewing is not importing: no bullet from that resume may have been created.
+        var bullets = await apiClient.GetFromJsonAsync<List<BulletDto>>("/api/bullets", cancellationToken);
+        Assert.Empty(bullets!);
+    }
+
+    /// <summary>
     /// The guards, with the converter switched off - which is how every default test run sees it, so
     /// this is also the check that an unavailable container is a readable refusal rather than a 500.
     /// </summary>
