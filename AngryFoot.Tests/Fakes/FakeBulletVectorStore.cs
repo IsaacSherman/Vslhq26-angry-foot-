@@ -27,6 +27,12 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
     /// <summary>Vectors returned by <see cref="EmbedAsync"/>; unknown text embeds as null.</summary>
     public Dictionary<string, float[]> Embeddings { get; } = [];
 
+    /// <summary>
+    /// Thrown by <see cref="SearchAsync"/> when set, for the callers that have to keep working when
+    /// the index is configured but unreachable.
+    /// </summary>
+    public Exception? SearchException { get; set; }
+
     private readonly HashSet<Guid> _indexedIds = [];
 
     public Task<bool> UpsertAsync(Bullet bullet, CancellationToken cancellationToken)
@@ -48,7 +54,11 @@ internal sealed class FakeBulletVectorStore : IBulletVectorStore
     }
 
     public Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken)
-        => Task.FromResult(SearchResultsByQuery.TryGetValue(queryText, out var scripted) ? scripted : SearchResults);
+    {
+        return SearchException is not null
+            ? Task.FromException<IReadOnlyList<BulletSimilarityMatch>>(SearchException)
+            : Task.FromResult(SearchResultsByQuery.TryGetValue(queryText, out var scripted) ? scripted : SearchResults);
+    }
 
     public Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken)
         => Task.FromResult(Embeddings.TryGetValue(text, out var vector) ? vector : null);

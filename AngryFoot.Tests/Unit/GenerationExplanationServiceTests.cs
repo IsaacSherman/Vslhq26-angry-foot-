@@ -243,4 +243,119 @@ public class GenerationExplanationServiceTests
         explanation.Decisions.Should().BeEmpty();
         explanation.Summary.Should().NotBeNullOrWhiteSpace();
     }
+
+    private static RankedBullet RankedGeneric(Bullet bullet, params RankingReason[] reasons)
+        => new(bullet, Score: 10, reasons);
+
+    [Fact]
+    public void ExplainGeneric_CreditsAKeptBulletWithWhatTheRankerLiked()
+    {
+        var bullet = Bullet("Cut Azure spend by 30%.", ["azure"]);
+        var ranked = RankedGeneric(
+            bullet,
+            new RankingReason(RankingReasonKind.Quality, "Scores 90 of 100 on how it is written: measurable result."),
+            new RankingReason(RankingReasonKind.Breadth, "The only bullet so far covering azure."));
+
+        var decision = GenerationExplanationService
+            .ExplainGeneric([ranked], [Kept(bullet)], ResumeAudienceDto.Recruiter)
+            .Decisions.Single();
+
+        decision.Kind.Should().Be(BulletDecisionKindDto.Selected);
+        decision.Why.SupportingEvidence.Should().ContainSingle()
+            .Which.Because.Should().Contain("measurable result").And.Contain("covering azure");
+        decision.Why.MissingEvidence.Should().BeEmpty("a kept bullet is not missing anything");
+    }
+
+    /// <summary>
+    /// The reason worth reading in the panel: not that a bullet ranked low, but that it lost its
+    /// slot to a bullet already saying the same thing.
+    /// </summary>
+    [Fact]
+    public void ExplainGeneric_TellsAnOmittedNearDuplicateWhatItRepeated()
+    {
+        var kept = Bullet("Migrated 40 payment services onto Kubernetes.");
+        var duplicate = Bullet("Migrated 40 payment services to Kubernetes.");
+        var overlap = new RankingReason(
+            RankingReasonKind.Overlap,
+            "Repeats 84% of the wording of \"Migrated 40 payment services onto Kubernetes.\", which is already selected.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(kept), RankedGeneric(duplicate, overlap)],
+            [Kept(kept)],
+            ResumeAudienceDto.Recruiter);
+
+        var omitted = explanation.Decisions.Single(x => x.Kind.HasFlag(BulletDecisionKindDto.Omitted));
+        omitted.Why.MissingEvidence.Should().ContainSingle().Which.Should().Contain("Repeats 84%");
+        omitted.Why.Reasoning.Should().Contain("what it repeats");
+    }
+
+    [Fact]
+    public void ExplainGeneric_NamesTheAudienceARewordedBulletWasWrittenFor()
+    {
+        var bullet = Bullet("Cut Azure spend by 30%.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(bullet)],
+            [Kept(bullet, "Reduced Azure spend 30%.")],
+            ResumeAudienceDto.Executive);
+
+        explanation.Decisions.Single().Kind.Should().HaveFlag(BulletDecisionKindDto.Revised);
+        explanation.Summary.Should().Contain("1 reworded for an executive");
+    }
+
+    [Fact]
+    public void ExplainGeneric_ReportsTheBreadthTheResumeActuallyAchieved()
+    {
+        var azure = Bullet("Cut Azure spend by 30%.", ["azure"]);
+        var postgres = Bullet("Rebuilt the Postgres pipeline.", ["postgres"]);
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(azure), RankedGeneric(postgres)],
+            [Kept(azure), Kept(postgres)],
+            ResumeAudienceDto.Recruiter);
+
+        explanation.Summary.Should().Contain("2 of the 2");
+        explanation.Summary.Should().Contain("2 distinct technologies");
+        explanation.Summary.Should().Contain("no target title",
+            "with nothing to steer by, the summary has to say what it ranked on instead");
+    }
+
+    /// <summary>
+    /// The title's account leads the summary, because "why these bullets and not others" is the
+    /// question the panel exists to answer.
+    /// </summary>
+    [Fact]
+    public void ExplainGeneric_LeadsWithWhatTheTargetTitleDid()
+    {
+        var bullet = Bullet("Trained a churn model on 2M rows.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(bullet)],
+            [Kept(bullet)],
+            ResumeAudienceDto.Recruiter,
+            titleSummary: "Selected for \"Machine Learning Specialist\", matched on \"machine learning\".");
+
+        explanation.Summary.Should().StartWith("Selected for \"Machine Learning Specialist\"");
+    }
+
+    [Fact]
+    public void ExplainGeneric_WithVerbatim_SaysNothingWasReworded()
+    {
+        var bullet = Bullet("Cut Azure spend by 30%.");
+
+        var explanation = GenerationExplanationService.ExplainGeneric(
+            [RankedGeneric(bullet)], [Kept(bullet)], ResumeAudienceDto.Verbatim);
+
+        explanation.Summary.Should().Contain("printed exactly as you wrote them, with no AI involved");
+        explanation.Decisions.Single().Kind.Should().NotHaveFlag(BulletDecisionKindDto.Revised);
+    }
+
+    [Fact]
+    public void ExplainGeneric_WithNoCandidates_ProducesAnEmptyButValidExplanation()
+    {
+        var explanation = GenerationExplanationService.ExplainGeneric([], [], ResumeAudienceDto.Recruiter);
+
+        explanation.Decisions.Should().BeEmpty();
+        explanation.Summary.Should().NotBeNullOrWhiteSpace();
+    }
 }

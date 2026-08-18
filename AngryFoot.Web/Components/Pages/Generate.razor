@@ -13,28 +13,72 @@
 
 <div class="card mb-3">
     <div class="card-body">
+        <div class="btn-group mb-3" role="group" aria-label="Generation mode">
+            <input type="radio" class="btn-check" name="generation-mode" id="mode-tailored" autocomplete="off"
+                   checked="@(!isGeneric)" disabled="@isWorking" @onchange="() => SetGeneric(false)" />
+            <label class="btn btn-outline-primary" for="mode-tailored">Tailored to a posting</label>
+
+            <input type="radio" class="btn-check" name="generation-mode" id="mode-generic" autocomplete="off"
+                   checked="@isGeneric" disabled="@isWorking" @onchange="() => SetGeneric(true)" />
+            <label class="btn btn-outline-primary" for="mode-generic">Generic (for a recruiter)</label>
+        </div>
+
+        @if (isGeneric)
+        {
+            <div class="alert alert-secondary py-2">
+                No posting: this picks from your whole library, favouring bullets that match your target job
+                title, are well written, cover ground the others do not, and come from recent work. It is not
+                tailored, and a resume written against a real posting will beat it — use this when you need
+                something to hand a recruiter today.
+            </div>
+        }
+
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label">Job Title (optional)</label>
+                <label class="form-label">@(isGeneric ? "Target Job Title (optional)" : "Job Title (optional)")</label>
                 <input class="form-control" @bind="jobTitle" />
-                <div class="form-text">Used to map the role to an occupation for the benchmark below.</div>
+                <div class="form-text">
+                    @(isGeneric
+                        ? "Decides which bullets are picked. \"Machine Learning Specialist\" surfaces different work than \"Software Engineer\". Leave it blank to rank on strength and breadth alone."
+                        : "Used to map the role to an occupation for the benchmark below.")
+                </div>
             </div>
-            <div class="col-md-6">
-                <label class="form-label">Company (optional)</label>
-                <input class="form-control" @bind="company" />
-            </div>
+            @if (isGeneric)
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Written For</label>
+                    <select class="form-select" @bind="audience">
+                        <option value="@AngryFoot.Contracts.ResumeAudienceDto.Recruiter">Recruiter</option>
+                        <option value="@AngryFoot.Contracts.ResumeAudienceDto.HiringManager">Hiring manager</option>
+                        <option value="@AngryFoot.Contracts.ResumeAudienceDto.TechnicalLeader">Technical manager or lead</option>
+                        <option value="@AngryFoot.Contracts.ResumeAudienceDto.Executive">Executive</option>
+                        <option value="@AngryFoot.Contracts.ResumeAudienceDto.Verbatim">Verbatim - do not reword</option>
+                    </select>
+                    <div class="form-text">@AudienceBlurb</div>
+                </div>
+            }
+            else
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Company (optional)</label>
+                    <input class="form-control" @bind="company" />
+                </div>
+            }
             <div class="col-md-3">
                 <label class="form-label">Max Bullets</label>
                 <input class="form-control" type="number" min="1" max="20" @bind="maxBullets" />
             </div>
-            <div class="col-12">
-                <label class="form-label">Job Description</label>
-                <textarea class="form-control" rows="10" @bind="jobDescription"></textarea>
-            </div>
+            @if (!isGeneric)
+            {
+                <div class="col-12">
+                    <label class="form-label">Job Description</label>
+                    <textarea class="form-control" rows="10" @bind="jobDescription"></textarea>
+                </div>
+            }
             <div class="col-12">
                 <label class="form-label">Guidance for the AI (optional)</label>
                 <textarea class="form-control" rows="3" @bind="guidance"
-                          placeholder="Clarify anything ambiguous in your bullets - e.g. &quot;'systems' means HVAC controls, not software&quot;, or &quot;ACME was a 4-person startup, not the toy company&quot;."></textarea>
+                          placeholder='Clarify anything ambiguous in your bullets - e.g. "systems means HVAC controls, not software", or "ACME was a 4-person startup, not the toy company".'></textarea>
                 <div class="form-text">
                     Treated as fact by every AI stage, with or without deep review. Use it when a bullet reads one way to you
                     and another way to a stranger.
@@ -43,13 +87,26 @@
         </div>
 
         <div class="mt-3">
-            <button class="btn btn-secondary me-2" @onclick="AnalyzeAsync" disabled="@isWorking">
-                @if (isAnalyzing)
-                {
-                    <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
-                }
-                Analyze
-            </button>
+            @if (!isGeneric)
+            {
+                <button class="btn btn-secondary me-2" @onclick="AnalyzeAsync" disabled="@isWorking">
+                    @if (isAnalyzing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                    }
+                    Analyze
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-secondary me-2" @onclick="PreviewAsync" disabled="@isWorking">
+                    @if (isPreviewing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                    }
+                    Preview selection
+                </button>
+            }
             <button class="btn btn-primary me-3" @onclick="GenerateAsync" disabled="@isWorking">
                 @if (isGenerating)
                 {
@@ -58,24 +115,98 @@
                 Generate
             </button>
             <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="deep-review" @bind="deepReview" disabled="@isWorking" />
+                <input class="form-check-input" type="checkbox" id="deep-review" @bind="deepReview"
+                       disabled="@(isWorking || IsVerbatim)" />
                 <label class="form-check-label" for="deep-review">Deep review</label>
             </div>
             <div class="form-text">
-                Deep review critiques, revises, and merges both the bullet rewrites and the cover letter, then lets you
-                pick between the versions. It can also reorder your bullets and swap in stronger ones the ranker left out.
-                Six extra AI calls, so generation takes several minutes instead of 30-90 seconds.
+                @if (IsVerbatim)
+                {
+                    @("Unavailable with Verbatim: deep review critiques rewrites, and Verbatim produces none.")
+                }
+                else if (isGeneric)
+                {
+                    @("Deep review critiques, revises, and merges the bullet rewrites, then lets you pick between the versions. "
+                      + "It can also reorder your bullets and swap in stronger ones the ranker left out. "
+                      + "Three extra AI calls, since a generic resume has no cover letter to refine.")
+                }
+                else
+                {
+                    @("Deep review critiques, revises, and merges both the bullet rewrites and the cover letter, then lets you "
+                      + "pick between the versions. It can also reorder your bullets and swap in stronger ones the ranker left out. "
+                      + "Six extra AI calls, so generation takes several minutes instead of 30-90 seconds.")
+                }
             </div>
+
+            @if (IsVerbatim)
+            {
+                <div class="alert alert-info py-2 mt-3 mb-0">
+                    @if (string.IsNullOrWhiteSpace(jobTitle))
+                    {
+                        <text>
+                            <strong>No AI is involved in this generation at all.</strong> With Verbatim and no target
+                            job title, this is your strongest bullets by the ranking above, printed as you wrote them.
+                            Preview and Generate will select exactly the same set.
+                        </text>
+                    }
+                    else
+                    {
+                        <text>
+                            <strong>No AI is involved in this generation at all.</strong> Your target title still steers
+                            which bullets are picked; Verbatim only stops them being reworded.
+                        </text>
+                    }
+                </div>
+            }
         </div>
     </div>
 </div>
+
+@if (preview is not null)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Selection preview — @preview.SelectedBulletIds.Count bullet@(preview.SelectedBulletIds.Count == 1 ? "" : "s")</span>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="() => preview = null">Dismiss</button>
+        </div>
+        <div class="card-body">
+            <p class="mb-2">
+                @if (IsVerbatim)
+                {
+                    <text>
+                        This is what Generate will produce. Selection is deterministic, and Verbatim prints these
+                        bullets unchanged.
+                    </text>
+                }
+                else
+                {
+                    <text>
+                        These are the bullets Generate will build from, in this order. Selection is deterministic, so
+                        it will pick exactly this set — but <strong>@AudienceName will then reword them</strong>, so
+                        the finished resume will not read like the list below.
+                    </text>
+                }
+            </p>
+            <ol class="mb-0">
+                @foreach (var decision in preview.Explanation.Decisions.Where(x => x.ResumePosition is not null))
+                {
+                    <li class="mb-1">@decision.OriginalText</li>
+                }
+            </ol>
+        </div>
+    </div>
+
+    <GenerationExplanationPanel Explanation="@preview.Explanation"
+                                Title="Why the ranker picked these"
+                                IsGeneric="true" />
+}
 
 <WorkingIndicator Visible="@isAnalyzing" Message="Linking this posting's requirements to the bullets in your library. This usually takes under a minute." />
 <WorkingIndicator Visible="@isGenerating" Message="@GenerateProgressMessage" />
 
 <EvidenceCoveragePanel Coverage="@coverage" Title="@coverageTitle" />
 
-<GenerationExplanationPanel Explanation="@explanation" />
+<GenerationExplanationPanel Explanation="@explanation" IsGeneric="@resultIsGeneric" />
 
 <OccupationBenchmarkPanel Benchmark="@benchmark" />
 
@@ -100,7 +231,10 @@
         <h3 class="mb-0">Generated Output</h3>
         <div>
             <button class="btn btn-outline-secondary btn-sm me-2" @onclick="CopyResumeAsync">Copy Resume</button>
-            <button class="btn btn-outline-secondary btn-sm" @onclick="CopyCoverLetterAsync">Copy Cover Letter</button>
+            @if (!resultIsGeneric)
+            {
+                <button class="btn btn-outline-secondary btn-sm" @onclick="CopyCoverLetterAsync">Copy Cover Letter</button>
+            }
         </div>
     </div>
 
@@ -110,7 +244,8 @@
     }
 
     <div class="row g-3">
-        <div class="col-md-6">
+        @* A generic resume has no cover letter to sit beside, so the resume takes the whole row. *@
+        <div class="@(resultIsGeneric ? "col-12" : "col-md-6")">
             <DraftVersionPicker Refinement="@result.ResumeRefinement"
                                 Title="Deep review: pick a resume"
                                 SelectedLabel="@resumeVersionLabel"
@@ -118,14 +253,17 @@
                                 SelectedLabelChanged="OnResumeVersionSelected" />
             <MarkdownPane Title="Resume" Markdown="@ResumeMarkdown" Rows="24" />
         </div>
-        <div class="col-md-6">
-            <DraftVersionPicker Refinement="@result.CoverLetterRefinement"
-                                Title="Deep review: pick a cover letter"
-                                SelectedLabel="@coverLetterVersionLabel"
-                                Disabled="@isSavingSelection"
-                                SelectedLabelChanged="OnCoverLetterVersionSelected" />
-            <MarkdownPane Title="Cover Letter" Markdown="@CoverLetterMarkdown" Rows="24" />
-        </div>
+        @if (!resultIsGeneric)
+        {
+            <div class="col-md-6">
+                <DraftVersionPicker Refinement="@result.CoverLetterRefinement"
+                                    Title="Deep review: pick a cover letter"
+                                    SelectedLabel="@coverLetterVersionLabel"
+                                    Disabled="@isSavingSelection"
+                                    SelectedLabelChanged="OnCoverLetterVersionSelected" />
+                <MarkdownPane Title="Cover Letter" Markdown="@CoverLetterMarkdown" Rows="24" />
+            </div>
+        }
     </div>
 }
 
@@ -135,12 +273,52 @@
     private string jobDescription = string.Empty;
     private string? guidance;
     private int maxBullets = 10;
+    private bool isGeneric;
+    private AngryFoot.Contracts.ResumeAudienceDto audience = AngryFoot.Contracts.ResumeAudienceDto.Recruiter;
+
+    // Read from the result rather than from the form, so flipping the mode after a generation does
+    // not relabel the document already on screen.
+    private bool resultIsGeneric;
 
     private bool isAnalyzing;
     private bool isGenerating;
+    private bool isPreviewing;
     private bool deepReview;
     private bool isSavingSelection;
-    private bool isWorking => isAnalyzing || isGenerating;
+    private bool isWorking => isAnalyzing || isGenerating || isPreviewing;
+
+    private AngryFoot.Contracts.GenericPreviewDto? preview;
+
+    private bool IsVerbatim => isGeneric && audience == AngryFoot.Contracts.ResumeAudienceDto.Verbatim;
+
+    private string AudienceName => audience switch
+    {
+        AngryFoot.Contracts.ResumeAudienceDto.Recruiter => "the recruiter wording",
+        AngryFoot.Contracts.ResumeAudienceDto.HiringManager => "the hiring-manager wording",
+        AngryFoot.Contracts.ResumeAudienceDto.TechnicalLeader => "the technical-lead wording",
+        AngryFoot.Contracts.ResumeAudienceDto.Executive => "the executive wording",
+        _ => "the rewrite"
+    };
+
+    /// <summary>
+    /// What each audience changes. Every one of these ends up saying the same thing about selection,
+    /// because the question the control invites - "does this change which bullets I get?" - has one
+    /// answer, and it is no.
+    /// </summary>
+    private string AudienceBlurb => audience switch
+    {
+        AngryFoot.Contracts.ResumeAudienceDto.Recruiter =>
+            "Reworded in plain language, favouring recognisable role and technology names over architectural detail. Selection is unaffected.",
+        AngryFoot.Contracts.ResumeAudienceDto.HiringManager =>
+            "Reworded to lead with outcomes, scope, and what you owned end to end. Selection is unaffected.",
+        AngryFoot.Contracts.ResumeAudienceDto.TechnicalLeader =>
+            "Reworded for depth: systems, named technologies, and how the work was actually done. Selection is unaffected.",
+        AngryFoot.Contracts.ResumeAudienceDto.Executive =>
+            "Reworded around business impact - cost, revenue, risk, headcount, and time. Selection is unaffected.",
+        AngryFoot.Contracts.ResumeAudienceDto.Verbatim =>
+            "No rewriting. Your bullets are printed exactly as you wrote them and no AI is called. Selection is unaffected - it never uses AI either.",
+        _ => string.Empty
+    };
     private string? errorMessage;
     private string? selectionError;
 
@@ -158,9 +336,64 @@
     private string? resumeVersionLabel;
     private string? coverLetterVersionLabel;
 
-    private string GenerateProgressMessage => deepReview
-        ? "Generating with deep review: analyzing the job, ranking and rewriting bullets, then critiquing, revising, and merging both documents. Expect several minutes."
-        : "Generating your tailored resume and cover letter: analyzing the job, ranking and rewriting bullets, then drafting documents. This typically takes 30-90 seconds.";
+    private string GenerateProgressMessage => (isGeneric, IsVerbatim, deepReview) switch
+    {
+        (true, true, _) => "Ranking your library and assembling the resume. No AI call, so this should be immediate.",
+        (true, false, true) => "Generating with deep review: ranking your library, rewriting the bullets, then critiquing, revising, and merging the versions. Expect a couple of minutes.",
+        (true, false, false) => "Generating a generic resume: ranking your library against your target title, then rewriting the bullets for your chosen reader. This typically takes 30-60 seconds.",
+        (false, _, true) => "Generating with deep review: analyzing the job, ranking and rewriting bullets, then critiquing, revising, and merging both documents. Expect several minutes.",
+        (false, _, false) => "Generating your tailored resume and cover letter: analyzing the job, ranking and rewriting bullets, then drafting documents. This typically takes 30-90 seconds."
+    };
+
+    /// <summary>
+    /// Switching mode clears the previous result for the same reason a new Analyze does: a resume
+    /// drafted the other way must not sit under controls that no longer describe it.
+    /// </summary>
+    private void SetGeneric(bool value)
+    {
+        isGeneric = value;
+        result = null;
+        preview = null;
+        analysis = null;
+        coverage = null;
+        explanation = null;
+        benchmark = null;
+        errorMessage = null;
+        selectionError = null;
+    }
+
+    /// <summary>
+    /// Runs selection and nothing else. No AI call and nothing persisted, so the user can try
+    /// target titles until the shortlist looks right before paying for a generation.
+    /// </summary>
+    private async Task PreviewAsync()
+    {
+        errorMessage = null;
+        isPreviewing = true;
+
+        try
+        {
+            preview = await ApiClient.PreviewGenericAsync(BuildGenericRequest());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isPreviewing = false;
+        }
+    }
+
+    private AngryFoot.Contracts.GenericGenerationRequest BuildGenericRequest()
+        => new(
+            audience,
+            jobTitle?.Trim(),
+            maxBullets,
+            // Verbatim has no rewrites to review; the API ignores the flag, and sending it anyway
+            // would put a stale checkbox in the stored request.
+            deepReview && !IsVerbatim,
+            guidance?.Trim());
 
     private string ResumeMarkdown =>
         VersionText(result?.ResumeRefinement, resumeVersionLabel) ?? result?.ResumeMarkdown ?? string.Empty;
@@ -210,7 +443,7 @@
     {
         errorMessage = null;
 
-        if (string.IsNullOrWhiteSpace(jobDescription))
+        if (!isGeneric && string.IsNullOrWhiteSpace(jobDescription))
         {
             errorMessage = "Job description is required.";
             return;
@@ -223,19 +456,35 @@
         explanation = null;
         benchmark = null;
         selectionError = null;
+        // The generation's own explanation supersedes the preview's, and showing both would put two
+        // accounts of the same selection on screen.
+        preview = null;
 
         isGenerating = true;
         try
         {
-            result = await ApiClient.GenerateAsync(new AngryFoot.Contracts.GenerationRequest(
-                jobDescription.Trim(),
-                jobTitle?.Trim(),
-                company?.Trim(),
-                maxBullets,
-                deepReview,
-                guidance?.Trim()));
+            if (isGeneric)
+            {
+                result = await ApiClient.GenerateGenericAsync(BuildGenericRequest());
 
-            analysis = result.Analysis;
+                // The neutral analysis a generic generation carries has nothing in it, and an empty
+                // "Extracted Job Requirements" panel would imply a posting was read and found bare.
+                analysis = null;
+            }
+            else
+            {
+                result = await ApiClient.GenerateAsync(new AngryFoot.Contracts.GenerationRequest(
+                    jobDescription.Trim(),
+                    jobTitle?.Trim(),
+                    company?.Trim(),
+                    maxBullets,
+                    deepReview,
+                    guidance?.Trim()));
+
+                analysis = result.Analysis;
+            }
+
+            resultIsGeneric = isGeneric;
             coverage = result.Coverage;
             coverageTitle = ResumeCoverageTitle;
             explanation = result.Explanation;

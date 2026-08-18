@@ -209,12 +209,36 @@ internal static partial class BulletQualityHeuristics
     }
 
     /// <remarks>
+    /// <para>
     /// Boundaries are per-alternative rather than wrapped around the whole group. A trailing
     /// boundary after the group cannot follow "40%" - percent to full stop is not a word boundary -
     /// so the engine backtracked onto the bare-number branch and reported the figure as "40".
     /// Invisible while this only answered yes or no; wrong the moment the figure is quoted back.
+    /// </para>
+    /// <para>
+    /// Spelled-out cardinals count. Digits alone made the check a test of orthography rather than
+    /// of content: "five tests across three products" scored nothing while the same sentence with
+    /// "3" scored the full thirty, so the way to win thirty points was to edit a word into a
+    /// numeral without changing a single fact. A scoring rule a user can satisfy by find-and-replace
+    /// is not measuring what it claims to.
+    /// </para>
+    /// <para>
+    /// "One" is deliberately absent. It is far more often a pronoun than a count - "one of which
+    /// required three tests" states no quantity about the work - and a bullet that really does
+    /// hinge on a single thing almost always carries another figure anyway. Ordinals are absent for
+    /// a different reason: "the first CI/CD server" is a claim to specificity, which
+    /// <see cref="ProperNoun"/> already scores, not to measurement.
+    /// </para>
     /// </remarks>
-    [GeneratedRegex("(\\b\\d+%|\\b\\$?\\d+[\\d,]*(\\.\\d+)?\\b|\\b\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?)\\b)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        "(\\b\\d+%"
+        + "|\\b\\$?\\d+[\\d,]*(\\.\\d+)?\\b"
+        + "|\\b\\d+\\s*(x|hrs?|hours?|days?|weeks?|months?)\\b"
+        // Tens first, so "twenty-five" is quoted whole rather than as "twenty".
+        + "|\\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)([-\\s](one|two|three|four|five|six|seven|eight|nine))?\\b"
+        + "|\\b(two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\\b"
+        + "|\\b(dozen|hundred|thousand|million|billion)s?\\b)",
+        RegexOptions.IgnoreCase)]
     private static partial Regex ImpactPattern();
 
     [GeneratedRegex("[A-Za-z][A-Za-z0-9#+.]*")]

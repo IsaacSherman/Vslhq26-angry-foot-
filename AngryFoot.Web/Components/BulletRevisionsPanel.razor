@@ -37,8 +37,11 @@
             </div>
             <div class="col-md-7">
                 <label class="form-label" for="revision-guidance">Anything the writer should know (optional)</label>
+                @* Placeholders are single-quoted so the examples can carry real quotation marks.
+                   Blazor writes attribute values verbatim rather than decoding HTML entities, so a
+                   &quot; in the source reaches the user as those six characters. *@
                 <input class="form-control" id="revision-guidance" @bind="guidance" disabled="@isWorking"
-                       placeholder="e.g. &quot;the platform was internal, not a product&quot;" />
+                       placeholder='e.g. "the platform was internal, not a product"' />
             </div>
         </div>
 

@@ -36,4 +36,17 @@ public sealed class GenerationArtifact
     /// the decisions taken on the day, and the candidate set has moved on since.
     /// </summary>
     public string? GenerationExplanationJson { get; set; }
+
+    /// <summary>
+    /// Generated with no posting to aim at. <see cref="JobDescription"/> and
+    /// <see cref="CoverLetterMarkdown"/> are both empty for these, and <see cref="JobTitle"/> is
+    /// the title the candidate was aiming at rather than one a posting advertised.
+    /// </summary>
+    public bool IsGeneric { get; set; }
+
+    /// <summary>
+    /// The <c>ResumeAudienceDto</c> the generic resume was written for, by name. Null for tailored
+    /// generations. Stored as a string so a reordered enum cannot silently relabel old rows.
+    /// </summary>
+    public string? Audience { get; set; }
 }

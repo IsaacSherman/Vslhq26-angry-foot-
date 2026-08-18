@@ -14,6 +14,18 @@
         "--Qdrant:Enabled=false"
       ],
       "port": 15205
+    },
+    {
+      "name": "apphost-rag",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "AngryFoot.AppHost",
+        "--launch-profile",
+        "https"
+      ],
+      "port": 15205
     }
   ]
 }

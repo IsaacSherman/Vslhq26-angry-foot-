@@ -51,6 +51,8 @@ flowchart LR
 
 The generation pipeline inside the API service runs as a chain: job description → `HeuristicJobAnalyzer` (extract requirements) → `EvidenceCoverageService` (link each requirement to the bullets that evidence it) → retrieve candidate bullets (semantic search via `BulletRetrievalService`/Qdrant when configured, otherwise `BulletRankingService`'s keyword-overlap scan of the full library) → `BulletRewriteService` (tailor them to the job) → `ResumeMarkdownService` + `CoverLetterService` (assemble Markdown) → persisted as a `GenerationArtifact` (browsable on the History page).
 
+There is a second entry point for when there is no posting at all: `GenerateGenericAsync` skips analysis, coverage, retrieval, and the cover letter, and picks bullets with `GenericBulletRankingService` — quality plus a diversity bonus and a near-duplicate penalty — before rejoining the same rewrite and assembly stages. See [Generic resume: when there is no posting](#generic-resume-when-there-is-no-posting).
+
 ## Tech stack
 
 - **Languages:** C# (.NET 10), Razor
@@ -195,6 +197,42 @@ Each bullet is labelled with what became of it, and expands to the reasoning:
 A bullet left off that speaks to something the resume **does not** evidence is called out as a cost rather than listed as a neutral fact: *"This resume does not fully evidence Kubernetes, which this bullet speaks to. Raising Max Bullets, or strengthening this one, would bring it in."* That is usually the most actionable line in the panel.
 
 The explanation is deterministic and costs no AI call — the generator's choices are already made by the time it runs, so explaining them cannot disagree with the resume it describes. It is stored with the artifact, so reopening a generation from History explains the resume you actually sent.
+
+### Generic resume: when there is no posting
+
+Sometimes a recruiter wants a resume today and there is nothing to tailor to. **Generate** has a second mode for that, labelled as what it is: a generic resume, not a targeted one. Switching to it hides the job description and company, and asks for two things instead — the job title you are *aiming* at, and who the resume is going to.
+
+**The target job title decides which bullets you get.** Type *Machine Learning Specialist* and you get the machine learning work; type *Software Engineer* and you get the C#, C++, and systems work. Three signals feed that, and the strongest wins:
+
+- **The words of the title itself.** Ladder words are stripped — *Senior*, *Staff*, *Specialist*, *Engineer* — and what remains is the subject searched for: "Machine Learning Specialist" looks for *machine learning*, in both bullet text and enrichment tags. A whole-phrase hit outranks a bullet that only matches one word of it.
+- **The occupation the title maps to,** in the same bundled O*NET dataset the benchmark uses, scoring each bullet by the importance-weighted share of that occupation's requirements it evidences. Worth knowing what this can and cannot do: the dataset covers 21 technology occupations, it has no machine-learning role at all, and some occupations it does carry — Data Scientists among them — list only named products with no skill descriptors. That is exactly why the word signal above exists.
+- **Semantic similarity,** when an embedding deployment and Qdrant are configured — and this is the signal that does the most work when it is available. Measured against a 51-bullet library, "Machine Learning Specialist" reached 2 relevant bullets on the first two signals alone and 10 with the index on, surfacing Python automation work that named neither word. Without it the first two still work, which is what you get with no `AzureOpenAI:EmbeddingDeployment`, with Qdrant not running, or for bullets written before either was set up (use **Index All Missing** on the Bullets page for that last one).
+
+Because a three-word title is semantically close to most of one person's technical writing, relevance is scaled across the *range* of scores rather than against the top one, and damped when nothing is genuinely close. Without that, every bullet collects most of the relevance weight and the title stops separating anything — the panel would report "51 of your 51 bullets carry relevant work", which is a null result dressed as a strong one.
+
+Leave the title blank and none of this applies: you get the strongest and broadest bullets in the library, full stop. Either way the panel says which happened, including the unflattering case — *"No bullet in your library matched what 'Machine Learning Specialist' work involves, so your target title did not steer this selection."*
+
+**The audience changes the wording, never the selection.** A technical lead reads for depth and named systems; an executive reads for cost, revenue, and the size of what was owned. That is a real difference in how a bullet should be phrased, and the rewrite is told which reader it is writing for. What it is deliberately *not* allowed to do is change which bullets get picked — the ranker stays audience-neutral so its output is auditable, and so the explanation panel can be checked against it.
+
+**Verbatim turns the rewriting off entirely.** Choose it and your bullets are printed exactly as you wrote them: no rewrite call, no deep review, no AI anywhere in the generation. Selection is unchanged, because selection never used AI to begin with. With Verbatim and no target title, the whole thing is deterministic — the N strongest bullets in your library, assembled into a document.
+
+**How bullets are picked.** The ranker scores every bullet and then picks greedily, asking at each slot not "which bullet is best" but "which bullet is best *given the ones already chosen*":
+
+- **Relevance to the target title** carries the most weight, so a solid machine learning bullet beats a beautifully written one about something else when you asked for machine learning.
+- **Strength.** The bullet's quality score — the same signals the quality panel shows — so a measurable result still beats a vague one.
+- **Credit for new ground.** A bonus for skills, technologies, and job families nothing selected so far covers. This is what stops six excellent Kubernetes bullets from becoming the whole resume.
+- **A penalty for repeating yourself.** Wording overlap against the bullets already chosen, over the same content-word comparison the overused-wording diagnostic uses. Ordinary shared vocabulary is ignored; a paraphrase of a bullet already on the page is heavily penalised.
+- **A bonus for recent work.** Ranked off your work history's own order, so the current role outranks the earliest one. Small — old work that is the best evidence of something still belongs on the resume — and a bullet whose employer is not in your history is scored at the midpoint rather than buried.
+
+Employer spread is deliberately **not** a goal. Bullets print grouped under their employer, so several from one job is the normal shape of a resume; pulling in a decade-old bullet to balance the list is how a resume ends up reliving your glory days.
+
+**Preview selection** runs that ranking and nothing else. No AI call, nothing saved — so you can try target titles until the shortlist looks right before paying for a generation. What it lists is exactly what Generate will build from; with any audience but Verbatim, Generate then rewords it, and the preview says so.
+
+The explanation panel works the same way it does for a targeted resume, but reasons in those terms: *"Names machine learning, which is what 'Machine Learning Specialist' is about. Scores 90 of 100 on how it is written: opens with an action, measurable result, names specifics. From your current or most recent role at Contoso."* — and for one left off, *"Repeats 84% of the wording of 'Migrated 40 payment services onto Kubernetes.', which is already selected."*
+
+**What you do not get, and why.** No cover letter: it needs a role and a company, and a letter addressed to nobody is a paragraph you would delete. No evidence coverage score and no occupational benchmark: both measure your library against a posting's stated requirements, and with no posting there are none to measure against — a 0% would read as a failure rather than as a question that was never asked. Deep review still works for every audience except Verbatim, and costs three extra AI calls here instead of six.
+
+**This is the worse workflow, and the UI says so.** A resume written against a real posting beats a generic one, every time. This exists because sometimes there is no posting, not because generic resumes are a good idea.
 
 ### Bullet versions and bullet quality
 
