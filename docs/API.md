@@ -153,6 +153,90 @@ Returns `200` with `RewriteBulletResponse`. `400` if `draft` or `critique` is mi
 }
 ```
 
+### Resume import
+
+Two-step by design: the preview reads a resume and returns candidate bullets with near-duplicate
+warnings, and nothing is written until the confirm call. The two preview routes differ only in how
+the text arrives.
+
+#### POST `/api/bullets/import/resume/preview`
+Parses pasted resume text. Persists nothing.
+
+Request:
+```json
+{ "resumeText": "EXPERIENCE
+
+Acme Corp
+Staff Engineer, 2021 - Present
+- Cut warehouse costs by $280,000 per year." }
+```
+
+Response (`ResumeImportPreviewResponse`):
+```json
+{
+  "candidates": [
+    {
+      "index": 0,
+      "bulletText": "Cut warehouse costs by $280,000 per year.",
+      "suggestedEmployer": "Acme Corp",
+      "duplicates": [
+        {
+          "kind": "ExistingBullet",
+          "existingBulletId": "0f8f...",
+          "candidateIndex": null,
+          "matchedText": "Reduced warehouse spend by $280k annually.",
+          "similarity": 0.87
+        }
+      ]
+    }
+  ],
+  "detectionMode": "Semantic",
+  "detectionMessage": null
+}
+```
+
+`detectionMode` is `Lexical` when semantic retrieval is unavailable, and `detectionMessage` explains
+why. Returns `400` with a plain-string message when the text is blank or no bullets were found.
+
+#### POST `/api/bullets/import/resume/preview/file`
+The same thing for an uploaded `.pdf` or `.docx`. `multipart/form-data` with a single `file` part;
+the document is converted to Markdown by the markitdown container and then takes the identical path,
+so the response is byte-for-byte the shape above. Persists nothing.
+
+Returns `400` with a plain-string message when the file is empty, is over 10 MB, is not a `.pdf` or
+`.docx`, has no extractable text (a resume saved as scanned images), or when the converter is not
+configured — in which case the message points at pasting instead. `GET /api/ai/status` reports
+`fileImportEnabled` so a client can disable the control before the user picks a file.
+
+#### POST `/api/bullets/import/resume`
+Creates the selected bullets. This is the only call in the flow that writes.
+
+Request:
+```json
+{
+  "bullets": [
+    {
+      "index": 0,
+      "bulletText": "Cut warehouse costs by $280,000 per year.",
+      "sourceEmployer": "Acme Corp",
+      "reviewedBulletText": "Cut warehouse costs by $280,000 per year.",
+      "ignoredDuplicates": [{ "existingBulletId": "0f8f...", "candidateIndex": null, "similarity": 0.87 }]
+    }
+  ]
+}
+```
+
+Each bullet goes through the same create path as `POST /api/bullets`, so it is tagged, enriched, and
+indexed. `ignoredDuplicates` records pairs the user marked as distinct so they are not flagged again;
+a decision is dropped when `reviewedBulletText` no longer matches the text being imported.
+
+Response (`ResumeImportResultDto`):
+```json
+{ "created": [ { "id": "9a2c...", "bulletText": "Cut warehouse costs by $280,000 per year." } ], "ignoredPairCount": 1 }
+```
+
+Returns `400` when no bullet in the request has text.
+
 ### Bullet versions
 
 A version is an alternative wording of a bullet, kept alongside it. Creating one never modifies the
@@ -459,6 +543,70 @@ already well represented. `kind`'s `"Revised"` means "reworded for this audience
 
 The stored artifact carries `isGeneric: true` and the `audience`, on both the full artifact and the
 `/api/artifacts` summaries, with `jobDescription` empty.
+
+## Resume review
+
+Reads a resume and returns findings about it. **Nothing is persisted by either route** — no bullet is
+created, no artifact is stored, and the text is not retained past the response.
+
+### POST `/api/resume-review`
+Reviews pasted resume text.
+
+Request:
+```json
+{ "resumeText": "MILDRED WAFFLE
+mildred@example.invalid
+
+EXPERIENCE
+- Worked on the reconciliation job.", "jobDescription": null }
+```
+
+`jobDescription` is optional. Supplying one additionally returns the evidence-coverage report for the
+resume as written, in the same shape `POST /api/generations/analyze` returns.
+
+Response (`ResumeReviewReportDto`):
+```json
+{
+  "summary": "Read 2 bullets and found 3 things worth a look. Each one names the bullet it is about and what would settle it.",
+  "spotChecks": [
+    {
+      "severity": "Suggestion",
+      "code": "inconsistent-dates",
+      "message": "Dates are written two ways in this resume: numeric months (09/2019) and named months (September 2019).",
+      "why": { "requirement": null, "supportingEvidence": [], "missingEvidence": ["One date format used throughout."], "reasoning": "..." },
+      "bulletIds": []
+    }
+  ],
+  "bullets": [
+    {
+      "index": 0,
+      "text": "Worked on the reconciliation job.",
+      "employer": "Marmot Signal Works",
+      "findings": [ { "severity": "Suggestion", "code": "no-measurable-impact", "message": "...", "why": { }, "bulletIds": ["3f2a..."] } ],
+      "suggestions": ["Say how much time the automation saved."]
+    }
+  ],
+  "source": "Deterministic",
+  "disclaimer": "...",
+  "coverage": null
+}
+```
+
+`spotChecks` are findings about the document, which cite no bullet; a finding about one bullet appears
+under that bullet in `bullets` instead. `bulletIds` are generated per request to join findings to
+bullets within one response and mean nothing outside it. `suggestions` is empty without AI configured,
+and `source` is `Deterministic`; `AiReviewed` means the review pass added something. `coverage` is
+present only when `jobDescription` was supplied.
+
+Returns `400` with a plain-string message when `resumeText` is blank.
+
+### POST `/api/resume-review/file`
+The same review for an uploaded `.pdf` or `.docx`. `multipart/form-data` with a `file` part and an
+optional `jobDescription` field. The document is converted to Markdown by the markitdown container and
+then takes the identical path, so the response is the shape above.
+
+Returns the same `400` conditions as
+[`POST /api/bullets/import/resume/preview/file`](#post-apibulletsimportresumepreviewfile).
 
 ## Artifacts
 

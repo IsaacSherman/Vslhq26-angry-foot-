@@ -5,8 +5,6 @@ namespace AngryFoot.ApiService.Api;
 
 public static class ProfileEndpoints
 {
-    private const long MaxImportFileSizeBytes = 25 * 1024 * 1024;
-
     public static RouteGroupBuilder MapProfileEndpoints(this RouteGroupBuilder apiGroup)
     {
         var profile = apiGroup.MapGroup("/profile");
@@ -30,7 +28,7 @@ public static class ProfileEndpoints
                 return Results.BadRequest("No file was uploaded.");
             }
 
-            if (file.Length > MaxImportFileSizeBytes)
+            if (file.Length > ImportLimits.MaxLinkedInFileSizeBytes)
             {
                 return Results.BadRequest("The uploaded file exceeds the 25 MB size limit.");
             }

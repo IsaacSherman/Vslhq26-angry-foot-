@@ -133,6 +133,13 @@ public static class CoverageDiagnosticCodes
     public const string NoMeasurableImpact = "no-measurable-impact";
     public const string UnsupportedClaim = "unsupported-claim";
     public const string AnalysisLimitation = "analysis-limitation";
+
+    // Raised about an uploaded document rather than about the bullet library.
+    public const string MissingContactInfo = "missing-contact-info";
+    public const string InconsistentDates = "inconsistent-dates";
+    public const string MissingSection = "missing-section";
+    public const string LongBullet = "long-bullet";
+    public const string NoBulletsFound = "no-bullets-found";
 }
 
 /// <summary>

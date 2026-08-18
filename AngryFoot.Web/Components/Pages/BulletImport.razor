@@ -16,13 +16,31 @@
 {
     <div class="card mb-3">
         <div class="card-body">
-            <h5 class="card-title">Paste your resume</h5>
+            <h5 class="card-title">Upload or paste your resume</h5>
             <p class="mb-0">
-                Paste the text of an existing resume below and we'll pull out the achievement bullets so
-                you can review them. Nothing is saved until you confirm the import.
+                Give us an existing resume and we'll pull out the achievement bullets so you can review
+                them. Nothing is saved until you confirm the import.
             </p>
         </div>
     </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="resume-file">Upload a @ImportLimits.DescribeResumeFormats() file</label>
+        @if (fileImportEnabled)
+        {
+            <InputFile id="resume-file" class="form-control" accept="@ImportLimits.ResumeFileAccept"
+                       OnChange="HandleFileSelectedAsync" disabled="@isPreviewing" />
+        }
+        else
+        {
+            <InputFile id="resume-file" class="form-control" accept="@ImportLimits.ResumeFileAccept" disabled="true" />
+            <div class="alert alert-warning mt-2 mb-0">
+                @(fileImportMessage ?? "File upload is unavailable right now.") Paste the resume text below instead.
+            </div>
+        }
+    </div>
+
+    <p class="text-body-secondary">or</p>
 
     <div class="mb-3">
         <textarea class="form-control" rows="16" placeholder="Paste resume text here..."
@@ -161,15 +179,38 @@ else
     private bool isPreviewing;
     private bool isImporting;
     private string? errorMessage;
+    private bool fileImportEnabled;
+    private string? fileImportMessage;
 
-    private async Task PreviewAsync()
+    protected override async Task OnInitializedAsync()
+    {
+        // Best-effort: an unreachable API leaves upload disabled, which is the safe reading of
+        // "we could not confirm the converter is there", and paste still works.
+        var status = await ApiClient.GetAiStatusAsync();
+        fileImportEnabled = status?.FileImportEnabled ?? false;
+        fileImportMessage = status?.FileImportMessage;
+    }
+
+    private Task PreviewAsync()
+        => PreviewAsync(() => ApiClient.PreviewResumeImportAsync(resumeText!));
+
+    private Task HandleFileSelectedAsync(InputFileChangeEventArgs e)
+        => PreviewAsync(async () =>
+        {
+            await using var stream = e.File.OpenReadStream(ImportLimits.MaxResumeFileSizeBytes);
+            return await ApiClient.PreviewResumeImportFromFileAsync(stream, e.File.Name);
+        });
+
+    /// <summary>Pasted text and an uploaded file differ only in how the preview is fetched; the
+    /// review step that follows knows nothing about which one produced its candidates.</summary>
+    private async Task PreviewAsync(Func<Task<ResumeImportPreviewResponse>> fetch)
     {
         errorMessage = null;
         isPreviewing = true;
 
         try
         {
-            var preview = await ApiClient.PreviewResumeImportAsync(resumeText!);
+            var preview = await fetch();
             candidates = preview.Candidates.Select(EditableCandidateBullet.FromDto).ToList();
             detectionMode = preview.DetectionMode;
             detectionMessage = preview.DetectionMessage;
