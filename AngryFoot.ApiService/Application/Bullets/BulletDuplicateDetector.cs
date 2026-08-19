@@ -25,7 +25,8 @@ public interface IBulletDuplicateDetector
 
 public sealed class BulletDuplicateDetector(
     AngryFootDbContext dbContext,
-    IBulletVectorStore vectorStore) : IBulletDuplicateDetector
+    IBulletVectorStore vectorStore,
+    ITextEmbedder embedder) : IBulletDuplicateDetector
 {
     // Feature #12 proposed 0.90, but measurement against the real embedding deployment showed
     // near-duplicates land well below it: two wordings of one achievement scored 0.896, and a
@@ -70,22 +71,13 @@ public sealed class BulletDuplicateDetector(
         IReadOnlyList<ExistingBullet> existing,
         CancellationToken cancellationToken)
     {
+        // The existing-bullet pass searches the vector index, so this path needs Qdrant and not
+        // merely an embedding deployment.
         if (vectorStore.IsAvailable)
         {
-            var vectors = new List<float[]>(subjects.Count);
-            foreach (var subject in subjects)
-            {
-                var vector = await vectorStore.EmbedAsync(subject.Text, cancellationToken);
-                if (vector is null)
-                {
-                    vectors.Clear();
-                    break;
-                }
+            var vectors = await embedder.EmbedAsync(subjects.Select(x => x.Text).ToArray(), cancellationToken);
 
-                vectors.Add(vector);
-            }
-
-            if (vectors.Count == subjects.Count)
+            if (vectors is not null)
             {
                 await AddSemanticExistingMatchesAsync(collector, subjects, existing, cancellationToken);
                 AddSemanticBatchMatches(collector, subjects, vectors);
@@ -139,7 +131,7 @@ public sealed class BulletDuplicateDetector(
         {
             for (var j = i + 1; j < subjects.Count; j++)
             {
-                var similarity = CosineSimilarity(vectors[i], vectors[j]);
+                var similarity = VectorMath.CosineSimilarity(vectors[i], vectors[j]);
                 if (similarity > DuplicateThreshold)
                 {
                     collector.AddPair(subjects[i], subjects[j], similarity);
@@ -261,24 +253,6 @@ public sealed class BulletDuplicateDetector(
         return pairs.Select(x => BulletDuplicatePair.Canonical(x.BulletIdA, x.BulletIdB)).ToHashSet();
     }
 
-    private static double CosineSimilarity(float[] left, float[] right)
-    {
-        if (left.Length != right.Length || left.Length == 0)
-        {
-            return 0;
-        }
-
-        double dot = 0, leftMagnitude = 0, rightMagnitude = 0;
-        for (var i = 0; i < left.Length; i++)
-        {
-            dot += left[i] * (double)right[i];
-            leftMagnitude += left[i] * (double)left[i];
-            rightMagnitude += right[i] * (double)right[i];
-        }
-
-        var denominator = Math.Sqrt(leftMagnitude) * Math.Sqrt(rightMagnitude);
-        return denominator == 0 ? 0 : dot / denominator;
-    }
 
     private static double JaccardSimilarity(HashSet<string> left, HashSet<string> right)
     {

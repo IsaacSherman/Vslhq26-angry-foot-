@@ -17,7 +17,8 @@ internal sealed class GenerationOrchestrator(
     BulletRewriteService rewriteService,
     ResumeMarkdownService resumeService,
     CoverLetterService coverLetterService,
-    IEvidenceCoverageAnalyzer coverageAnalyzer) : IGenerationOrchestrator
+    IEvidenceCoverageAnalyzer coverageAnalyzer,
+    ISemanticEvidenceMatcher semanticMatcher) : IGenerationOrchestrator
 {
     private const float MinimumSemanticSimilarity = 0.35f;
 
@@ -69,16 +70,28 @@ internal sealed class GenerationOrchestrator(
             request.DeepReview,
             cancellationToken);
 
+        // One set of embedding matches for both the report and the build log. They answer the same
+        // question - which requirements does this resume evidence - and computing it twice invites
+        // them to disagree about a resume that has already been written.
+        var semantic = await semanticMatcher.MatchAsync(
+            RequirementSet.From(analysis),
+            ranked.Select(x => x.Bullet)
+                .Concat(rewritten.Select(x => x.Bullet))
+                .DistinctBy(x => x.Id)
+                .ToArray(),
+            cancellationToken);
+
         // Reported over the bullets as the resume orders them, not as the ranker scored them, so
         // an ordering note is about the document the user is holding.
         var coverage = await coverageAnalyzer.DescribeResumeAsync(
             analysis,
             rewritten.Select(x => x.Bullet).ToArray(),
+            semantic,
             cancellationToken);
 
         // Every candidate the ranker produced, not only the ones that made it: an account that
         // covered the selected bullets alone would be the flattering half of the story.
-        var explanation = GenerationExplanationService.Explain(analysis, ranked, rewritten);
+        var explanation = GenerationExplanationService.Explain(analysis, ranked, rewritten, semantic);
 
         var artifact = new GenerationArtifact
         {

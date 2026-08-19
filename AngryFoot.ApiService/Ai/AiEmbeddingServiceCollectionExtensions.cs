@@ -12,10 +12,19 @@ public static class AiEmbeddingServiceCollectionExtensions
     private const int DefaultEmbeddingDimensions = 1536;
 
     /// <summary>
-    /// Wires up Qdrant-backed semantic bullet retrieval when both an embedding deployment and a
-    /// Qdrant connection are configured. Either being absent (the default) registers
-    /// <see cref="NullBulletVectorStore"/> so generation falls back to the existing deterministic
-    /// keyword ranking - this feature must never become a hard requirement to run the app.
+    /// Wires up embedding and, on top of it, Qdrant-backed semantic bullet retrieval.
+    /// <para>
+    /// The two are gated separately on purpose. <see cref="ITextEmbedder"/> needs only an embedding
+    /// deployment, because computing a vector does not require somewhere to store it - which is what
+    /// lets evidence coverage match by meaning on a machine with no Docker, and over bullets that
+    /// were never saved. <see cref="IBulletVectorStore"/> additionally needs Qdrant, since it
+    /// genuinely does store and search vectors.
+    /// </para>
+    /// <para>
+    /// Both fall back to a null object rather than going unregistered, so no service can test for
+    /// embeddings by null-checking its dependency, and neither feature is ever a hard requirement to
+    /// run the app.
+    /// </para>
     /// </summary>
     public static WebApplicationBuilder AddAngryFootRetrieval(this WebApplicationBuilder builder)
     {
@@ -37,7 +46,7 @@ public static class AiEmbeddingServiceCollectionExtensions
             && !string.IsNullOrWhiteSpace(embeddingDeployment);
         var qdrantConfigured = !string.IsNullOrWhiteSpace(qdrantConnectionString);
 
-        if (embeddingsConfigured && qdrantConfigured)
+        if (embeddingsConfigured)
         {
             services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
             {
@@ -45,6 +54,15 @@ public static class AiEmbeddingServiceCollectionExtensions
                 return client.GetEmbeddingClient(embeddingDeployment!).AsIEmbeddingGenerator(embeddingDimensions);
             });
 
+            services.AddSingleton<ITextEmbedder, AzureOpenAiTextEmbedder>();
+        }
+        else
+        {
+            services.AddSingleton<ITextEmbedder, NullTextEmbedder>();
+        }
+
+        if (embeddingsConfigured && qdrantConfigured)
+        {
             builder.AddQdrantClient("qdrant");
             services.AddSingleton(new RetrievalOptions(embeddingDimensions));
             services.AddSingleton<IBulletVectorStore, QdrantBulletVectorStore>();
@@ -59,8 +77,11 @@ public static class AiEmbeddingServiceCollectionExtensions
         var reason = !embeddingsConfigured
             ? "AzureOpenAI:EmbeddingDeployment (plus AzureOpenAI:Endpoint/ApiKey) is not configured"
             : "no 'qdrant' connection is configured";
+        var stillMatches = embeddingsConfigured
+            ? " Evidence coverage still matches requirements by meaning, which needs the embedding deployment only."
+            : string.Empty;
         services.AddSingleton(new RetrievalConfigurationStatus(
-            false, $"Semantic retrieval disabled ({reason}); generation falls back to keyword ranking over all bullets."));
+            false, $"Semantic retrieval disabled ({reason}); generation falls back to keyword ranking over all bullets.{stillMatches}"));
 
         return builder;
     }

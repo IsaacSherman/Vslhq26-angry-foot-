@@ -31,7 +31,7 @@ public static class BulletTools
     }
 
     [McpServerTool(Name = "update_bullet")]
-    [Description("Updates an existing resume bullet's text and/or employer. The bullet is re-enriched with AI metadata after the update.")]
+    [Description("Updates an existing resume bullet's text and/or employer. Changed text is re-enriched with AI metadata; enrichment values the author added by hand are kept, and ones they removed are not reinstated. Changing only the employer leaves enrichment alone.")]
     public static async Task<BulletDto> UpdateBulletAsync(
         IBulletService bulletService,
         [Description("The id of the bullet to update.")] Guid id,
@@ -65,7 +65,7 @@ public static class BulletTools
     }
 
     [McpServerTool(Name = "enrich_bullet")]
-    [Description("Re-runs AI enrichment on an existing bullet to refresh its skills, technologies, tags, job categories, and impact metadata. Same feature as the web app's 'Retry Enrich' button.")]
+    [Description("Re-runs AI enrichment on an existing bullet to refresh its skills, technologies, tags, job categories, and impact metadata. Merges with what the author wrote rather than replacing it: values they added are kept and values they removed stay removed. Same feature as the web app's 'Retry Enrich' button.")]
     public static async Task<BulletDto> EnrichBulletAsync(
         IBulletService bulletService,
         [Description("The id of the bullet to re-enrich.")] Guid id,
@@ -76,7 +76,7 @@ public static class BulletTools
     }
 
     [McpServerTool(Name = "get_bullet")]
-    [Description("Gets a single resume bullet by id, including its enrichment metadata.")]
+    [Description("Gets a single resume bullet by id, including its enrichment metadata and which of those values the author wrote rather than the tagger.")]
     public static async Task<BulletDto> GetBulletAsync(
         IBulletService bulletService,
         [Description("The id of the bullet.")] Guid id,

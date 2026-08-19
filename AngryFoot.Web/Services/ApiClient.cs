@@ -192,6 +192,33 @@ public sealed class ApiClient(HttpClient httpClient, ILogger<ApiClient> logger)
         return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
     }
 
+    public async Task<BulletEnrichmentProposalDto?> PreviewBulletEnrichmentAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsync($"/api/bullets/{id}/enrich/preview", null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletEnrichmentProposalDto>(cancellationToken);
+    }
+
+    public async Task<BulletDto?> SetBulletEnrichmentAsync(
+        Guid id,
+        SetBulletEnrichmentRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PutAsJsonAsync($"/api/bullets/{id}/enrichment", request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BulletDto>(cancellationToken);
+    }
+
     public async Task<BulletDto?> IndexBulletAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsync($"/api/bullets/{id}/index", null, cancellationToken);

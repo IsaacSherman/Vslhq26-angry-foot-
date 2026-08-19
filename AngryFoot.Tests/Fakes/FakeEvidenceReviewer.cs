@@ -32,17 +32,21 @@ internal sealed class FakeEvidenceReviewer(Func<IReadOnlyList<RequirementEvidenc
 
     public string? LastProfessionalSummary { get; private set; }
 
+    public SemanticEvidenceIndex? LastSemanticIndex { get; private set; }
+
     public Task<EvidenceReview?> ReviewAsync(
         string jobDescription,
         JobAnalysisDto analysis,
         IReadOnlyList<RequirementEvidence> baseline,
         IReadOnlyList<Bullet> bullets,
         string? professionalSummary,
+        SemanticEvidenceIndex? semantic,
         CancellationToken cancellationToken)
     {
         CallCount++;
         LastBulletsSent = bullets;
         LastProfessionalSummary = professionalSummary;
+        LastSemanticIndex = semantic;
 
         return Throws is null
             ? Task.FromResult(factory(baseline))

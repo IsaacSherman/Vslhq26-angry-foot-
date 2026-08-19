@@ -49,6 +49,27 @@
     <div class="form-text">Used to group this bullet under the matching work history entry on generated resumes.</div>
 </div>
 
+@if (!IsCreate)
+{
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Skills, technologies and tags</span>
+            <span class="text-muted small">Saved as you change them</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small">
+                What this bullet is filed under. Evidence coverage counts a requirement as fully evidenced when it
+                is one of these, so correcting them here is often worth more than rewording the bullet.
+            </p>
+            <BulletEnrichmentPanel Enrichment="@enrichment"
+                                   CurrentText="@(savedText ?? string.Empty)"
+                                   Disabled="@(isSaving || isEnriching)"
+                                   RequestProposal="@RequestEnrichmentProposalAsync"
+                                   EnrichmentChanged="OnEnrichmentChangedAsync" />
+        </div>
+    </div>
+}
+
 <div class="mb-3">
     <button class="btn btn-outline-primary me-3" @onclick="RewriteAsync" disabled="@(isRewriting || isSaving)">
         @if (isRewriting)
@@ -70,7 +91,8 @@
 
 <WorkingIndicator Visible="@isRewriting" Message="@RewriteProgressMessage" />
 <WorkingIndicator Visible="@isCompleting" Message="Revising and merging with your guidance. Two AI calls, usually under a minute." />
-<WorkingIndicator Visible="@isSaving" Message="Saving and enriching the bullet with AI-extracted skills, technologies, and tags..." />
+<WorkingIndicator Visible="@isSaving" Message="Saving. Changed wording is re-enriched with AI-extracted skills, technologies, and tags; anything you added by hand is kept." />
+<WorkingIndicator Visible="@isEnriching" Message="Updating this bullet's enrichment..." />
 
 @if (critique is not null)
 {
@@ -180,6 +202,16 @@
     /// <summary>The wording <see cref="quality"/> describes, so the panel can admit when it is behind.</summary>
     private string? scoredText;
 
+    private BulletEnrichmentDto? enrichment;
+
+    /// <summary>
+    /// The wording the server currently holds. Enrichment is saved against that, not against
+    /// unsaved edits in the box, so a proposal describing one and applied to the other is impossible.
+    /// </summary>
+    private string? savedText;
+
+    private bool isEnriching;
+
     private bool isQualityStale => quality is not null && !string.Equals(scoredText, bulletText, StringComparison.Ordinal);
 
     private bool IsCreate => !BulletId.HasValue;
@@ -193,6 +225,7 @@
         bulletText = bullet.BulletText;
         sourceEmployer = bullet.SourceEmployer;
         ApplyQuality(bullet);
+        ApplyEnrichment(bullet);
     }
 
     private void ApplyQuality(BulletDto bullet)
@@ -316,6 +349,8 @@
             quality = null;
             scoredText = null;
             assessedTagging = null;
+            enrichment = null;
+            savedText = null;
             return;
         }
 
@@ -329,6 +364,51 @@
         bulletText = bullet.BulletText;
         sourceEmployer = bullet.SourceEmployer;
         ApplyQuality(bullet);
+        ApplyEnrichment(bullet);
+    }
+
+    private void ApplyEnrichment(BulletDto bullet)
+    {
+        enrichment = bullet.Enrichment;
+        savedText = bullet.BulletText;
+    }
+
+    private async Task<BulletEnrichmentProposalDto?> RequestEnrichmentProposalAsync()
+        => BulletId is null ? null : await ApiClient.PreviewBulletEnrichmentAsync(BulletId.Value);
+
+    private async Task OnEnrichmentChangedAsync(SetBulletEnrichmentRequest request)
+    {
+        if (BulletId is null)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        isEnriching = true;
+
+        try
+        {
+            var updated = await ApiClient.SetBulletEnrichmentAsync(BulletId.Value, request);
+            if (updated is null)
+            {
+                errorMessage = "Bullet not found.";
+                return;
+            }
+
+            ApplyEnrichment(updated);
+
+            // Two of the six quality signals read enrichment, so the score beside it would otherwise
+            // disagree with what the user just changed.
+            ApplyQuality(updated);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isEnriching = false;
+        }
     }
 
     private async Task RewriteAsync()

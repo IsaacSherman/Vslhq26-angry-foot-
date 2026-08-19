@@ -1,5 +1,4 @@
 using AngryFoot.ApiService.Domain;
-using Microsoft.Extensions.AI;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 
@@ -7,14 +6,14 @@ namespace AngryFoot.ApiService.Application.Retrieval;
 
 
 /// <summary>
-/// Embeds bullet text via <see cref="IEmbeddingGenerator{String,Embedding}"/> and indexes it in
-/// Qdrant. The vector store only ever returns bullet ids + similarity scores; the caller
+/// Embeds bullet text via <see cref="ITextEmbedder"/> and indexes it in Qdrant. The vector store
+/// only ever returns bullet ids + similarity scores; the caller
 /// (<see cref="Generation.GenerationOrchestrator"/>) loads the matching rows from SQLite, which
 /// remains the single source of truth for bullet content.
 /// </summary>
 internal sealed class QdrantBulletVectorStore(
     QdrantClient client,
-    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+    ITextEmbedder embedder,
     RetrievalOptions options,
     ILogger<QdrantBulletVectorStore> logger) : IBulletVectorStore
 {
@@ -31,13 +30,16 @@ internal sealed class QdrantBulletVectorStore(
         {
             await EnsureCollectionAsync(cancellationToken);
 
-            var vector = await embeddingGenerator.GenerateVectorAsync(
-                BuildEmbeddingText(bullet), cancellationToken: cancellationToken);
+            var vector = await EmbedOneAsync(BulletEmbeddingText.For(bullet), cancellationToken);
+            if (vector is null)
+            {
+                return false;
+            }
 
             var point = new PointStruct
             {
                 Id = bullet.Id,
-                Vectors = vector.ToArray()
+                Vectors = vector
             };
 
             await client.UpsertAsync(CollectionName, [point], cancellationToken: cancellationToken);
@@ -79,7 +81,12 @@ internal sealed class QdrantBulletVectorStore(
         {
             await EnsureCollectionAsync(cancellationToken);
 
-            var vector = await embeddingGenerator.GenerateVectorAsync(queryText, cancellationToken: cancellationToken);
+            var vector = await EmbedOneAsync(queryText, cancellationToken);
+            if (vector is null)
+            {
+                return [];
+            }
+
             var results = await client.SearchAsync(
                 CollectionName,
                 vector,
@@ -101,23 +108,8 @@ internal sealed class QdrantBulletVectorStore(
         }
     }
 
-    public async Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var vector = await embeddingGenerator.GenerateVectorAsync(text, cancellationToken: cancellationToken);
-            return vector.ToArray();
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to embed text for comparison. Callers fall back to lexical comparison.");
-            return null;
-        }
-    }
+    private async Task<float[]?> EmbedOneAsync(string text, CancellationToken cancellationToken)
+        => (await embedder.EmbedAsync([text], cancellationToken))?.SingleOrDefault();
 
     public async Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken)
     {
@@ -156,8 +148,12 @@ internal sealed class QdrantBulletVectorStore(
         {
             await EnsureCollectionAsync(cancellationToken);
 
-            var vector = await embeddingGenerator.GenerateVectorAsync(
-                "retrieval health check", cancellationToken: cancellationToken);
+            var vector = await EmbedOneAsync("retrieval health check", cancellationToken);
+            if (vector is null)
+            {
+                return new RetrievalHealth(false, "The embedding deployment could not be reached.");
+            }
+
             if (vector.Length != options.EmbeddingDimensions)
             {
                 return new RetrievalHealth(
@@ -211,25 +207,4 @@ internal sealed class QdrantBulletVectorStore(
         }
     }
 
-    private static string BuildEmbeddingText(Bullet bullet)
-    {
-        var parts = new List<string> { bullet.BulletText };
-
-        if (bullet.Skills.Count > 0)
-        {
-            parts.Add("Skills: " + string.Join(", ", bullet.Skills));
-        }
-
-        if (bullet.Technologies.Count > 0)
-        {
-            parts.Add("Technologies: " + string.Join(", ", bullet.Technologies));
-        }
-
-        if (bullet.JobCategories.Count > 0)
-        {
-            parts.Add("Job categories: " + string.Join(", ", bullet.JobCategories));
-        }
-
-        return string.Join(". ", parts);
-    }
 }

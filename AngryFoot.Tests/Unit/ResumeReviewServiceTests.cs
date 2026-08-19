@@ -194,14 +194,14 @@ public class ResumeReviewServiceTests
             50, 1, 2, "Summary.", 0, 1, 1, [], [], CoverageSourceDto.Deterministic, "Disclaimer.");
         var coverage = new Mock<IEvidenceCoverageAnalyzer>();
         coverage
-            .Setup(x => x.DescribeResumeAsync(It.IsAny<JobAnalysisDto>(), It.IsAny<IReadOnlyList<Bullet>>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.DescribeResumeAsync(It.IsAny<JobAnalysisDto>(), It.IsAny<IReadOnlyList<Bullet>>(), It.IsAny<SemanticEvidenceIndex?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
         var report = await ReviewAsync(CreateSut(coverage: coverage.Object), "We need a data engineer with SQL and Azure.");
 
         report.Coverage.Should().BeSameAs(expected);
         coverage.Verify(
-            x => x.DescribeResumeAsync(It.IsAny<JobAnalysisDto>(), It.Is<IReadOnlyList<Bullet>>(b => b.Count == 2), It.IsAny<CancellationToken>()),
+            x => x.DescribeResumeAsync(It.IsAny<JobAnalysisDto>(), It.Is<IReadOnlyList<Bullet>>(b => b.Count == 2), It.IsAny<SemanticEvidenceIndex?>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

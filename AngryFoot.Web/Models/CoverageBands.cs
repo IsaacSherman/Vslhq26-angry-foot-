@@ -30,6 +30,46 @@ public static class CoverageBands
         _ => "No evidence"
     };
 
+    /// <summary>
+    /// The label for a requirement, given what was actually cited for it. "Mentioned only" is a
+    /// claim about wording, and it is false of a requirement carried entirely by bullets an
+    /// embedding matched - those do not mention it at all.
+    /// </summary>
+    public static string StrengthLabel(EvidenceStrengthDto strength, IReadOnlyList<EvidenceCitationDto> citations)
+    {
+        return strength == EvidenceStrengthDto.Weak
+            && citations.Count > 0
+            && citations.All(x => x.MatchKind != EvidenceMatchKindDto.ExactTerm)
+                ? "Related bullets only"
+                : StrengthLabel(strength);
+    }
+
+    /// <summary>Null for a citation that is a pointer to a bullet rather than a claim of a match.</summary>
+    public static string? MatchKindLabel(EvidenceCitationDto citation)
+    {
+        if (string.IsNullOrEmpty(citation.MatchedTerm))
+        {
+            return null;
+        }
+
+        return citation.MatchKind switch
+        {
+            EvidenceMatchKindDto.Semantic => $"AI-identified (semantic) {citation.Confidence:0.00}",
+            EvidenceMatchKindDto.AiIdentified => "AI-identified",
+            _ => null
+        };
+    }
+
+    public static string? MatchKindTooltip(EvidenceCitationDto citation) => citation.MatchKind switch
+    {
+        EvidenceMatchKindDto.Semantic =>
+            "The bullet does not contain this requirement's wording. An embedding scored the two as close in meaning, "
+            + "and the number is that score out of 1. A match found this way can never count as full evidence.",
+        EvidenceMatchKindDto.AiIdentified =>
+            "The bullet does not contain this requirement's wording. An AI reviewer read the two as related.",
+        _ => null
+    };
+
     /// <summary>A shape as well as a colour, so the states survive being read without colour.</summary>
     public static string StrengthIcon(EvidenceStrengthDto strength) => strength switch
     {

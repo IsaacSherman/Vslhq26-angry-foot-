@@ -135,6 +135,6 @@ internal sealed class ResumeReviewService(
         }
 
         var analysis = await jobAnalyzer.AnalyzeAsync(jobDescription, cancellationToken);
-        return await coverageAnalyzer.DescribeResumeAsync(analysis, bullets, cancellationToken);
+        return await coverageAnalyzer.DescribeResumeAsync(analysis, bullets, semantic: null, cancellationToken);
     }
 }

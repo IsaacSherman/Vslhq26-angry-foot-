@@ -25,6 +25,18 @@ public interface IBulletService
 
     /// <summary>Records which quality signals the author has disputed for a bullet.</summary>
     Task<BulletDto?> SetQualityAcknowledgementsAsync(Guid id, IReadOnlyList<string> signals, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What re-running the tagger would change about a bullet's enrichment, without changing it.
+    /// Costs an AI call and saves nothing, so the author can see the proposal before deciding.
+    /// </summary>
+    Task<BulletEnrichmentProposalDto?> ProposeEnrichmentAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sets a bullet's enrichment to exactly what the author asked for, recording which values they
+    /// added and which suggestions they dropped so a later re-enrichment honours both.
+    /// </summary>
+    Task<BulletDto?> SetEnrichmentAsync(Guid id, SetBulletEnrichmentRequest request, CancellationToken cancellationToken);
 }
 
 public sealed class BulletService(
@@ -124,7 +136,11 @@ public sealed class BulletService(
         bullet.BulletText = updatedText;
         bullet.SourceEmployer = NormalizeEmployer(request.SourceEmployer);
         bullet.ModifiedDate = DateTime.UtcNow;
-        bullet.EnrichmentState = EnrichmentState.Pending;
+
+        if (textChanged)
+        {
+            bullet.EnrichmentState = EnrichmentState.Pending;
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -132,10 +148,12 @@ public sealed class BulletService(
         {
             // The judgement that these two bullets were distinct was about the old wording.
             await ForgetIgnoredDuplicatesAsync(id, cancellationToken);
-        }
 
-        await ApplyOrReuseTaggingAsync(bullet, request.Tagging, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
+            // Enrichment describes the wording, so only changed wording is worth an AI call - and
+            // re-tagging an unchanged bullet would spend one only to churn what is already there.
+            await ApplyOrReuseTaggingAsync(bullet, request.Tagging, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
         return bullet.ToDto(isIndexed);
@@ -179,6 +197,126 @@ public sealed class BulletService(
 
         return bullet.ToDto(isIndexed);
     }
+
+    public async Task<BulletEnrichmentProposalDto?> ProposeEnrichmentAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var bullet = await dbContext.Bullets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (bullet is null)
+        {
+            return null;
+        }
+
+        var suggested = await bulletTagger.TagAsync(bullet.BulletText, cancellationToken);
+
+        return new BulletEnrichmentProposalDto(
+            bullet.BulletText,
+            Enum.GetValues<EnrichmentFacet>()
+                .Select(facet => Compare(bullet, facet, Normalize(SuggestedFor(suggested, facet))))
+                .ToArray());
+    }
+
+    /// <summary>
+    /// What the proposal would do to one facet. A value the author wrote is never reported as
+    /// removed: the tagger not thinking of it is not a reason to take it away, and offering to is
+    /// how the author loses work by clicking "accept all".
+    /// </summary>
+    private static EnrichmentFacetProposalDto Compare(Bullet bullet, EnrichmentFacet facet, IReadOnlyList<string> suggested)
+    {
+        var current = CurrentValues(bullet, facet);
+
+        return new EnrichmentFacetProposalDto(
+            facet.ToDto(),
+            [.. suggested.Where(value => !ContainsIgnoreCase(current, value))],
+            [.. current.Where(value =>
+                !ContainsIgnoreCase(suggested, value) && !bullet.UserAuthored.Contains(facet, value))],
+            [.. current.Where(value => ContainsIgnoreCase(suggested, value))]);
+    }
+
+    public async Task<BulletDto?> SetEnrichmentAsync(Guid id, SetBulletEnrichmentRequest request, CancellationToken cancellationToken)
+    {
+        var bullet = await dbContext.Bullets.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (bullet is null)
+        {
+            return null;
+        }
+
+        foreach (var facet in Enum.GetValues<EnrichmentFacet>())
+        {
+            var chosen = Normalize(RequestedFor(request, facet));
+            var previous = CurrentValues(bullet, facet);
+
+            // Only values the author actually introduced become theirs. Marking everything they
+            // submitted as authored would be simpler and wrong: keeping a suggestion is not writing
+            // it, and treating it as such would freeze the bullet so re-enrichment could never
+            // refresh a tag again.
+            var authored = bullet.UserAuthored.For(facet);
+            var stillAuthored = chosen.Where(value =>
+                bullet.UserAuthored.Contains(facet, value) || !ContainsIgnoreCase(previous, value)).ToList();
+            authored.Clear();
+            authored.AddRange(stillAuthored);
+
+            var suppressed = bullet.Suppressed.For(facet);
+            suppressed.AddRange(previous.Where(value => !ContainsIgnoreCase(chosen, value)));
+            var kept = Normalize([.. suppressed.Where(value => !ContainsIgnoreCase(chosen, value))]);
+            suppressed.Clear();
+            suppressed.AddRange(kept);
+
+            SetValues(bullet, facet, chosen);
+        }
+
+        bullet.ModifiedDate = DateTime.UtcNow;
+        bullet.EnrichmentState = HasMetadata(bullet) ? EnrichmentState.Enriched : EnrichmentState.Failed;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Skills, technologies and categories are part of a bullet's embedding text, so editing them
+        // changes what it retrieves for.
+        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
+
+        return bullet.ToDto(isIndexed);
+    }
+
+    private static IReadOnlyList<string> SuggestedFor(BulletTagging tagging, EnrichmentFacet facet) => facet switch
+    {
+        EnrichmentFacet.Tags => tagging.Tags,
+        EnrichmentFacet.Skills => tagging.Skills,
+        EnrichmentFacet.Technologies => tagging.Technologies,
+        _ => tagging.JobCategories
+    };
+
+    private static IReadOnlyList<string> RequestedFor(SetBulletEnrichmentRequest request, EnrichmentFacet facet) => facet switch
+    {
+        EnrichmentFacet.Tags => request.Tags,
+        EnrichmentFacet.Skills => request.Skills,
+        EnrichmentFacet.Technologies => request.Technologies,
+        _ => request.JobCategories
+    };
+
+    private static List<string> CurrentValues(Bullet bullet, EnrichmentFacet facet) => facet switch
+    {
+        EnrichmentFacet.Tags => bullet.Tags,
+        EnrichmentFacet.Skills => bullet.Skills,
+        EnrichmentFacet.Technologies => bullet.Technologies,
+        _ => bullet.JobCategories
+    };
+
+    private static void SetValues(Bullet bullet, EnrichmentFacet facet, List<string> values)
+    {
+        switch (facet)
+        {
+            case EnrichmentFacet.Tags: bullet.Tags = values; break;
+            case EnrichmentFacet.Skills: bullet.Skills = values; break;
+            case EnrichmentFacet.Technologies: bullet.Technologies = values; break;
+            default: bullet.JobCategories = values; break;
+        }
+    }
+
+    private static bool HasMetadata(Bullet bullet)
+        => bullet.Tags.Count > 0
+        || bullet.Skills.Count > 0
+        || bullet.Technologies.Count > 0
+        || bullet.JobCategories.Count > 0
+        || bullet.Impact.Count > 0;
 
     /// <summary>
     /// Embeds and upserts an existing bullet into the vector store as-is, without touching its
@@ -284,19 +422,7 @@ public sealed class BulletService(
             return;
         }
 
-        bullet.Tags = Normalize(tagging.Tags);
-        bullet.Skills = Normalize(tagging.Skills);
-        bullet.Technologies = Normalize(tagging.Technologies);
-        bullet.JobCategories = Normalize(tagging.JobCategories);
-        bullet.Impact = Normalize(tagging.Impact);
-
-        var hasMetadata = bullet.Tags.Count > 0
-            || bullet.Skills.Count > 0
-            || bullet.Technologies.Count > 0
-            || bullet.JobCategories.Count > 0
-            || bullet.Impact.Count > 0;
-
-        bullet.EnrichmentState = hasMetadata ? EnrichmentState.Enriched : EnrichmentState.Failed;
+        ApplyEnrichment(bullet, tagging.ToTagging());
     }
 
     private async Task TryApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)
@@ -340,21 +466,38 @@ public sealed class BulletService(
 
     private async Task ApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)
     {
-        var tagging = await bulletTagger.TagAsync(bullet.BulletText, cancellationToken);
+        ApplyEnrichment(bullet, await bulletTagger.TagAsync(bullet.BulletText, cancellationToken));
+    }
 
-        bullet.Tags = Normalize(tagging.Tags);
-        bullet.Skills = Normalize(tagging.Skills);
-        bullet.Technologies = Normalize(tagging.Technologies);
-        bullet.JobCategories = Normalize(tagging.JobCategories);
+    /// <summary>
+    /// Writes what the tagger found onto the bullet, keeping what the author wrote.
+    /// <para>
+    /// The rule is <c>(tagger + author) - removed</c>, and it is applied before
+    /// <see cref="Normalize"/> rather than after: normalization is case-insensitive, so a later merge
+    /// would silently collapse the author's "Kubernetes" into the tagger's "kubernetes" and lose
+    /// which of them the value came from.
+    /// </para>
+    /// </summary>
+    private static void ApplyEnrichment(Bullet bullet, BulletTagging tagging)
+    {
+        bullet.Tags = Merge(tagging.Tags, EnrichmentFacet.Tags, bullet);
+        bullet.Skills = Merge(tagging.Skills, EnrichmentFacet.Skills, bullet);
+        bullet.Technologies = Merge(tagging.Technologies, EnrichmentFacet.Technologies, bullet);
+        bullet.JobCategories = Merge(tagging.JobCategories, EnrichmentFacet.JobCategories, bullet);
+
+        // Impact is extracted figures rather than classification, so there is nothing for an author
+        // to curate and nothing to preserve across a re-run.
         bullet.Impact = Normalize(tagging.Impact);
 
-        var hasMetadata = bullet.Tags.Count > 0
-            || bullet.Skills.Count > 0
-            || bullet.Technologies.Count > 0
-            || bullet.JobCategories.Count > 0
-            || bullet.Impact.Count > 0;
+        bullet.EnrichmentState = HasMetadata(bullet) ? EnrichmentState.Enriched : EnrichmentState.Failed;
+    }
 
-        bullet.EnrichmentState = hasMetadata ? EnrichmentState.Enriched : EnrichmentState.Failed;
+    private static List<string> Merge(IReadOnlyList<string> suggested, EnrichmentFacet facet, Bullet bullet)
+    {
+        return Normalize([
+            .. suggested.Where(value => !bullet.Suppressed.Contains(facet, value)),
+            .. bullet.UserAuthored.For(facet)
+        ]);
     }
 
     private static string? NormalizeEmployer(string? value)

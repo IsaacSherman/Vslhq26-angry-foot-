@@ -34,6 +34,22 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
             value => value.Aggregate(0, (current, item) => HashCode.Combine(current, item.GetHashCode(StringComparison.Ordinal))),
             value => value.ToList());
 
+        var enrichmentSetConverter = new ValueConverter<EnrichmentSet, string>(
+            value => JsonSerializer.Serialize(value ?? EnrichmentSet.Empty(), JsonOptions),
+            value => JsonSerializer.Deserialize<EnrichmentSet>(value, JsonOptions) ?? EnrichmentSet.Empty());
+
+        // Records compare structurally, but their List members do not, so the generated Equals would
+        // report two sets holding the same values as different and rewrite the column on every save.
+        var enrichmentSetComparer = new ValueComparer<EnrichmentSet>(
+            (left, right) => left != null && right != null
+                && left.Tags.SequenceEqual(right.Tags)
+                && left.Skills.SequenceEqual(right.Skills)
+                && left.Technologies.SequenceEqual(right.Technologies)
+                && left.JobCategories.SequenceEqual(right.JobCategories),
+            value => JsonSerializer.Serialize(value, JsonOptions).GetHashCode(StringComparison.Ordinal),
+            value => new EnrichmentSet(
+                value.Tags.ToList(), value.Skills.ToList(), value.Technologies.ToList(), value.JobCategories.ToList()));
+
         var guidListComparer = new ValueComparer<List<Guid>>(
             (left, right) => left != null && right != null && left.SequenceEqual(right),
             value => value.Aggregate(0, (current, item) => HashCode.Combine(current, item.GetHashCode())),
@@ -61,6 +77,12 @@ public sealed class AngryFootDbContext(DbContextOptions<AngryFootDbContext> opti
 
             var acknowledged = entity.Property(x => x.AcknowledgedQualitySignals).HasConversion(stringListConverter);
             acknowledged.Metadata.SetValueComparer(stringListComparer);
+
+            var userAuthored = entity.Property(x => x.UserAuthored).HasConversion(enrichmentSetConverter);
+            userAuthored.Metadata.SetValueComparer(enrichmentSetComparer);
+
+            var suppressed = entity.Property(x => x.Suppressed).HasConversion(enrichmentSetConverter);
+            suppressed.Metadata.SetValueComparer(enrichmentSetComparer);
         });
 
         modelBuilder.Entity<BulletRevision>(entity =>

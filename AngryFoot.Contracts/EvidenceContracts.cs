@@ -36,20 +36,40 @@ public enum CoverageSourceDto
     AiReviewed
 }
 
-/// <summary>One bullet offered as evidence for one requirement.</summary>
-/// <param name="MatchedTerm">The requirement term this bullet was matched on, verbatim.</param>
-/// <param name="IsExactTermMatch">
-/// True when <paramref name="MatchedTerm"/> literally appears in the bullet's text, skills, or
-/// technologies. False marks a citation the AI added by meaning rather than by words - shown to the
-/// user as such, and never enough on its own to raise a requirement to
+/// <summary>
+/// How a bullet came to be cited for a requirement. Only <see cref="ExactTerm"/> is the resume
+/// actually saying the thing; the other two are a machine reading it as related, are shown to the
+/// user as such, and are never enough on their own to raise a requirement to
 /// <see cref="EvidenceStrengthDto.Strong"/>.
+/// </summary>
+public enum EvidenceMatchKindDto
+{
+    /// <summary>The term literally appears in the bullet's text, skills, or technologies.</summary>
+    ExactTerm,
+
+    /// <summary>An embedding scored the bullet and the requirement as close in meaning.</summary>
+    Semantic,
+
+    /// <summary>An AI reviewer read the two as related.</summary>
+    AiIdentified
+}
+
+/// <summary>One bullet offered as evidence for one requirement.</summary>
+/// <param name="MatchedTerm">
+/// The requirement term this bullet was matched on, verbatim. Empty when the citation is not a match
+/// at all but a pointer to the bullet a diagnostic is about.
+/// </param>
+/// <param name="Confidence">
+/// The embedding similarity behind a <see cref="EvidenceMatchKindDto.Semantic"/> match, 0-1. Null for
+/// every other kind, which are not scored.
 /// </param>
 /// <param name="Because">Why this bullet counts, in one clause.</param>
 public sealed record EvidenceCitationDto(
     Guid BulletId,
     string BulletText,
     string MatchedTerm,
-    bool IsExactTermMatch,
+    EvidenceMatchKindDto MatchKind,
+    double? Confidence,
     string Because);
 
 /// <summary>
@@ -73,12 +93,18 @@ public sealed record EvidenceRationaleDto(
 /// <paramref name="Why"/> rather than beside it, so a supporting bullet is listed in exactly one
 /// place.
 /// </summary>
+/// <param name="MergedFrom">
+/// Other wordings this posting used for the same requirement, folded into this row and counted once.
+/// Empty for the ordinary case. Reported rather than silently dropped, so a reader can see why a
+/// term they pasted in is not a row of its own.
+/// </param>
 public sealed record RequirementCoverageDto(
     string Requirement,
     RequirementKindDto Kind,
     int Weight,
     EvidenceStrengthDto Strength,
-    EvidenceRationaleDto Why);
+    EvidenceRationaleDto Why,
+    IReadOnlyList<string>? MergedFrom = null);
 
 /// <param name="Code">A well-known value from <see cref="CoverageDiagnosticCodes"/>.</param>
 /// <param name="BulletIds">The bullets this is about; empty when it concerns the library as a whole.</param>
@@ -133,6 +159,7 @@ public static class CoverageDiagnosticCodes
     public const string NoMeasurableImpact = "no-measurable-impact";
     public const string UnsupportedClaim = "unsupported-claim";
     public const string AnalysisLimitation = "analysis-limitation";
+    public const string SemanticMatching = "semantic-matching";
 
     // Raised about an uploaded document rather than about the bullet library.
     public const string MissingContactInfo = "missing-contact-info";

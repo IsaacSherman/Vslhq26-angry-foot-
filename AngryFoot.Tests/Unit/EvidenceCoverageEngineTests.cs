@@ -30,6 +30,12 @@ public class EvidenceCoverageEngineTests
     private static IReadOnlyList<RequirementEvidence> Evaluate(JobAnalysisDto analysis, params Bullet[] bullets)
         => EvidenceCoverageEngine.Evaluate(RequirementSet.From(analysis), bullets);
 
+    /// <summary>An index that scores every requirement against every bullet at <paramref name="confidence"/>.</summary>
+    private static SemanticEvidenceIndex Semantic(double confidence, JobAnalysisDto analysis, params Bullet[] bullets)
+        => new(RequirementSet.From(analysis)
+            .SelectMany(requirement => bullets.Select(bullet => (requirement.Term, bullet.Id)))
+            .ToDictionary(key => key, _ => confidence));
+
     public class Weighting
     {
         [Fact]
@@ -227,6 +233,105 @@ public class EvidenceCoverageEngineTests
 
             ScoreOf(Analysis(required: ["c#", "azure"]))
                 .Score.Should().Be(0, "an empty library evidences nothing");
+        }
+    }
+
+    /// <summary>
+    /// What an embedding match may and may not do. The bar is the same one the AI reviewer clears:
+    /// it may offer a bullet as related, and it may never make the resume count as having said
+    /// something it does not say.
+    /// </summary>
+    public class SemanticMatches
+    {
+        private static readonly JobAnalysisDto Leadership =
+            Analysis(required: ["technical leadership and mentoring"]);
+
+        private static Bullet Mentoring()
+            => Bullet("Mentored two interns through weekly 1:1s, pair programming, and code reviews.");
+
+        [Fact]
+        public void ABulletThatNeverNamesTheRequirementIsCitedWhenAnEmbeddingMatchesIt()
+        {
+            var bullet = Mentoring();
+
+            var evidence = EvidenceCoverageEngine
+                .Evaluate(RequirementSet.From(Leadership), [bullet], Semantic(0.87, Leadership, bullet))
+                .Single();
+
+            evidence.Strength.Should().Be(EvidenceStrengthDto.Weak);
+            var citation = evidence.Citations.Single();
+            citation.MatchKind.Should().Be(EvidenceMatchKindDto.Semantic);
+            citation.Confidence.Should().Be(0.87);
+            citation.Because.Should().Contain("0.87");
+        }
+
+        [Fact]
+        public void ASemanticMatchIsNeverStrongHoweverConfident()
+        {
+            var bullet = Mentoring();
+
+            var evidence = EvidenceCoverageEngine
+                .Evaluate(RequirementSet.From(Leadership), [bullet], Semantic(0.999, Leadership, bullet))
+                .Single();
+
+            evidence.Strength.Should().Be(
+                EvidenceStrengthDto.Weak,
+                "full credit means the resume states the requirement, and a vector cannot make it say so");
+        }
+
+        [Fact]
+        public void WithNoIndexTheReportIsExactlyTheLexicalOne()
+        {
+            var bullet = Mentoring();
+
+            var withoutIndex = EvidenceCoverageEngine.Evaluate(RequirementSet.From(Leadership), [bullet]);
+            var withEmptyIndex = EvidenceCoverageEngine.Evaluate(
+                RequirementSet.From(Leadership), [bullet], SemanticEvidenceIndex.Empty);
+
+            withoutIndex.Single().Strength.Should().Be(EvidenceStrengthDto.Missing);
+            withEmptyIndex.Single().Strength.Should().Be(EvidenceStrengthDto.Missing);
+        }
+
+        [Fact]
+        public void AWordMatchOutranksAnEmbeddingMatchOnTheSameBullet()
+        {
+            var analysis = Analysis(technologies: ["azure"]);
+            var bullet = Bullet("Migrated 40 services to Azure.");
+
+            var citation = EvidenceCoverageEngine
+                .Evaluate(RequirementSet.From(analysis), [bullet], Semantic(0.99, analysis, bullet))
+                .Single()
+                .Citations
+                .Single();
+
+            citation.MatchKind.Should().Be(EvidenceMatchKindDto.ExactTerm);
+            citation.Confidence.Should().BeNull();
+        }
+
+        [Fact]
+        public void TheReasoningDoesNotClaimABulletMentionsAWordItNeverUses()
+        {
+            var bullet = Mentoring();
+
+            var evidence = EvidenceCoverageEngine
+                .Evaluate(RequirementSet.From(Leadership), [bullet], Semantic(0.87, Leadership, bullet))
+                .Single();
+
+            evidence.Reasoning.Should().Contain("No bullet uses that wording");
+            evidence.ToDto().Why.MissingEvidence.Should().Contain(x => x.Contains("keyword screen"));
+        }
+
+        [Fact]
+        public void ASemanticMatchStillEarnsOnlyHalfTheRequirementsWeight()
+        {
+            var bullet = Mentoring();
+
+            var totals = CoverageScore.From(EvidenceCoverageEngine
+                .Evaluate(RequirementSet.From(Leadership), [bullet], Semantic(0.87, Leadership, bullet)));
+
+            totals.TotalWeight.Should().Be(4);
+            totals.EarnedWeight.Should().Be(2);
+            totals.Score.Should().Be(50);
         }
     }
 }

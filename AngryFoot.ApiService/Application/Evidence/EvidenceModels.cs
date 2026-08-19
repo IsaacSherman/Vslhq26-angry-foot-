@@ -7,7 +7,26 @@ namespace AngryFoot.ApiService.Application.Evidence;
 /// How much the posting leans on this requirement. Set by <see cref="RequirementSet"/>; the only
 /// input to the score other than evidence strength.
 /// </param>
-internal sealed record Requirement(string Term, RequirementKindDto Kind, int Weight);
+/// <param name="MergedFrom">
+/// Other wordings the posting used for this same requirement, merged into it by
+/// <see cref="RequirementSet"/>. Kept rather than discarded for two reasons: matching still tries
+/// every form, so merging never costs a match; and the row can say what was merged, since a
+/// requirement quietly vanishing from the list is the opacity this feature exists to remove.
+/// </param>
+internal sealed record Requirement(
+    string Term,
+    RequirementKindDto Kind,
+    int Weight,
+    IReadOnlyList<string> MergedFrom)
+{
+    public Requirement(string term, RequirementKindDto kind, int weight)
+        : this(term, kind, weight, [])
+    {
+    }
+
+    /// <summary>Every wording this requirement answers to, the chosen one first.</summary>
+    public IEnumerable<string> Terms => MergedFrom.Prepend(Term);
+}
 
 /// <param name="Strength">
 /// Never <see cref="EvidenceStrengthDto.Missing"/> - a citation that evidences nothing is not
@@ -16,9 +35,13 @@ internal sealed record Requirement(string Term, RequirementKindDto Kind, int Wei
 internal sealed record EvidenceCitation(
     Bullet Bullet,
     string MatchedTerm,
-    bool IsExactTermMatch,
+    EvidenceMatchKindDto MatchKind,
+    double? Confidence,
     EvidenceStrengthDto Strength,
-    string Because);
+    string Because)
+{
+    public bool IsExactTermMatch => MatchKind == EvidenceMatchKindDto.ExactTerm;
+}
 
 internal sealed record RequirementEvidence(
     Requirement Requirement,

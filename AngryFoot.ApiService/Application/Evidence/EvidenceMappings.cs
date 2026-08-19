@@ -11,7 +11,8 @@ internal static class EvidenceMappings
             citation.Bullet.Id,
             citation.Bullet.BulletText,
             citation.MatchedTerm,
-            citation.IsExactTermMatch,
+            citation.MatchKind,
+            citation.Confidence,
             citation.Because);
     }
 
@@ -25,8 +26,9 @@ internal static class EvidenceMappings
             new EvidenceRationaleDto(
                 evidence.Requirement.Term,
                 evidence.Citations.Select(ToDto).ToArray(),
-                EvidenceNarrative.MissingEvidence(evidence.Requirement, evidence.Strength),
-                evidence.Reasoning));
+                EvidenceNarrative.MissingEvidence(evidence.Requirement, evidence.Strength, evidence.Citations),
+                evidence.Reasoning),
+            evidence.Requirement.MergedFrom.Count == 0 ? null : evidence.Requirement.MergedFrom);
     }
 
     /// <summary>
@@ -34,6 +36,22 @@ internal static class EvidenceMappings
     /// requirement - an ordering or wording diagnostic, say, which has bullets to cite but no
     /// requirement behind it.
     /// </summary>
+    /// <summary>
+    /// A citation that quotes a bullet without claiming it matched anything - what a diagnostic or a
+    /// build-log entry needs. The empty <c>MatchedTerm</c> is what marks it as such, and is why the
+    /// UI shows no match-kind badge for one.
+    /// </summary>
+    public static EvidenceCitationDto PointerTo(Bullet bullet, string because)
+    {
+        return new EvidenceCitationDto(
+            bullet.Id,
+            bullet.BulletText,
+            MatchedTerm: string.Empty,
+            EvidenceMatchKindDto.ExactTerm,
+            Confidence: null,
+            because);
+    }
+
     public static EvidenceRationaleDto AboutBullets(
         IReadOnlyList<Bullet> bullets,
         string reasoning,
@@ -41,12 +59,7 @@ internal static class EvidenceMappings
     {
         return new EvidenceRationaleDto(
             Requirement: null,
-            bullets.Select(bullet => new EvidenceCitationDto(
-                bullet.Id,
-                bullet.BulletText,
-                MatchedTerm: string.Empty,
-                IsExactTermMatch: true,
-                Because: "This bullet is what the note above is about.")).ToArray(),
+            bullets.Select(bullet => PointerTo(bullet, "This bullet is what the note above is about.")).ToArray(),
             missingEvidence ?? [],
             reasoning);
     }

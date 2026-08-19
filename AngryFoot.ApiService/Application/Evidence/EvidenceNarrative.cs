@@ -12,37 +12,64 @@ namespace AngryFoot.ApiService.Application.Evidence;
 /// </remarks>
 internal static class EvidenceNarrative
 {
-    public static string Reasoning(Requirement requirement, EvidenceStrengthDto strength, int citationCount)
+    /// <param name="citations">
+    /// Needed in full rather than as a count because "mentions it" is only true of a bullet that
+    /// used the word. A requirement carried entirely by bullets an embedding matched is weak for a
+    /// different reason, and telling the user the wrong one sends them to fix the wrong thing.
+    /// </param>
+    public static string Reasoning(
+        Requirement requirement,
+        EvidenceStrengthDto strength,
+        IReadOnlyList<EvidenceCitation> citations)
     {
         var posting = Posting(requirement);
 
-        return strength switch
+        if (strength == EvidenceStrengthDto.Missing)
         {
-            EvidenceStrengthDto.Strong =>
-                $"{posting} {Bullets(citationCount)} in your library evidence it.",
-            EvidenceStrengthDto.Weak =>
-                $"{posting} {Bullets(citationCount)} mention it, but none of them show what came of the work, so a reader has only your word for it.",
-            _ =>
-                $"{posting} No bullet in your library mentions it."
-        };
+            return $"{posting} No bullet in your library mentions it.";
+        }
+
+        if (strength == EvidenceStrengthDto.Strong)
+        {
+            return $"{posting} {Bullets(citations.Count)} in your library evidence it.";
+        }
+
+        return NamesTheRequirement(citations)
+            ? $"{posting} {Bullets(citations.Count)} mention it, but none of them show what came of the work, so a reader has only your word for it."
+            : $"{posting} No bullet uses that wording, but {Bullets(citations.Count)} read as evidence for it. A reader screening on the words themselves would not find it.";
     }
 
-    public static IReadOnlyList<string> MissingEvidence(Requirement requirement, EvidenceStrengthDto strength)
+    public static IReadOnlyList<string> MissingEvidence(
+        Requirement requirement,
+        EvidenceStrengthDto strength,
+        IReadOnlyList<EvidenceCitation> citations)
     {
-        return strength switch
+        if (strength == EvidenceStrengthDto.Strong)
         {
-            EvidenceStrengthDto.Strong => [],
-            EvidenceStrengthDto.Weak =>
+            return [];
+        }
+
+        if (strength == EvidenceStrengthDto.Missing)
+        {
+            return [$"A bullet describing hands-on {requirement.Term} work and what it achieved."];
+        }
+
+        return NamesTheRequirement(citations)
+            ?
             [
                 $"A measurable outcome on one of the bullets that already mentions {requirement.Term} - what changed, by how much, or how quickly.",
                 $"Or re-enrich that bullet so {requirement.Term} is picked up as one of its skills rather than passing text."
-            ],
-            _ =>
-            [
-                $"A bullet describing hands-on {requirement.Term} work and what it achieved."
             ]
-        };
+            :
+            [
+                $"The word \"{requirement.Term}\" in the bullet that is already about this work, so a keyword screen finds it too.",
+                $"Or add {requirement.Term} to that bullet's skills, which counts as fully as the wording does."
+            ];
     }
+
+    /// <summary>Whether any bullet cited here actually used the requirement's own words.</summary>
+    private static bool NamesTheRequirement(IReadOnlyList<EvidenceCitation> citations)
+        => citations.Any(citation => citation.MatchKind == EvidenceMatchKindDto.ExactTerm);
 
     public static string Summary(CoverageTotals totals, int strongCount, int weakCount, int missingCount, bool hasBullets)
     {
@@ -70,12 +97,29 @@ internal static class EvidenceNarrative
         return counted + advice;
     }
 
-    private static string Posting(Requirement requirement) => requirement.Kind switch
+    private static string Posting(Requirement requirement)
     {
-        RequirementKindDto.Required => $"This posting lists \"{requirement.Term}\" as a requirement.",
-        RequirementKindDto.Preferred => $"This posting lists \"{requirement.Term}\" as preferred.",
-        _ => $"This posting names \"{requirement.Term}\" among its technologies."
-    };
+        var opening = requirement.Kind switch
+        {
+            RequirementKindDto.Required => $"This posting lists \"{requirement.Term}\" as a requirement.",
+            RequirementKindDto.Preferred => $"This posting lists \"{requirement.Term}\" as preferred.",
+            _ => $"This posting names \"{requirement.Term}\" among its technologies."
+        };
+
+        // A requirement the user pasted in that has no row of its own needs accounting for, or the
+        // list looks like it lost something.
+        return requirement.MergedFrom.Count == 0
+            ? opening
+            : $"{opening} It also asks for {Quoted(requirement.MergedFrom)}, counted here as the same requirement rather than twice.";
+    }
+
+    private static string Quoted(IReadOnlyList<string> terms)
+    {
+        var quoted = terms.Select(term => $"\"{term}\"").ToArray();
+        return quoted.Length == 1
+            ? quoted[0]
+            : string.Join(", ", quoted[..^1]) + " and " + quoted[^1];
+    }
 
     private static string Bullets(int count) => count == 1 ? "1 bullet" : $"{count} bullets";
 }

@@ -26,4 +26,18 @@ public sealed class Bullet
     /// whether work was shared, and the author's answer is the only evidence there is.
     /// </summary>
     public List<string> AcknowledgedQualitySignals { get; set; } = [];
+
+    /// <summary>
+    /// Enrichment values the author added by hand. Re-running the tagger merges its answer with
+    /// these rather than replacing them: the author knows what the work was, and an AI that phrases
+    /// it differently this time is not a reason to lose what they wrote.
+    /// </summary>
+    public EnrichmentSet UserAuthored { get; set; } = EnrichmentSet.Empty();
+
+    /// <summary>
+    /// Enrichment values the author removed. Held rather than merely deleted because the tagger is
+    /// deterministic enough to suggest the same wrong tag every time, and a removal that does not
+    /// stick is not a removal.
+    /// </summary>
+    public EnrichmentSet Suppressed { get; set; } = EnrichmentSet.Empty();
 }

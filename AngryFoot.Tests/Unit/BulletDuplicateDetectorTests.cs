@@ -15,8 +15,9 @@ public class BulletDuplicateDetectorTests : IDisposable
 
     private readonly SqliteTestDatabase _database = new();
     private readonly FakeBulletVectorStore _vectorStore = new();
+    private readonly FakeTextEmbedder _embedder = new();
 
-    private BulletDuplicateDetector CreateSut() => new(_database.CreateContext(), _vectorStore);
+    private BulletDuplicateDetector CreateSut() => new(_database.CreateContext(), _vectorStore, _embedder);
 
     public void Dispose() => _database.Dispose();
 
@@ -54,7 +55,7 @@ public class BulletDuplicateDetectorTests : IDisposable
     public async Task DetectAsync_WhenSemanticScoreExceedsThreshold_FlagsExistingBullet()
     {
         var existingId = await SeedBulletAsync(ExistingText);
-        _vectorStore.Embeddings[SimilarText] = [1f, 0f];
+        _embedder.Vectors[SimilarText] = [1f, 0f];
         _vectorStore.SearchResults = [new BulletSimilarityMatch(existingId, 0.84f)];
         var sut = CreateSut();
 
@@ -72,7 +73,7 @@ public class BulletDuplicateDetectorTests : IDisposable
     public async Task DetectAsync_WhenSemanticScoreIsBelowThreshold_DoesNotFlag()
     {
         var existingId = await SeedBulletAsync(ExistingText);
-        _vectorStore.Embeddings[UnrelatedText] = [1f, 0f];
+        _embedder.Vectors[UnrelatedText] = [1f, 0f];
         _vectorStore.SearchResults = [new BulletSimilarityMatch(existingId, 0.79f)];
         var sut = CreateSut();
 
@@ -84,8 +85,8 @@ public class BulletDuplicateDetectorTests : IDisposable
     [Fact]
     public async Task DetectAsync_WhenTwoCandidatesInTheBatchAreClose_FlagsBothSides()
     {
-        _vectorStore.Embeddings[ExistingText] = [1f, 0f];
-        _vectorStore.Embeddings[SimilarText] = [0.95f, 0.3f];
+        _embedder.Vectors[ExistingText] = [1f, 0f];
+        _embedder.Vectors[SimilarText] = [0.95f, 0.3f];
         var sut = CreateSut();
 
         var result = await sut.DetectAsync(
@@ -139,7 +140,7 @@ public class BulletDuplicateDetectorTests : IDisposable
 
         // In the DB but never indexed, so the vector search cannot see it.
         var existingId = await SeedBulletAsync(ExistingText);
-        _vectorStore.Embeddings[candidate] = [1f, 0f];
+        _embedder.Vectors[candidate] = [1f, 0f];
         _vectorStore.SearchResults = [];
         var sut = CreateSut();
 
@@ -158,7 +159,7 @@ public class BulletDuplicateDetectorTests : IDisposable
     {
         var existingId = await SeedBulletAsync(ExistingText);
         await _vectorStore.UpsertAsync(new Bullet { Id = existingId, BulletText = ExistingText }, TestContext.Current.CancellationToken);
-        _vectorStore.Embeddings[SimilarText] = [1f, 0f];
+        _embedder.Vectors[SimilarText] = [1f, 0f];
         var sut = CreateSut();
 
         var result = await sut.DetectAsync([new DuplicateSubject(0, null, SimilarText)], TestContext.Current.CancellationToken);
@@ -173,7 +174,7 @@ public class BulletDuplicateDetectorTests : IDisposable
         var existingId = await SeedBulletAsync(ExistingText);
         var subjectId = await SeedBulletAsync(SimilarText);
         await IgnorePairAsync(subjectId, existingId);
-        _vectorStore.Embeddings[SimilarText] = [1f, 0f];
+        _embedder.Vectors[SimilarText] = [1f, 0f];
         _vectorStore.SearchResults = [new BulletSimilarityMatch(existingId, 0.97f)];
         var sut = CreateSut();
 
@@ -186,7 +187,7 @@ public class BulletDuplicateDetectorTests : IDisposable
     public async Task DetectAsync_NeverFlagsAnExistingBulletAgainstItself()
     {
         var existingId = await SeedBulletAsync(ExistingText);
-        _vectorStore.Embeddings[ExistingText] = [1f, 0f];
+        _embedder.Vectors[ExistingText] = [1f, 0f];
         _vectorStore.SearchResults = [new BulletSimilarityMatch(existingId, 1.0f)];
         var sut = CreateSut();
 
