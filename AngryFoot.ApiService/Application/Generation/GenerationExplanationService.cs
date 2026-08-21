@@ -17,7 +17,8 @@ internal static class GenerationExplanationService
     public static GenerationExplanationDto Explain(
         JobAnalysisDto analysis,
         IReadOnlyList<RankedBullet> ranked,
-        IReadOnlyList<RewrittenBullet> final)
+        IReadOnlyList<RewrittenBullet> final,
+        SemanticEvidenceIndex? semantic = null)
     {
         var requirements = RequirementSet.From(analysis);
         var finalPositions = final
@@ -28,7 +29,7 @@ internal static class GenerationExplanationService
         // What the resume as a whole still fails to evidence, so an omitted bullet that would have
         // helped can be called out as a cost rather than listed as a neutral fact.
         var unmet = EvidenceCoverageEngine
-            .Evaluate(requirements, final.Select(x => x.Bullet).ToArray())
+            .Evaluate(requirements, final.Select(x => x.Bullet).ToArray(), semantic)
             .Where(x => x.Strength != EvidenceStrengthDto.Strong)
             .Select(x => x.Requirement.Term)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -40,7 +41,8 @@ internal static class GenerationExplanationService
                 finalPositions.TryGetValue(candidate.Bullet.Id, out var position) ? position : null,
                 finalTexts.GetValueOrDefault(candidate.Bullet.Id),
                 requirements,
-                unmet))
+                unmet,
+                semantic))
             .OrderBy(x => x.ResumePosition ?? int.MaxValue)
             .ThenBy(x => x.RankerPosition)
             .ToArray();
@@ -109,12 +111,9 @@ internal static class GenerationExplanationService
             resumePosition,
             new EvidenceRationaleDto(
                 Requirement: null,
-                SupportingEvidence: [new EvidenceCitationDto(
-                    bullet.Id,
-                    bullet.BulletText,
-                    MatchedTerm: string.Empty,
-                    IsExactTermMatch: true,
-                    Because: credits.Length == 0
+                SupportingEvidence: [EvidenceMappings.PointerTo(
+                    bullet,
+                    credits.Length == 0
                         ? "The ranker recorded nothing in this bullet's favour."
                         : string.Join(" ", credits.Select(x => x.Text)))],
                 // Only for the bullets left off: what a kept bullet repeats is a note about the
@@ -219,10 +218,11 @@ internal static class GenerationExplanationService
         int? resumePosition,
         string? finalText,
         IReadOnlyList<Requirement> requirements,
-        HashSet<string> unmet)
+        HashSet<string> unmet,
+        SemanticEvidenceIndex? semantic)
     {
         var bullet = candidate.Bullet;
-        var evidenced = EvidenceCoverageEngine.Evaluate(requirements, [bullet])
+        var evidenced = EvidenceCoverageEngine.Evaluate(requirements, [bullet], semantic)
             .Where(x => x.Strength != EvidenceStrengthDto.Missing)
             .ToArray();
 
@@ -379,12 +379,9 @@ file static class DecisionCitationExtensions
         this Bullet bullet,
         IReadOnlyList<RequirementEvidence> evidenced)
     {
-        return new EvidenceCitationDto(
-            bullet.Id,
-            bullet.BulletText,
-            MatchedTerm: string.Empty,
-            IsExactTermMatch: true,
-            Because: evidenced.Count == 0
+        return EvidenceMappings.PointerTo(
+            bullet,
+            evidenced.Count == 0
                 ? "This bullet matches nothing the posting asks for."
                 : $"This bullet carries {evidenced.Count} of the posting's requirements.");
     }

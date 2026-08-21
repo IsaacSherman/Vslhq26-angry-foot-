@@ -46,7 +46,7 @@ public class AiEvidenceReviewerTests
         AiEvidenceReviewer sut,
         JobAnalysisDto analysis,
         params Bullet[] bullets)
-        => sut.ReviewAsync("A role.", analysis, Baseline(analysis, bullets), bullets, null, TestContext.Current.CancellationToken);
+        => sut.ReviewAsync("A role.", analysis, Baseline(analysis, bullets), bullets, null, semantic: null, TestContext.Current.CancellationToken);
 
     [Fact]
     public async Task ReviewAsync_CanLowerAStrengthWithoutLimit()
@@ -92,11 +92,61 @@ public class AiEvidenceReviewerTests
             Baseline(analysis, AzureBullet, UnrelatedBullet),
             [AzureBullet, UnrelatedBullet],
             null,
+            semantic: null,
             TestContext.Current.CancellationToken);
 
         var evidence = review!.Evidence.Single();
-        evidence.Strength.Should().Be(EvidenceStrengthDto.Weak, "a semantic match alone cannot earn full credit");
-        evidence.Citations.Should().Contain(x => x.Bullet.Id == UnrelatedBullet.Id && !x.IsExactTermMatch);
+        evidence.Strength.Should().Be(EvidenceStrengthDto.Weak, "a bullet read as merely related cannot earn full credit");
+        evidence.Citations.Should().Contain(x =>
+            x.Bullet.Id == UnrelatedBullet.Id && x.MatchKind == EvidenceMatchKindDto.AiIdentified);
+    }
+
+    [Fact]
+    public async Task ReviewAsync_CannotReachStrongOnABulletOnlyAnEmbeddingMatched()
+    {
+        var analysis = Analysis("azure");
+        var sut = CreateSut($$"""
+            {"requirements":[{"requirement":"azure","strength":"Strong","bulletIds":["{{UnrelatedBullet.Id}}"],"reasoning":"Reads as cloud work."}]}
+            """);
+        var semantic = new SemanticEvidenceIndex(
+            new Dictionary<(string, Guid), double> { [("azure", UnrelatedBullet.Id)] = 0.95 });
+
+        var review = await sut.ReviewAsync(
+            "A role.",
+            analysis,
+            Baseline(analysis, AzureBullet, UnrelatedBullet),
+            [AzureBullet, UnrelatedBullet],
+            null,
+            semantic,
+            TestContext.Current.CancellationToken);
+
+        review!.Evidence.Single().Strength.Should().Be(
+            EvidenceStrengthDto.Weak,
+            "an embedding match is not the resume naming the requirement, so it cannot pay out in full either");
+    }
+
+    [Fact]
+    public async Task ReviewAsync_CitesAnEmbeddingMatchAsSemanticRatherThanAsItsOwnReading()
+    {
+        var analysis = Analysis("azure");
+        var sut = CreateSut($$"""
+            {"requirements":[{"requirement":"azure","strength":"Weak","bulletIds":["{{UnrelatedBullet.Id}}"],"reasoning":"Reads as cloud work."}]}
+            """);
+        var semantic = new SemanticEvidenceIndex(
+            new Dictionary<(string, Guid), double> { [("azure", UnrelatedBullet.Id)] = 0.71 });
+
+        var review = await sut.ReviewAsync(
+            "A role.",
+            analysis,
+            Baseline(analysis, AzureBullet, UnrelatedBullet),
+            [AzureBullet, UnrelatedBullet],
+            null,
+            semantic,
+            TestContext.Current.CancellationToken);
+
+        var citation = review!.Evidence.Single().Citations.Single(x => x.Bullet.Id == UnrelatedBullet.Id);
+        citation.MatchKind.Should().Be(EvidenceMatchKindDto.Semantic);
+        citation.Confidence.Should().Be(0.71);
     }
 
     [Fact]
@@ -218,7 +268,7 @@ public class AiEvidenceReviewerTests
         var analysis = Analysis("azure");
         var sut = CreateThrowingSut(new OperationCanceledException(cts.Token));
 
-        var act = () => sut.ReviewAsync("A role.", analysis, Baseline(analysis, AzureBullet), [AzureBullet], null, cts.Token);
+        var act = () => sut.ReviewAsync("A role.", analysis, Baseline(analysis, AzureBullet), [AzureBullet], null, semantic: null, cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }

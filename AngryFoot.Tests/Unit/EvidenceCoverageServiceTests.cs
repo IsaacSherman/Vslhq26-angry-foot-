@@ -1,5 +1,6 @@
 using AngryFoot.ApiService.Application.Evidence;
 using AngryFoot.ApiService.Application.Evidence.Diagnostics;
+using AngryFoot.ApiService.Application.Retrieval;
 using AngryFoot.ApiService.Domain;
 using AngryFoot.Contracts;
 using AngryFoot.Tests.Fakes;
@@ -19,12 +20,20 @@ public class EvidenceCoverageServiceTests : IDisposable
 
     public void Dispose() => _database.Dispose();
 
+    private readonly FakeTextEmbedder _embedder = new() { IsAvailable = false };
+
+    /// <summary>
+    /// Wired with the real <see cref="SemanticEvidenceMatcher"/> over a scriptable embedder, so a
+    /// test that says nothing about embeddings gets the lexical-only report the product gives with
+    /// no embedding deployment configured.
+    /// </summary>
     private EvidenceCoverageService CreateSut(
         FakeEvidenceReviewer? reviewer = null,
         params IEvidenceDiagnosticAnalyzer[] analyzers)
         => new(
             _database.Context,
             reviewer ?? new FakeEvidenceReviewer(),
+            new SemanticEvidenceMatcher(_embedder),
             analyzers,
             NullLogger<EvidenceCoverageService>.Instance);
 
@@ -125,6 +134,103 @@ public class EvidenceCoverageServiceTests : IDisposable
         coverage.Diagnostics.Should().ContainSingle(x => x.Code == CoverageDiagnosticCodes.AnalysisLimitation)
             .Which.Severity.Should().Be(DiagnosticSeverityDto.Info,
                 "a report whose limits the user cannot see is the opacity this feature removes");
+    }
+
+    /// <summary>
+    /// Scripts the embedder so every requirement and every seeded bullet embed to vectors whose
+    /// cosine similarity is <paramref name="similarity"/>.
+    /// </summary>
+    private void ScriptEmbeddings(JobAnalysisDto analysis, double similarity)
+    {
+        _embedder.IsAvailable = true;
+
+        var opposite = (float)Math.Sqrt(1 - (similarity * similarity));
+        foreach (var requirement in RequirementSet.From(analysis))
+        {
+            _embedder.Vectors[SemanticEvidenceMatcher.QueryTextFor(requirement)] = [1f, 0f];
+        }
+
+        foreach (var bullet in _database.Context.Bullets)
+        {
+            _embedder.Vectors[BulletEmbeddingText.For(bullet)] = [(float)similarity, opposite];
+        }
+    }
+
+    [Fact]
+    public async Task AnalyzeLibraryAsync_WhenAnEmbeddingMatchesARequirement_SaysSoOnTheReport()
+    {
+        SeedBullet("Mentored two interns through weekly 1:1s and code reviews.");
+        var analysis = Analysis(required: ["technical leadership"]);
+        ScriptEmbeddings(analysis, 0.8);
+
+        var coverage = await CreateSut().AnalyzeLibraryAsync("A role.", analysis, TestContext.Current.CancellationToken);
+
+        coverage.Diagnostics.Should().Contain(x => x.Code == CoverageDiagnosticCodes.SemanticMatching);
+        coverage.Requirements.Single().Strength.Should().Be(EvidenceStrengthDto.Weak);
+        AssertScoreIsDerivedFromRequirements(coverage);
+    }
+
+    [Fact]
+    public async Task AnalyzeLibraryAsync_WhenEmbeddingsRan_TheStatedLimitationNoLongerClaimsWordMatchingAlone()
+    {
+        SeedBullet("Mentored two interns through weekly 1:1s and code reviews.");
+        var analysis = Analysis(required: ["technical leadership"]);
+        ScriptEmbeddings(analysis, 0.8);
+
+        var coverage = await CreateSut().AnalyzeLibraryAsync("A role.", analysis, TestContext.Current.CancellationToken);
+
+        coverage.Diagnostics
+            .Single(x => x.Code == CoverageDiagnosticCodes.AnalysisLimitation)
+            .Message.Should().Contain("word matching and embeddings");
+    }
+
+    [Fact]
+    public async Task AnalyzeLibraryAsync_WhenNothingClearsTheThreshold_ReportsExactlyTheLexicalResult()
+    {
+        SeedBullet("Mentored two interns through weekly 1:1s and code reviews.");
+        var analysis = Analysis(required: ["technical leadership"]);
+        ScriptEmbeddings(analysis, 0.2);
+
+        var coverage = await CreateSut().AnalyzeLibraryAsync("A role.", analysis, TestContext.Current.CancellationToken);
+
+        coverage.Requirements.Single().Strength.Should().Be(EvidenceStrengthDto.Missing);
+        coverage.Diagnostics.Should().NotContain(x => x.Code == CoverageDiagnosticCodes.SemanticMatching);
+        coverage.Diagnostics
+            .Single(x => x.Code == CoverageDiagnosticCodes.AnalysisLimitation)
+            .Message.Should().Contain("word matching alone");
+    }
+
+    [Fact]
+    public async Task AnalyzeLibraryAsync_WhenTheEmbeddingCallFails_StillProducesTheWholeLexicalReport()
+    {
+        SeedBullet("Migrated 40 services to Azure.");
+        var analysis = Analysis(required: ["azure", "technical leadership"]);
+
+        // Available but answering null is what the real embedder does when the deployment refuses a
+        // call: it logs, degrades, and leaves the caller to fall back.
+        _embedder.IsAvailable = true;
+
+        var coverage = await CreateSut().AnalyzeLibraryAsync("A role.", analysis, TestContext.Current.CancellationToken);
+
+        coverage.Requirements.Should().HaveCount(2);
+        coverage.Requirements.Single(x => x.Requirement == "azure").Strength.Should().Be(EvidenceStrengthDto.Strong);
+        coverage.Requirements.Single(x => x.Requirement == "technical leadership").Strength.Should().Be(EvidenceStrengthDto.Missing);
+        coverage.Diagnostics.Should().NotContain(x => x.Code == CoverageDiagnosticCodes.SemanticMatching);
+        AssertScoreIsDerivedFromRequirements(coverage);
+    }
+
+    [Fact]
+    public async Task AnalyzeLibraryAsync_TheReviewerSeesTheSameEmbeddingMatchesTheBaselineWasBuiltFrom()
+    {
+        SeedBullet("Mentored two interns through weekly 1:1s and code reviews.");
+        var analysis = Analysis(required: ["technical leadership"]);
+        ScriptEmbeddings(analysis, 0.8);
+        var reviewer = new FakeEvidenceReviewer(baseline => new EvidenceReview("Summary.", baseline, []));
+
+        await CreateSut(reviewer).AnalyzeLibraryAsync("A role.", analysis, TestContext.Current.CancellationToken);
+
+        reviewer.LastSemanticIndex.Should().NotBeNull();
+        reviewer.LastSemanticIndex!.IsEmpty.Should().BeFalse();
     }
 
     [Fact]
@@ -251,6 +357,7 @@ public class EvidenceCoverageServiceTests : IDisposable
         var coverage = await CreateSut(reviewer).DescribeResumeAsync(
             Analysis(required: ["c#", "azure"]),
             [onResume],
+            semantic: null,
             TestContext.Current.CancellationToken);
 
         coverage.Source.Should().Be(CoverageSourceDto.Deterministic);
@@ -269,6 +376,7 @@ public class EvidenceCoverageServiceTests : IDisposable
         var coverage = await CreateSut(null, new BulletOrderingAnalyzer()).DescribeResumeAsync(
             Analysis(required: ["azure"]),
             [weak, strong],
+            semantic: null,
             TestContext.Current.CancellationToken);
 
         coverage.Diagnostics.Should().Contain(x => x.Code == CoverageDiagnosticCodes.BulletOrdering);

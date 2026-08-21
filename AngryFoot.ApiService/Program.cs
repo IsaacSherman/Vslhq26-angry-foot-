@@ -54,6 +54,7 @@ builder.Services.AddScoped<ILinkedInProfileImportService, LinkedInImportService>
 builder.Services.AddScoped<IArtifactService, ArtifactService>();
 builder.Services.AddScoped<IJobAnalyzer, HeuristicJobAnalyzer>();
 builder.Services.AddScoped<IEvidenceReviewer, AiEvidenceReviewer>();
+builder.Services.AddScoped<ISemanticEvidenceMatcher, SemanticEvidenceMatcher>();
 builder.Services.AddScoped<IEvidenceCoverageAnalyzer, EvidenceCoverageService>();
 builder.Services.AddScoped<IResumeReviewer, AiResumeReviewer>();
 builder.Services.AddScoped<IResumeReviewService, ResumeReviewService>();

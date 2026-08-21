@@ -35,7 +35,9 @@
             @if (Coverage.Source == CoverageSourceDto.Deterministic)
             {
                 <p class="text-muted small">
-                    Matched by wording alone, without an AI review.
+                    @(MatchedSemantically
+                        ? "Matched by wording and by meaning, without an AI review."
+                        : "Matched by wording alone, without an AI review.")
                 </p>
             }
 
@@ -53,7 +55,7 @@
                             <details>
                                 <summary style="cursor: pointer;">
                                     <span class="badge @CoverageBands.StrengthBadge(requirement.Strength) me-2">
-                                        @CoverageBands.StrengthIcon(requirement.Strength) @CoverageBands.StrengthLabel(requirement.Strength)
+                                        @CoverageBands.StrengthIcon(requirement.Strength) @CoverageBands.StrengthLabel(requirement.Strength, requirement.Why.SupportingEvidence)
                                     </span>
                                     <strong>@requirement.Requirement</strong>
                                     <span class="text-muted small ms-1">(@CoverageBands.KindLabel(requirement.Kind))</span>
@@ -100,4 +102,12 @@
 
     [Parameter]
     public string Title { get; set; } = "Evidence Coverage for This Posting";
+
+    /// <summary>
+    /// Whether any citation on the report was found by meaning rather than by wording, so the note
+    /// under the score describes what actually happened.
+    /// </summary>
+    private bool MatchedSemantically => Coverage is not null
+        && Coverage.Requirements.Any(requirement => requirement.Why.SupportingEvidence
+            .Any(citation => citation.MatchKind == EvidenceMatchKindDto.Semantic));
 }

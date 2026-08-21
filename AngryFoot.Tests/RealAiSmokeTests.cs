@@ -198,6 +198,103 @@ public class RealAiSmokeTests
             $"The reviewer's alternative imported claims from unrelated bullets: {string.Join(", ", imported)}. Full text: {alternative}");
     }
 
+    /// <summary>
+    /// Re-measures the constant behind semantic evidence matching. It is not a pass/fail check on the
+    /// model so much as a guard on the ordering the threshold assumes: work the library actually
+    /// evidences must outscore a technology it has never touched, or no cut separates them and the
+    /// number in <c>SemanticEvidenceMatcher.MinimumConfidence</c> is arbitrary rather than measured.
+    /// <para>
+    /// It prints every score, because the useful output of this test is the distribution rather than
+    /// the assertion.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SemanticEvidenceThreshold_KeepsRelatedWorkAboveUnrelatedTechnologies()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("RUN_AI_INTEGRATION"), "1", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.AngryFoot_AppHost>(TestDatabase.AppHostArgs, cancellationToken);
+        appHost.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Aspire.", LogLevel.Warning);
+        });
+        appHost.Services.ConfigureHttpClientDefaults(clientBuilder => clientBuilder.AddStandardResilienceHandler(TestResilience.ConfigureStandardHandler));
+        TestDatabase.UseIsolatedDatabase(appHost);
+
+        await using var app = await appHost.BuildAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.StartAsync(cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+        await app.ResourceNotifications.WaitForResourceHealthyAsync("apiservice", cancellationToken).WaitAsync(DefaultTimeout, cancellationToken);
+
+        var apiClient = app.CreateHttpClient("apiservice");
+
+        // A library about mentoring and release engineering, naming neither Kubernetes nor Salesforce.
+        string[] library =
+        [
+            "Mentored two interns through weekly 1:1s, pair programming, and code reviews, helping establish engineering best practices.",
+            "Automated the release pipeline, cutting deployments from 40 minutes to under 4.",
+            "Ran the on-call rotation and wrote the runbooks the team still uses."
+        ];
+
+        foreach (var text in library)
+        {
+            await apiClient.PostAsJsonAsync("/api/bullets", new CreateBulletRequest(text), cancellationToken);
+        }
+
+        var response = await apiClient.PostAsJsonAsync(
+            "/api/generations/analyze",
+            new
+            {
+                JobDescription = """
+                    Requirements:
+                    - Technical leadership and mentoring
+                    - Release automation
+                    - Salesforce administration
+                    - Kubernetes cluster operations
+                    """
+            },
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var analysis = await response.Content.ReadFromJsonAsync<JobEvidenceAnalysisDto>(cancellationToken);
+        Assert.NotNull(analysis);
+
+        var scores = analysis.Coverage.Requirements.ToDictionary(
+            requirement => requirement.Requirement,
+            requirement => requirement.Why.SupportingEvidence
+                .Where(citation => citation.MatchKind == EvidenceMatchKindDto.Semantic)
+                .Select(citation => citation.Confidence ?? 0)
+                .DefaultIfEmpty(0)
+                .Max(),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var scored in scores.OrderByDescending(x => x.Value))
+        {
+            Console.WriteLine($"{scored.Key,-45} {scored.Value:0.000}");
+        }
+
+        var evidenced = Best(scores, "mentor", "leadership", "release", "automation");
+        var absent = Best(scores, "salesforce", "kubernetes");
+
+        Assert.True(
+            evidenced > absent,
+            $"work the library evidences scored {evidenced:0.000}, technology it has never touched scored {absent:0.000}. "
+                + "A threshold can only separate them while the first is higher.");
+    }
+
+    /// <summary>The best semantic score across every requirement whose wording contains one of the given words.</summary>
+    private static double Best(IReadOnlyDictionary<string, double> scores, params string[] words)
+        => scores
+            .Where(x => words.Any(word => x.Key.Contains(word, StringComparison.OrdinalIgnoreCase)))
+            .Select(x => x.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
     private static async Task<(GenerationResultDto Result, TimeSpan Elapsed)> TimeGenerationAsync(
         HttpClient apiClient, GenerationRequest request, CancellationToken cancellationToken)
     {

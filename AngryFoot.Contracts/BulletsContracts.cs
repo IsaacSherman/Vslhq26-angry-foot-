@@ -20,7 +20,83 @@ public sealed record BulletDto(
     DateTime CreatedDate,
     DateTime ModifiedDate,
     bool IsIndexed,
-    BulletQualityDto? Quality = null);
+    BulletQualityDto? Quality = null,
+    BulletEnrichmentDto? Enrichment = null);
+
+/// <summary>Which enrichment list a value belongs to.</summary>
+public enum EnrichmentFacetDto
+{
+    Tags,
+    Skills,
+    Technologies,
+    JobCategories
+}
+
+/// <summary>Where one enrichment value came from.</summary>
+public enum EnrichmentOriginDto
+{
+    /// <summary>Extracted from the bullet's wording by the tagger.</summary>
+    Suggested,
+
+    /// <summary>Written by the author, and kept when the tagger runs again.</summary>
+    Authored
+}
+
+public sealed record EnrichmentValueDto(string Value, EnrichmentOriginDto Origin);
+
+/// <summary>
+/// A bullet's enrichment with its provenance, so the editor can show which values the author owns
+/// and which the tagger proposed. The values themselves are also on <see cref="BulletDto"/>'s four
+/// flat lists, which stay the merged view every other reader of a bullet uses.
+/// </summary>
+/// <param name="Suppressed">
+/// Values the author removed. Carried so the editor can offer to restore one, and so a client can
+/// explain why a tag the tagger keeps proposing never appears.
+/// </param>
+public sealed record BulletEnrichmentDto(
+    IReadOnlyList<EnrichmentValueDto> Tags,
+    IReadOnlyList<EnrichmentValueDto> Skills,
+    IReadOnlyList<EnrichmentValueDto> Technologies,
+    IReadOnlyList<EnrichmentValueDto> JobCategories,
+    IReadOnlyList<EnrichmentValueDto> Suppressed);
+
+/// <summary>
+/// The enrichment the author wants on a bullet, facet by facet. This is the whole set, not a delta:
+/// anything the tagger previously suggested and this omits is recorded as removed, so the same call
+/// expresses "I added this" and "I do not want that".
+/// </summary>
+public sealed record SetBulletEnrichmentRequest(
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<string> Skills,
+    IReadOnlyList<string> Technologies,
+    IReadOnlyList<string> JobCategories);
+
+/// <summary>One facet of what re-running the tagger would change.</summary>
+/// <param name="Added">Values the tagger proposes that the bullet does not currently carry.</param>
+/// <param name="Removed">
+/// Values the bullet carries that the tagger no longer proposes. Values the author wrote are never
+/// listed here - the proposal cannot take those away.
+/// </param>
+/// <param name="Unchanged">Values both agree on.</param>
+public sealed record EnrichmentFacetProposalDto(
+    EnrichmentFacetDto Facet,
+    IReadOnlyList<string> Added,
+    IReadOnlyList<string> Removed,
+    IReadOnlyList<string> Unchanged);
+
+/// <summary>
+/// What the tagger would do to a bullet, offered rather than applied. Nothing is saved by asking:
+/// the author accepts all of it, none of it, or picks, and the result comes back through
+/// <see cref="SetBulletEnrichmentRequest"/>.
+/// </summary>
+/// <param name="ForText">
+/// The wording this proposal describes. Guards the same failure <see cref="BulletTaggingDto.ForText"/>
+/// guards: metadata applied to text it was not derived from files a bullet under skills it never
+/// mentions.
+/// </param>
+public sealed record BulletEnrichmentProposalDto(
+    string ForText,
+    IReadOnlyList<EnrichmentFacetProposalDto> Facets);
 
 public sealed record CreateBulletRequest(string BulletText, string? SourceEmployer = null, BulletTaggingDto? Tagging = null);
 

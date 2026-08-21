@@ -40,7 +40,8 @@ public class GenerationOrchestratorTests : IDisposable
             new BulletRewriteService(chatClient, pipeline, NullLogger<BulletRewriteService>.Instance),
             new ResumeMarkdownService(),
             new CoverLetterService(chatClient, pipeline, NullLogger<CoverLetterService>.Instance),
-            CreateCoverageAnalyzer());
+            CreateCoverageAnalyzer(),
+            new SemanticEvidenceMatcher(new FakeTextEmbedder { IsAvailable = false }));
     }
 
     /// <summary>
@@ -52,6 +53,7 @@ public class GenerationOrchestratorTests : IDisposable
         return new EvidenceCoverageService(
             _database.Context,
             new FakeEvidenceReviewer(),
+            new SemanticEvidenceMatcher(new FakeTextEmbedder { IsAvailable = false }),
             [],
             NullLogger<EvidenceCoverageService>.Instance);
     }

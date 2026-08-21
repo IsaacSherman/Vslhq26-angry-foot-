@@ -8,7 +8,8 @@ public sealed record RetrievalHealth(bool IsHealthy, string Message);
 
 /// <summary>
 /// Semantic index over bullet text, used to retrieve the bullets most relevant to a job
-/// description instead of loading and keyword-scoring the entire bullet library.
+/// description instead of loading and keyword-scoring the entire bullet library. Embedding text is
+/// <see cref="ITextEmbedder"/>'s job; this stores and searches what it produces.
 /// </summary>
 public interface IBulletVectorStore
 {
@@ -21,13 +22,6 @@ public interface IBulletVectorStore
     Task DeleteAsync(Guid bulletId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<BulletSimilarityMatch>> SearchAsync(string queryText, int topK, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Embeds arbitrary text without indexing it, so text that may never become a bullet (an
-    /// imported candidate the user discards) can be compared without polluting the collection.
-    /// Null when retrieval is unavailable or the embedding call fails.
-    /// </summary>
-    Task<float[]?> EmbedAsync(string text, CancellationToken cancellationToken);
 
     /// <summary>Which of the given bullet ids already have a point stored in the vector index.</summary>
     Task<IReadOnlySet<Guid>> GetIndexedIdsAsync(IReadOnlyCollection<Guid> bulletIds, CancellationToken cancellationToken);

@@ -25,8 +25,59 @@ public static class BulletMappings
             bullet.CreatedDate,
             bullet.ModifiedDate,
             isIndexed,
-            BulletQualityScorer.Score(bullet));
+            BulletQualityScorer.Score(bullet),
+            bullet.ToEnrichmentDto());
     }
+
+    public static BulletEnrichmentDto ToEnrichmentDto(this Bullet bullet)
+    {
+        return new BulletEnrichmentDto(
+            Describe(bullet, EnrichmentFacet.Tags),
+            Describe(bullet, EnrichmentFacet.Skills),
+            Describe(bullet, EnrichmentFacet.Technologies),
+            Describe(bullet, EnrichmentFacet.JobCategories),
+            Suppressed(bullet));
+    }
+
+    public static EnrichmentFacet ToFacet(this EnrichmentFacetDto facet) => facet switch
+    {
+        EnrichmentFacetDto.Tags => EnrichmentFacet.Tags,
+        EnrichmentFacetDto.Skills => EnrichmentFacet.Skills,
+        EnrichmentFacetDto.Technologies => EnrichmentFacet.Technologies,
+        _ => EnrichmentFacet.JobCategories
+    };
+
+    public static EnrichmentFacetDto ToDto(this EnrichmentFacet facet) => facet switch
+    {
+        EnrichmentFacet.Tags => EnrichmentFacetDto.Tags,
+        EnrichmentFacet.Skills => EnrichmentFacetDto.Skills,
+        EnrichmentFacet.Technologies => EnrichmentFacetDto.Technologies,
+        _ => EnrichmentFacetDto.JobCategories
+    };
+
+    private static IReadOnlyList<EnrichmentValueDto> Describe(Bullet bullet, EnrichmentFacet facet)
+    {
+        return Values(bullet, facet)
+            .Select(value => new EnrichmentValueDto(
+                value,
+                bullet.UserAuthored.Contains(facet, value) ? EnrichmentOriginDto.Authored : EnrichmentOriginDto.Suggested))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<EnrichmentValueDto> Suppressed(Bullet bullet)
+    {
+        return Enum.GetValues<EnrichmentFacet>()
+            .SelectMany(facet => bullet.Suppressed.For(facet).Select(value => new EnrichmentValueDto(value, EnrichmentOriginDto.Suggested)))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> Values(Bullet bullet, EnrichmentFacet facet) => facet switch
+    {
+        EnrichmentFacet.Tags => bullet.Tags,
+        EnrichmentFacet.Skills => bullet.Skills,
+        EnrichmentFacet.Technologies => bullet.Technologies,
+        _ => bullet.JobCategories
+    };
 
     /// <param name="bullet">
     /// The revision's parent, needed to answer whether the revision still describes current wording.
@@ -57,4 +108,11 @@ public static class BulletMappings
             revision.CreatedDate,
             BulletQualityScorer.Score(bullet, revision.RevisedText));
     }
+
+    /// <summary>
+    /// Reuses tagging the caller already paid for. Converting to the same type the tagger returns is
+    /// what lets one merge rule serve both paths.
+    /// </summary>
+    public static BulletTagging ToTagging(this BulletTaggingDto dto)
+        => new(dto.Tags, dto.Skills, dto.Technologies, dto.JobCategories, dto.Impact);
 }

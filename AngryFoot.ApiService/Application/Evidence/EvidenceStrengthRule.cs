@@ -23,39 +23,61 @@ internal static class EvidenceStrengthRule
     private const EvidenceMatch Match = EvidenceMatch.WholeWord;
 
     /// <summary>Null when this bullet is not evidence for this requirement at all.</summary>
-    public static EvidenceCitation? Cite(Bullet bullet, Requirement requirement)
+    /// <param name="semanticConfidence">
+    /// An embedding's similarity between the two, when one was computed. Consulted only after both
+    /// lexical branches decline, so a bullet that names the requirement is never described as merely
+    /// resembling it.
+    /// </param>
+    public static EvidenceCitation? Cite(Bullet bullet, Requirement requirement, double? semanticConfidence = null)
     {
-        var term = requirement.Term;
-
-        if (BulletEvidence.SupportsInMetadata(bullet, term, Match))
+        // Every wording the posting used, not only the one shown: merging "Microsoft Azure" into
+        // "Azure" must not stop a bullet that wrote it out in full from counting.
+        if (requirement.Terms.FirstOrDefault(x => BulletEvidence.SupportsInMetadata(bullet, x, Match)) is { } tagged)
         {
             return new EvidenceCitation(
                 bullet,
-                term,
-                IsExactTermMatch: true,
+                tagged,
+                EvidenceMatchKindDto.ExactTerm,
+                Confidence: null,
                 EvidenceStrengthDto.Strong,
-                $"\"{term}\" is one of this bullet's extracted skills or technologies, so the bullet is about it rather than mentioning it in passing.");
+                $"\"{tagged}\" is one of this bullet's extracted skills or technologies, so the bullet is about it rather than mentioning it in passing.");
         }
 
-        if (!BulletEvidence.SupportsInText(bullet, term, Match))
+        if (requirement.Terms.FirstOrDefault(x => BulletEvidence.SupportsInText(bullet, x, Match)) is { } term)
         {
-            return null;
+            return BulletQualityHeuristics.HasMeasurableImpact(bullet.BulletText)
+                ? new EvidenceCitation(
+                    bullet,
+                    term,
+                    EvidenceMatchKindDto.ExactTerm,
+                    Confidence: null,
+                    EvidenceStrengthDto.Strong,
+                    $"\"{term}\" appears in this bullet, and the bullet quantifies what came of it.")
+                : new EvidenceCitation(
+                    bullet,
+                    term,
+                    EvidenceMatchKindDto.ExactTerm,
+                    Confidence: null,
+                    EvidenceStrengthDto.Weak,
+                    $"\"{term}\" appears in this bullet, but the bullet does not quantify a result, so it reads as a mention rather than a demonstration.");
         }
 
-        return BulletQualityHeuristics.HasMeasurableImpact(bullet.BulletText)
+        // Capped at Weak by construction rather than by a later check: full credit means the resume
+        // states the requirement, and a vector saying two things are close is not the resume saying
+        // anything. The same bar the AI reviewer's citations have to clear.
+        return semanticConfidence is { } confidence
             ? new EvidenceCitation(
                 bullet,
-                term,
-                IsExactTermMatch: true,
-                EvidenceStrengthDto.Strong,
-                $"\"{term}\" appears in this bullet, and the bullet quantifies what came of it.")
-            : new EvidenceCitation(
-                bullet,
-                term,
-                IsExactTermMatch: true,
+                requirement.Term,
+                EvidenceMatchKindDto.Semantic,
+                confidence,
                 EvidenceStrengthDto.Weak,
-                $"\"{term}\" appears in this bullet, but the bullet does not quantify a result, so it reads as a mention rather than a demonstration.");
+                $"This bullet does not use the word \"{requirement.Term}\", but reads as evidence for it "
+                    + $"(similarity {confidence:0.00}, above the {MinimumConfidenceLabel} needed to count).")
+            : null;
     }
+
+    private static string MinimumConfidenceLabel => SemanticEvidenceMatcher.MinimumConfidence.ToString("0.00");
 
     public static EvidenceStrengthDto StrengthOf(IReadOnlyList<EvidenceCitation> citations)
     {

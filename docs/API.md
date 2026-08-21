@@ -45,6 +45,11 @@ Returns all bullets, filtered by optional query params.
 ### GET `/api/bullets/{id}`
 Returns a single bullet (`200`) or `404`.
 
+`BulletDto.enrichment` carries the same four lists with provenance: each value's `origin` is `0`
+(`Suggested`, extracted by the tagger) or `1` (`Authored`, written by the user and preserved across
+re-enrichment), plus a `suppressed` list of values the user removed. The flat `tags`/`skills`/
+`technologies`/`jobCategories` arrays remain the merged view every other reader uses.
+
 ### POST `/api/bullets`
 Creates a bullet and enriches metadata (currently via pluggable tagger abstraction).
 
@@ -59,13 +64,61 @@ enrichment again; see that endpoint.
 Returns `201 Created` with `BulletDto` and `Location: /api/bullets/{id}`.
 
 ### PUT `/api/bullets/{id}`
-Updates bullet text and re-enriches metadata. Returns `200` with `BulletDto` or `404`.
+Updates bullet text and employer. Returns `200` with `BulletDto` or `404`.
+
+Enrichment describes the wording, so the tagger runs only when the text actually changed — editing
+just the employer leaves enrichment alone and costs no AI call. A `tagging` from a prior
+`/api/bullets/assess` of the same text is applied either way, since the caller already paid for it.
+The bullet is re-embedded only when something it is embedded from moved (its text, skills,
+technologies or categories), never for an employer-only edit.
 
 ### DELETE `/api/bullets/{id}`
 Deletes bullet. Returns `204` or `404`.
 
 ### POST `/api/bullets/{id}/enrich`
-Force re-enriches metadata for an existing bullet. Returns `200` with `BulletDto` or `404`.
+Re-runs AI enrichment for an existing bullet and saves the result. Non-destructive: the tagger's
+answer is merged as `(suggested + authored) - removed`, so values the author added survive and values
+they removed are not reinstated. Returns `200` with `BulletDto` or `404`.
+
+### POST `/api/bullets/{id}/enrich/preview`
+Runs the tagger and returns what it *would* change, saving nothing. Costs an AI call, bounded at 30
+seconds; a tagger that does not answer in time fails the request rather than returning an empty
+proposal, because an empty suggestion set reads as "drop every tag you have".
+
+Returns `200` with `BulletEnrichmentProposalDto` or `404`:
+
+```json
+{
+  "forText": "Mentored two interns through weekly 1:1s.",
+  "facets": [
+    { "facet": 1, "added": ["Pair Programming"], "removed": ["Code Review"], "unchanged": ["Mentoring"] }
+  ]
+}
+```
+
+`facet` is `0` Tags, `1` Skills, `2` Technologies, `3` JobCategories. `forText` is the wording the
+proposal describes; a client must not apply it to text that has since changed, for the same reason
+`BulletTaggingDto.ForText` exists. `removed` never contains a value the author wrote — a proposal
+cannot take those away.
+
+### PUT `/api/bullets/{id}/enrichment`
+Sets a bullet's enrichment to exactly what the author chose. This is the whole set, not a delta:
+anything omitted that the bullet currently carries is recorded as removed and will not come back on
+re-enrichment. Values the author introduces are marked as theirs; values they merely keep stay
+suggestions, so enrichment can still refresh them.
+
+```json
+{
+  "tags": ["mentoring"],
+  "skills": ["Mentoring", "Technical Leadership"],
+  "technologies": ["Python"],
+  "jobCategories": ["Engineering"]
+}
+```
+
+Returns `200` with `BulletDto` or `404`. Re-indexes the bullet, since skills, technologies and
+categories are part of its embedding text. `Impact` is not settable — it is extracted figures rather
+than classification.
 
 ### POST `/api/bullets/rewrite`
 Suggests an improved rewrite without saving anything. Nothing is persisted.
@@ -338,16 +391,34 @@ traceable:
   check the arithmetic. Each requirement contributes `weight * 2` to `totalWeight` and earns
   `weight *` 2 for `"Strong"` evidence, 1 for `"Weak"`, 0 for `"Missing"`.
 - `requirements[]` links each extracted requirement to the bullets cited as evidence for it, under
-  `why.supportingEvidence`. A citation's `isExactTermMatch: false` means an AI reviewer read the
-  bullet as related without the bullet naming the requirement.
+  `why.supportingEvidence`. A citation's `matchKind` is `0` (`ExactTerm` — the term literally appears
+  in the bullet's text, skills, or technologies), `1` (`Semantic` — an embedding scored the two as
+  close, with the score on `confidence`), or `2` (`AiIdentified` — an AI reviewer read them as
+  related). Only `ExactTerm` can carry a requirement to `"Strong"`; the other two are capped at
+  `"Weak"`. `confidence` is null except on a semantic match. A citation with an empty `matchedTerm`
+  is a pointer to a bullet a diagnostic is about rather than a claim that anything matched.
+- `requirements[].mergedFrom` lists other wordings the posting used for the same requirement, folded
+  into this row and counted once (e.g. `"Azure"` absorbing `"Microsoft Azure"`). Absent for the
+  ordinary case.
 - `diagnostics[]` carries severities `"Warning"`, `"Suggestion"`, and `"Info"`, and codes
   `missing-skill`, `weak-evidence`, `duplicate-bullet`, `bullet-ordering`, `overused-wording`,
-  `no-measurable-impact`, `unsupported-claim`, and `analysis-limitation`.
+  `no-measurable-impact`, `unsupported-claim`, `analysis-limitation`, and `semantic-matching` (raised
+  when any citation was found by meaning rather than wording, naming the threshold used).
 - Every requirement and every diagnostic carries a `why` object (the requirement at stake, the
   supporting evidence, what evidence is missing, and the reasoning).
 - `source` is `"Deterministic"` or `"AiReviewed"`. With no AI configured the report is complete and
   `source` says so; an AI review may adjust per-requirement strengths but never returns a score, and
-  may raise a strength by at most one step and only while citing a bullet from the library.
+  may raise a strength by at most one step and only while citing a bullet from the library. It is
+  independent of whether embeddings ran — semantic matching is not an AI review.
+
+Semantic matching needs `AzureOpenAI:EmbeddingDeployment` and nothing else; it does **not** require
+Qdrant, and it works on `POST /api/resume-review`, where the bullets were never saved. Without an
+embedding deployment the lexical path is the whole report, exactly as before.
+
+> **Stored reports predating this change.** Coverage is frozen onto the artifact as JSON, and older
+> artifacts carry `isExactTermMatch` rather than `matchKind`. Replayed from History their citations
+> deserialize as `ExactTerm`, so a citation an AI reviewer had added by meaning loses its badge. The
+> score, the rows and the bullet text are unaffected.
 
 ```json
 {
@@ -369,7 +440,8 @@ traceable:
         "supportingEvidence": [],
         "missingEvidence": ["A bullet describing hands-on Azure work and what it achieved."],
         "reasoning": "This posting names \"Azure\" among its technologies. No bullet in your library mentions it."
-      }
+      },
+      "mergedFrom": ["Microsoft Azure"]
     }
   ],
   "diagnostics": [

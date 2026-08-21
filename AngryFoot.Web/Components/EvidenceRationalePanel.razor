@@ -27,11 +27,10 @@
                     <li class="mb-2">
                         <blockquote class="mb-1 fst-italic">@citation.BulletText</blockquote>
                         <span class="text-muted">@citation.Because</span>
-                        @if (!citation.IsExactTermMatch)
+                        @if (CoverageBands.MatchKindLabel(citation) is { } matchLabel)
                         {
-                            <span class="badge text-bg-light ms-1"
-                                  title="The bullet does not contain this requirement's wording. An AI reviewer read the two as related.">
-                                AI-identified
+                            <span class="badge text-bg-light ms-1" title="@CoverageBands.MatchKindTooltip(citation)">
+                                @matchLabel
                             </span>
                         }
                     </li>

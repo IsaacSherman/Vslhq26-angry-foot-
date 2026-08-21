@@ -33,7 +33,7 @@ public class ResumeBulletImportServiceTests : IDisposable
     {
         var context = _database.CreateContext();
         var bulletService = new BulletService(context, _tagger.Object, _vectorStore, NullLogger<BulletService>.Instance);
-        return new ResumeBulletImportService(context, bulletService, new BulletDuplicateDetector(context, _vectorStore));
+        return new ResumeBulletImportService(context, bulletService, new BulletDuplicateDetector(context, _vectorStore, new FakeTextEmbedder { IsAvailable = false }));
     }
 
     public void Dispose() => _database.Dispose();

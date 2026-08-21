@@ -231,11 +231,31 @@ and both operands ship on the response. Each requirement is worth `weight × 2` 
 |---|---|
 | **Strong** | the requirement is one of the bullet's extracted skills or technologies, **or** the bullet names it *and* quantifies a result |
 | **Weak** | a bullet mentions it but never shows what came of the work — half credit |
-| **Missing** | no bullet mentions it |
+| **Weak** *(by meaning)* | no bullet uses the wording, but an embedding read one as evidence for it — half credit, and never more than half |
+| **Missing** | no bullet mentions it, and nothing read as close enough |
+
+**One requirement, however many ways the posting spells it.** A posting that lists "Azure" among its technologies and "Microsoft Azure" among its requirements is asking for one thing, and scoring it as two costs you points for a distinction nobody drew. Terms that reduce to the same thing once vendor names ("Microsoft", "AWS"), lead-ins ("experience with", "proficiency in") and "5+ years of" are stripped are merged into a single row, at the highest weight any of them carried, and the row says what was merged into it. Matching still tries every wording the posting used, so merging never costs a match.
+
+It is deliberately conservative and merges only exact equivalents. "Kubernetes administration" is left as its own requirement beside "Kubernetes", for the same reason "Azure DevOps" is left beside "Azure": nothing syntactic separates a longer phrasing of one ask from a genuinely narrower one, and dropping a requirement you pasted in is a worse failure than scoring a narrow one twice.
 
 **Diagnostics** read like editor diagnostics rather than a grade, at three severities — `warning`, `suggestion`, `info` — covering missing requirements, weak evidence, near-duplicate bullets, bullet ordering, overused wording, bullets with no measurable impact, unsupported claims, and the limits of the analysis itself. Every diagnostic and every requirement carries a **Why**: the requirement at stake, the bullets cited for it, what evidence is absent, and the reasoning connecting them. There is no recommendation anywhere in the product that does not come with one.
 
 **What the AI is and is not allowed to do.** With no AI configured the report is complete — word matching, the strength rule, and all six deterministic analyzers run, and the report says `source: Deterministic` so you know a paraphrase may have been missed. With AI configured, a reviewer may correct what word matching got wrong, but it **never returns a score**. It may lower a strength freely; it may raise one by at most a single step, only while citing a bullet it was actually given, and never to *strong* on a bullet that does not name the requirement. A bullet it cites by meaning rather than by words is shown as **AI-identified**, with the bullet's real text beside it. The worst a hallucinated match can do is move one requirement half a step — and you can see it and overrule it.
+
+**Matching by meaning, not only by words.** Word matching fails on exactly the requirements that matter most: multi-word phrases and paraphrases. A posting asking for *"technical leadership, mentoring, and team collaboration"* would not match a bullet describing mentoring two interns through 1:1s, pair programming and code reviews, because the phrase never appears.
+
+With an embedding deployment configured, a second pass embeds each requirement and each bullet and compares them directly, so a bullet can be offered as evidence for a requirement it never names. Those citations are labelled **AI-identified (semantic)** and carry their similarity score, and they are **capped at weak** — full credit means the resume states the requirement, and a vector cannot make it say so. The report says on its face when any of them were used.
+
+This needs only `AzureOpenAI:EmbeddingDeployment`, **not** Qdrant: computing a vector does not require somewhere to store it. So it works with Docker off, and it works on `/review`, where the bullets come from an uploaded document and were never saved. See [semantic bullet retrieval](#semantic-bullet-retrieval-rag) for the deployment itself.
+
+**The threshold is measured, and the measurement is not flattering.** A match counts at a cosine similarity of **0.53** or above. Against `text-embedding-3-small` and a real 30-bullet library, requirements from unrelated professions — pediatric nursing, equine dentistry, underwater welding — scored nothing above 0.45 at all. The difficulty is adjacent work the library does *not* contain:
+
+| | |
+|---|---|
+| evidenced by the library | industrial automation 0.551, embedded device integration 0.548, hardware test systems 0.541, task automation 0.523, hardware validation 0.514 |
+| absent from the library | React front-end development 0.519, Microsoft Azure 0.469, machine learning training 0.467 |
+
+Those bands **overlap** — a technology the library had never touched outscored work it genuinely evidences. No threshold separates them, so 0.53 sits above the false-positive band rather than below the true-positive one. That deliberately misses real paraphrases: at this cut, task automation and hardware validation go unmatched. The trade is that a requirement wrongly *counted* inflates the score and tells you your resume says something it does not, while a requirement wrongly *missed* only leaves a row reading "not stated in these words" — which the report already says out loud. One library on one deployment, so treat it as a starting point; `RealAiSmokeTests` re-measures it on yours.
 
 **On the wording.** This measures a document. A low number means your bullets do not yet *say* something, not that you have not *done* it — and the UI says so directly, under the score, every time. The number is deliberately rendered without a red/amber/green treatment for the same reason; colour is spent on the per-requirement rows, where it points at something you can act on.
 
@@ -340,6 +360,22 @@ Versions are scored against their parent bullet's enrichment, since a reworded a
 
 Without AI configured, writing a version tidies the text and tells you what that mode would have done — it does not attempt the rewrite, because a heuristic cannot restructure a bullet into STAR without inventing the parts that are missing.
 
+### Enrichment you can edit
+
+A bullet's **Skills**, **Technologies**, **Tags** and **Job categories** are what evidence coverage reads to decide a requirement is fully evidenced, and what semantic retrieval folds into the bullet's vector. They used to be write-only: AI extracted them on every save, and the only way to fix a wrong one was to re-run the tagger and hope for better phrasing.
+
+They are now editable on `/bullets/edit`, and **what you write outranks what the tagger says**:
+
+- A value you add is marked as yours and is kept every time enrichment runs again.
+- A value you remove stays removed — a removal that does not stick is not a removal.
+- A value the tagger suggested and you simply kept stays a suggestion, so enrichment can still refresh it. Keeping something is not the same as writing it, and treating it as authorship would freeze the bullet.
+
+**Re-enrichment is a proposal, not an overwrite.** *Review AI suggestions* runs the tagger and shows what it would add and what it would drop, without changing anything. Accept all of it, reject all of it, or tick the parts you want. It never offers to remove something you wrote, so "accept all" can't quietly cost you your own work.
+
+Editing enrichment re-indexes the bullet, since skills and technologies are part of what it retrieves for. Editing only a bullet's *employer* no longer re-runs the tagger at all — enrichment describes the wording, and the wording did not change.
+
+`Impact` is not editable: it is extracted figures rather than classification, and the bullet's own text is already the record of what it claims.
+
 ### Occupational benchmark
 
 Alongside evidence coverage — which measures how well your bullets evidence *the posting you pasted in* — **Analyze** also reports how your library compares against the requirements that are typical of the *occupation* as a whole. A posting can omit skills that are near-universal for the role, and that gap is invisible to a posting-only assessment.
@@ -413,6 +449,8 @@ One rough edge worth knowing: the resume stages exchange a JSON array rather tha
 - **AI output is not fact-checked.** Prompts forbid inventing metrics or technologies, and [deep review](#deep-review-critique-and-revise) adds a reviewing agent grounded in your bullet library that is specifically asked to catch unsupported claims — but that is still an AI checking an AI, not verification. Generated content should be reviewed before sending to a real employer.
 - **Heuristic fallbacks are English- and .NET-centric.** The keyword lists behind offline tagging, job analysis, and ranking are tuned for English-language, Microsoft-stack roles; other domains degrade to weaker matches when AI is unavailable.
 - **No pagination or rate limiting.** Bullet and history lists load everything at once, and AI-backed endpoints have no throttling, which is fine for a single local user but not for shared deployment.
+- **Semantic evidence matching is tuned for precision, so it misses real paraphrases.** The similarity bands for work a library evidences and for technologies it has never touched overlap, so the threshold is set to avoid inflating the score rather than to catch everything; the *Evidence coverage* section above gives the measurements. It also reads only the bullet text and its enrichment, and the number was measured on one library against one embedding deployment.
+- **Duplicate requirement merging is exact-equivalents only.** It collapses vendor prefixes, lead-in phrasing and "N+ years of", but not a term into a longer one containing it, so "Kubernetes" and "Kubernetes administration" still score as two requirements.
 - **No backfill/reindex job for semantic retrieval.** Bullets are only embedded going forward from whenever `AzureOpenAI:EmbeddingDeployment` is first configured (via `IBulletService`'s create/update/enrich paths), so bullets created before that point won't surface in semantic search until they're edited or re-enriched. Without an embedding deployment configured at all (Qdrant running or not), generation still keyword-scores the entire bullet library on every request, so cost/latency there still scale with library size.
 
 ## Open Source Software (FOSS) Attribution

@@ -1,0 +1,303 @@
+@using AngryFoot.Contracts
+@using AngryFoot.Web.Models
+
+@*
+    The enrichment on a bullet, and who put it there. The tagger proposes; the author decides. Every
+    control here exists because enrichment used to be write-only: the only way to change a wrong tag
+    was to re-run the tagger and hope for better phrasing (issue #21).
+*@
+
+@if (Enrichment is not null)
+{
+    <div class="mb-2">
+        @foreach (var facet in Facets)
+        {
+            <div class="mb-3">
+                <label class="form-label small text-muted mb-1">@EnrichmentLabels.Facet(facet)</label>
+
+                <div class="d-flex flex-wrap gap-1 mb-1">
+                    @if (ValuesFor(facet).Count == 0)
+                    {
+                        <span class="text-muted small fst-italic">Nothing yet.</span>
+                    }
+                    @foreach (var value in ValuesFor(facet))
+                    {
+                        <span class="badge @EnrichmentLabels.OriginBadge(value.Origin) d-inline-flex align-items-center gap-1"
+                              title="@EnrichmentLabels.OriginTooltip(value.Origin)">
+                            @value.Value
+                            <span class="text-muted">@EnrichmentLabels.OriginMark(value.Origin)</span>
+                            <button type="button"
+                                    class="btn-close btn-close-sm"
+                                    style="font-size: 0.5rem;"
+                                    aria-label="@($"Remove {value.Value}")"
+                                    disabled="@Disabled"
+                                    @onclick="() => RemoveAsync(facet, value.Value)"></button>
+                        </span>
+                    }
+                </div>
+
+                <div class="input-group input-group-sm" style="max-width: 28rem;">
+                    <input class="form-control"
+                           placeholder="@($"Add a {EnrichmentLabels.Singular(facet).ToLowerInvariant()}")"
+                           disabled="@Disabled"
+                           @bind="_drafts[facet]"
+                           @bind:event="oninput"
+                           @onkeydown="@(e => OnKeyDownAsync(e, facet))" />
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            disabled="@(Disabled || string.IsNullOrWhiteSpace(_drafts[facet]))"
+                            @onclick="() => AddAsync(facet)">
+                        Add
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (Enrichment.Suppressed.Count > 0)
+    {
+        <p class="text-muted small mb-2">
+            Removed, and not re-added when the tagger runs again:
+            @string.Join(", ", Enrichment.Suppressed.Select(x => x.Value)).
+        </p>
+    }
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <button type="button" class="btn btn-sm btn-outline-primary" disabled="@Disabled" @onclick="ReviewAsync">
+            Review AI suggestions
+        </button>
+        @if (_proposal is not null)
+        {
+            <button type="button" class="btn btn-sm btn-link text-muted" disabled="@Disabled" @onclick="() => _proposal = null">
+                Close
+            </button>
+        }
+        @if (_error is not null)
+        {
+            <span class="text-danger small">@_error</span>
+        }
+    </div>
+
+    @if (_proposal is not null)
+    {
+        <div class="border rounded p-3 mt-2">
+            @if (!string.Equals(_proposal.ForText, CurrentText, StringComparison.Ordinal))
+            {
+                <p class="text-warning small mb-2">
+                    This proposal describes wording you have since edited. Save the bullet and review again -
+                    metadata drawn from other wording would file it under skills it never mentions.
+                </p>
+            }
+            else if (!_proposal.Facets.Any(HasChanges))
+            {
+                <p class="text-muted small mb-0">The tagger proposes nothing you do not already have.</p>
+            }
+            else
+            {
+                <p class="small text-muted mb-2">
+                    Tick what you want. Nothing changes until you apply it, and anything you wrote yourself is
+                    never offered for removal.
+                </p>
+
+                @foreach (var facet in _proposal.Facets.Where(HasChanges))
+                {
+                    <div class="mb-2">
+                        <div class="small fw-semibold">@EnrichmentLabels.Facet(facet.Facet)</div>
+                        @foreach (var value in facet.Added)
+                        {
+                            <div class="form-check form-check-inline small">
+                                <input class="form-check-input" type="checkbox" disabled="@Disabled"
+                                       checked="@IsChecked(facet.Facet, value, add: true)"
+                                       @onchange="e => Toggle(facet.Facet, value, add: true, (bool)e.Value!)" />
+                                <label class="form-check-label">Add @value</label>
+                            </div>
+                        }
+                        @foreach (var value in facet.Removed)
+                        {
+                            <div class="form-check form-check-inline small">
+                                <input class="form-check-input" type="checkbox" disabled="@Disabled"
+                                       checked="@IsChecked(facet.Facet, value, add: false)"
+                                       @onchange="e => Toggle(facet.Facet, value, add: false, (bool)e.Value!)" />
+                                <label class="form-check-label">Drop @value</label>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-primary" disabled="@Disabled" @onclick="ApplySelectedAsync">
+                        Apply selected
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Disabled" @onclick="AcceptAllAsync">
+                        Accept all
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@Disabled" @onclick="() => _proposal = null">
+                        Reject all
+                    </button>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter]
+    public BulletEnrichmentDto? Enrichment { get; set; }
+
+    /// <summary>
+    /// The wording currently in the editor. Compared against a proposal's <c>ForText</c>, because a
+    /// proposal describes the text it was derived from and applying it to other wording is the exact
+    /// failure the API's own staleness guard exists to prevent.
+    /// </summary>
+    [Parameter]
+    public string CurrentText { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>Asks the host to persist the whole chosen set; it owns the bullet and the API call.</summary>
+    [Parameter]
+    public EventCallback<SetBulletEnrichmentRequest> EnrichmentChanged { get; set; }
+
+    /// <summary>Asks the host for a fresh proposal. Null when the bullet is not saved yet.</summary>
+    [Parameter]
+    public Func<Task<BulletEnrichmentProposalDto?>>? RequestProposal { get; set; }
+
+    private static readonly EnrichmentFacetDto[] Facets =
+        [EnrichmentFacetDto.Skills, EnrichmentFacetDto.Technologies, EnrichmentFacetDto.Tags, EnrichmentFacetDto.JobCategories];
+
+    private readonly Dictionary<EnrichmentFacetDto, string> _drafts = Facets.ToDictionary(x => x, _ => string.Empty);
+    private readonly HashSet<(EnrichmentFacetDto Facet, string Value, bool Add)> _selected = [];
+
+    private BulletEnrichmentProposalDto? _proposal;
+    private string? _error;
+
+    private IReadOnlyList<EnrichmentValueDto> ValuesFor(EnrichmentFacetDto facet) => facet switch
+    {
+        EnrichmentFacetDto.Skills => Enrichment!.Skills,
+        EnrichmentFacetDto.Technologies => Enrichment!.Technologies,
+        EnrichmentFacetDto.Tags => Enrichment!.Tags,
+        _ => Enrichment!.JobCategories
+    };
+
+    private static bool HasChanges(EnrichmentFacetProposalDto facet) => facet.Added.Count > 0 || facet.Removed.Count > 0;
+
+    private bool IsChecked(EnrichmentFacetDto facet, string value, bool add) => _selected.Contains((facet, value, add));
+
+    private void Toggle(EnrichmentFacetDto facet, string value, bool add, bool selected)
+    {
+        if (selected)
+        {
+            _selected.Add((facet, value, add));
+        }
+        else
+        {
+            _selected.Remove((facet, value, add));
+        }
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e, EnrichmentFacetDto facet)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddAsync(facet);
+        }
+    }
+
+    private async Task AddAsync(EnrichmentFacetDto facet)
+    {
+        var value = _drafts[facet].Trim();
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        _drafts[facet] = string.Empty;
+        await SaveAsync(Current().With(facet, [.. Current().For(facet), value]));
+    }
+
+    private Task RemoveAsync(EnrichmentFacetDto facet, string value)
+    {
+        var kept = Current().For(facet).Where(x => !string.Equals(x, value, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return SaveAsync(Current().With(facet, kept));
+    }
+
+    private async Task ReviewAsync()
+    {
+        if (RequestProposal is null)
+        {
+            return;
+        }
+
+        _error = null;
+        _selected.Clear();
+
+        try
+        {
+            _proposal = await RequestProposal();
+        }
+        catch (Exception)
+        {
+            _error = "Could not reach the tagger. Your enrichment is unchanged.";
+        }
+    }
+
+    private Task AcceptAllAsync()
+    {
+        if (_proposal is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var chosen = Current();
+        foreach (var facet in _proposal.Facets)
+        {
+            var model = facet.Facet;
+            var values = chosen.For(model)
+                .Where(x => !facet.Removed.Contains(x, StringComparer.OrdinalIgnoreCase))
+                .Concat(facet.Added)
+                .ToArray();
+            chosen = chosen.With(model, values);
+        }
+
+        return SaveAsync(chosen);
+    }
+
+    private Task ApplySelectedAsync()
+    {
+        if (_proposal is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var chosen = Current();
+        foreach (var facet in _proposal.Facets)
+        {
+            var model = facet.Facet;
+            var added = facet.Added.Where(x => IsChecked(model, x, add: true)).ToArray();
+            var dropped = facet.Removed.Where(x => IsChecked(model, x, add: false)).ToArray();
+
+            var values = chosen.For(model)
+                .Where(x => !dropped.Contains(x, StringComparer.OrdinalIgnoreCase))
+                .Concat(added)
+                .ToArray();
+            chosen = chosen.With(model, values);
+        }
+
+        return SaveAsync(chosen);
+    }
+
+    private async Task SaveAsync(SetBulletEnrichmentRequest request)
+    {
+        _proposal = null;
+        _selected.Clear();
+        await EnrichmentChanged.InvokeAsync(request);
+    }
+
+    private SetBulletEnrichmentRequest Current()
+        => new(
+            [.. Enrichment!.Tags.Select(x => x.Value)],
+            [.. Enrichment.Skills.Select(x => x.Value)],
+            [.. Enrichment.Technologies.Select(x => x.Value)],
+            [.. Enrichment.JobCategories.Select(x => x.Value)]);
+}

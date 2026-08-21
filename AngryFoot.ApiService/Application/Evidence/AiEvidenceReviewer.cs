@@ -18,12 +18,17 @@ internal interface IEvidenceReviewer
     /// Reviews the deterministic evidence against the posting. Null when the reviewer produced
     /// nothing usable, in which case the caller keeps the report it already has.
     /// </summary>
+    /// <param name="semantic">
+    /// The same embedding matches the baseline was built from, so a bullet the embeddings already
+    /// accepted is cited as such rather than being relabelled as the reviewer's own reading.
+    /// </param>
     Task<EvidenceReview?> ReviewAsync(
         string jobDescription,
         JobAnalysisDto analysis,
         IReadOnlyList<RequirementEvidence> baseline,
         IReadOnlyList<Bullet> bullets,
         string? professionalSummary,
+        SemanticEvidenceIndex? semantic,
         CancellationToken cancellationToken);
 }
 
@@ -68,6 +73,7 @@ internal sealed class AiEvidenceReviewer(
         IReadOnlyList<RequirementEvidence> baseline,
         IReadOnlyList<Bullet> bullets,
         string? professionalSummary,
+        SemanticEvidenceIndex? semantic,
         CancellationToken cancellationToken)
     {
         var pool = bullets.Take(MaxBulletsSentToAi).ToDictionary(bullet => bullet.Id);
@@ -82,7 +88,7 @@ internal sealed class AiEvidenceReviewer(
 
             if (response.Value is { } payload)
             {
-                if (Apply(payload, baseline, pool) is { } review)
+                if (Apply(payload, baseline, pool, semantic) is { } review)
                 {
                     return review;
                 }
@@ -159,9 +165,10 @@ internal sealed class AiEvidenceReviewer(
     private EvidenceReview? Apply(
         CoverageReviewPayload payload,
         IReadOnlyList<RequirementEvidence> baseline,
-        IReadOnlyDictionary<Guid, Bullet> pool)
+        IReadOnlyDictionary<Guid, Bullet> pool,
+        SemanticEvidenceIndex? semantic)
     {
-        var adjustmentsByTerm = ReadAdjustments(payload.Requirements, baseline, pool);
+        var adjustmentsByTerm = ReadAdjustments(payload.Requirements, baseline, pool, semantic);
         var diagnostics = ReadUnsupportedClaims(payload.UnsupportedClaims, pool);
         var summary = string.IsNullOrWhiteSpace(payload.Summary) ? null : payload.Summary.Trim();
 
@@ -180,7 +187,8 @@ internal sealed class AiEvidenceReviewer(
     private Dictionary<string, RequirementEvidence> ReadAdjustments(
         IReadOnlyList<CoverageReviewItem>? items,
         IReadOnlyList<RequirementEvidence> baseline,
-        IReadOnlyDictionary<Guid, Bullet> pool)
+        IReadOnlyDictionary<Guid, Bullet> pool,
+        SemanticEvidenceIndex? semantic)
     {
         var adjustments = new Dictionary<string, RequirementEvidence>(StringComparer.OrdinalIgnoreCase);
         if (items is null)
@@ -207,7 +215,7 @@ internal sealed class AiEvidenceReviewer(
                 continue;
             }
 
-            var offered = ReadCitations(item.BulletIds, current.Requirement, pool);
+            var offered = ReadCitations(item.BulletIds, current.Requirement, pool, semantic);
             var citations = MergeCitations(current, offered);
             var strength = Constrain(proposed, current.Strength, offered);
 
@@ -217,7 +225,7 @@ internal sealed class AiEvidenceReviewer(
             }
 
             var reasoning = string.IsNullOrWhiteSpace(item.Reasoning)
-                ? EvidenceNarrative.Reasoning(current.Requirement, strength, citations.Count)
+                ? EvidenceNarrative.Reasoning(current.Requirement, strength, citations)
                 : item.Reasoning.Trim();
 
             adjustments[current.Requirement.Term] = current with
@@ -262,7 +270,7 @@ internal sealed class AiEvidenceReviewer(
 
         // Full credit means the resume states the requirement. A reviewer reading a bullet as
         // merely related may say so - the citation is kept and labelled - but it does not pay out.
-        return oneStepUp == EvidenceStrengthDto.Strong && !offered.Any(citation => citation.IsExactTermMatch)
+        return oneStepUp == EvidenceStrengthDto.Strong && !offered.Any(citation => citation.MatchKind == EvidenceMatchKindDto.ExactTerm)
             ? EvidenceStrengthDto.Weak
             : oneStepUp;
     }
@@ -270,7 +278,8 @@ internal sealed class AiEvidenceReviewer(
     private IReadOnlyList<EvidenceCitation> ReadCitations(
         IReadOnlyList<Guid>? bulletIds,
         Requirement requirement,
-        IReadOnlyDictionary<Guid, Bullet> pool)
+        IReadOnlyDictionary<Guid, Bullet> pool,
+        SemanticEvidenceIndex? semantic)
     {
         if (bulletIds is null)
         {
@@ -295,14 +304,15 @@ internal sealed class AiEvidenceReviewer(
                 continue;
             }
 
-            // A bullet the deterministic rule already accepts keeps its own explanation; anything
-            // else is the reviewer reading meaning into text that does not name the requirement,
-            // and is labelled as such all the way to the screen.
-            citations.Add(EvidenceStrengthRule.Cite(bullet, requirement)
+            // A bullet the deterministic rule or an embedding already accepts keeps its own
+            // explanation; anything else is the reviewer reading meaning into text that does not name
+            // the requirement, and is labelled as such all the way to the screen.
+            citations.Add(EvidenceStrengthRule.Cite(bullet, requirement, semantic?.For(requirement.Term, bulletId))
                 ?? new EvidenceCitation(
                     bullet,
                     requirement.Term,
-                    IsExactTermMatch: false,
+                    EvidenceMatchKindDto.AiIdentified,
+                    Confidence: null,
                     EvidenceStrengthDto.Weak,
                     $"The reviewer read this bullet as related to {requirement.Term}, though the bullet does not name it."));
         }

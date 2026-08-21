@@ -91,6 +91,22 @@ public static class BulletEndpoints
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
+        bullets.MapPost("/{id:guid}/enrich/preview", async (Guid id, IBulletService bulletService, CancellationToken cancellationToken) =>
+        {
+            var result = await bulletService.ProposeEnrichmentAsync(id, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
+        bullets.MapPut("/{id:guid}/enrichment", async (
+            Guid id,
+            SetBulletEnrichmentRequest request,
+            IBulletService bulletService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await bulletService.SetEnrichmentAsync(id, request, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         bullets.MapPost("/{id:guid}/index", async (Guid id, IBulletService bulletService, CancellationToken cancellationToken) =>
         {
             var result = await bulletService.IndexAsync(id, cancellationToken);

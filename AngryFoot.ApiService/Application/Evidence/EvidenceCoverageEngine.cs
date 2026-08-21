@@ -6,6 +6,11 @@ namespace AngryFoot.ApiService.Application.Evidence;
 /// Links each requirement to the bullets that evidence it. Pure: no database, no AI, no clock.
 /// This is the whole report when no AI is configured, and the floor an AI review is allowed to
 /// adjust rather than replace.
+/// <para>
+/// Embedding-backed matches arrive precomputed in a <see cref="SemanticEvidenceIndex"/> rather than
+/// being fetched here. Keeping this synchronous is not a preference: it is called once per candidate
+/// bullet from <c>GenerationExplanationService</c>, where awaiting would mean a round trip each time.
+/// </para>
 /// </summary>
 internal static class EvidenceCoverageEngine
 {
@@ -17,15 +22,19 @@ internal static class EvidenceCoverageEngine
 
     public static IReadOnlyList<RequirementEvidence> Evaluate(
         IReadOnlyList<Requirement> requirements,
-        IReadOnlyList<Bullet> bullets)
+        IReadOnlyList<Bullet> bullets,
+        SemanticEvidenceIndex? semantic = null)
     {
-        return requirements.Select(requirement => Evaluate(requirement, bullets)).ToArray();
+        return requirements.Select(requirement => Evaluate(requirement, bullets, semantic)).ToArray();
     }
 
-    private static RequirementEvidence Evaluate(Requirement requirement, IReadOnlyList<Bullet> bullets)
+    private static RequirementEvidence Evaluate(
+        Requirement requirement,
+        IReadOnlyList<Bullet> bullets,
+        SemanticEvidenceIndex? semantic)
     {
         var citations = bullets
-            .Select(bullet => EvidenceStrengthRule.Cite(bullet, requirement))
+            .Select(bullet => EvidenceStrengthRule.Cite(bullet, requirement, semantic?.For(requirement.Term, bullet.Id)))
             .OfType<EvidenceCitation>()
             .OrderByDescending(citation => citation.Strength)
             .Take(MaxCitationsPerRequirement)
@@ -37,6 +46,6 @@ internal static class EvidenceCoverageEngine
             requirement,
             strength,
             citations,
-            EvidenceNarrative.Reasoning(requirement, strength, citations.Length));
+            EvidenceNarrative.Reasoning(requirement, strength, citations));
     }
 }

@@ -19,18 +19,25 @@ public interface IEvidenceCoverageAnalyzer
 
     /// <summary>
     /// How much of a posting one generated resume evidences, over the bullets it used in the order
-    /// it prints them. Deterministic: a generation already chains several AI calls, and this is
+    /// it prints them. No AI review: a generation already chains several AI calls, and this is
     /// reporting on a decision that has already been made rather than making one.
     /// </summary>
+    /// <param name="semantic">
+    /// Embedding matches computed by the caller. The generation path passes the same index it gives
+    /// the build-log explanation, so the two can never disagree about which requirements the resume
+    /// leaves unevidenced. Null asks this to compute its own.
+    /// </param>
     Task<EvidenceCoverageReportDto> DescribeResumeAsync(
         JobAnalysisDto analysis,
         IReadOnlyList<Bullet> orderedBullets,
+        SemanticEvidenceIndex? semantic,
         CancellationToken cancellationToken);
 }
 
 internal sealed class EvidenceCoverageService(
     AngryFootDbContext dbContext,
     IEvidenceReviewer reviewer,
+    ISemanticEvidenceMatcher semanticMatcher,
     IEnumerable<IEvidenceDiagnosticAnalyzer> diagnosticAnalyzers,
     ILogger<EvidenceCoverageService> logger) : IEvidenceCoverageAnalyzer
 {
@@ -41,7 +48,8 @@ internal sealed class EvidenceCoverageService(
     {
         var bullets = await dbContext.Bullets.AsNoTracking().ToListAsync(cancellationToken);
         var requirements = RequirementSet.From(analysis);
-        var baseline = EvidenceCoverageEngine.Evaluate(requirements, bullets);
+        var semantic = await semanticMatcher.MatchAsync(requirements, bullets, cancellationToken);
+        var baseline = EvidenceCoverageEngine.Evaluate(requirements, bullets, semantic);
 
         var review = bullets.Count > 0 && requirements.Count > 0
             ? await reviewer.ReviewAsync(
@@ -50,13 +58,14 @@ internal sealed class EvidenceCoverageService(
                 baseline,
                 bullets,
                 await LoadProfessionalSummaryAsync(cancellationToken),
+                semantic,
                 cancellationToken)
             : null;
 
         var extraDiagnostics = review?.Diagnostics ?? [];
         if (review is null && bullets.Count > 0)
         {
-            extraDiagnostics = [.. extraDiagnostics, DescribeMissingReview()];
+            extraDiagnostics = [.. extraDiagnostics, DescribeMissingReview(semantic)];
         }
 
         return await BuildAsync(
@@ -65,24 +74,26 @@ internal sealed class EvidenceCoverageService(
             DiagnosticScope.Library(bullets),
             review is null ? CoverageSourceDto.Deterministic : CoverageSourceDto.AiReviewed,
             review?.Summary,
-            extraDiagnostics,
+            WithSemanticNote(semantic, extraDiagnostics),
             cancellationToken);
     }
 
-    public Task<EvidenceCoverageReportDto> DescribeResumeAsync(
+    public async Task<EvidenceCoverageReportDto> DescribeResumeAsync(
         JobAnalysisDto analysis,
         IReadOnlyList<Bullet> orderedBullets,
+        SemanticEvidenceIndex? semantic,
         CancellationToken cancellationToken)
     {
         var requirements = RequirementSet.From(analysis);
+        semantic ??= await semanticMatcher.MatchAsync(requirements, orderedBullets, cancellationToken);
 
-        return BuildAsync(
+        return await BuildAsync(
             analysis,
-            EvidenceCoverageEngine.Evaluate(requirements, orderedBullets),
+            EvidenceCoverageEngine.Evaluate(requirements, orderedBullets, semantic),
             DiagnosticScope.Resume(orderedBullets),
             CoverageSourceDto.Deterministic,
             aiSummary: null,
-            extraDiagnostics: [],
+            extraDiagnostics: WithSemanticNote(semantic, []),
             cancellationToken);
     }
 
@@ -162,19 +173,62 @@ internal sealed class EvidenceCoverageService(
         return profile?.ProfessionalSummary;
     }
 
-    private static CoverageDiagnosticDto DescribeMissingReview()
+    /// <summary>
+    /// What this report could not do. The wording turns on whether embeddings ran, because "word
+    /// matching alone" stops being true once a paraphrase can be counted - and a stated limitation
+    /// that overstates itself misleads exactly as much as one that understates itself.
+    /// </summary>
+    private static CoverageDiagnosticDto DescribeMissingReview(SemanticEvidenceIndex? semantic)
     {
+        var matchedByMeaning = semantic is { IsEmpty: false };
+
         return new CoverageDiagnosticDto(
             DiagnosticSeverityDto.Info,
             CoverageDiagnosticCodes.AnalysisLimitation,
-            "This report was produced by word matching alone, without an AI review.",
+            matchedByMeaning
+                ? "This report was produced by word matching and embeddings, without an AI review."
+                : "This report was produced by word matching alone, without an AI review.",
             new EvidenceRationaleDto(
                 Requirement: null,
                 SupportingEvidence: [],
                 MissingEvidence: [],
-                Reasoning: "Word matching cannot tell that a bullet about \"container orchestration\" evidences a requirement "
-                    + "for Kubernetes, so a requirement marked missing here may be evidenced in words the matcher did not "
-                    + "recognise. Read the missing list as \"not stated in these words\" rather than as \"not done\"."),
+                Reasoning: matchedByMeaning
+                    ? "Embeddings catch a bullet about \"container orchestration\" evidencing a requirement for Kubernetes, "
+                        + "but only where the two read as close. A requirement marked missing here may still be evidenced in "
+                        + "words neither pass recognised, so read the missing list as \"not stated in these words\" rather "
+                        + "than as \"not done\"."
+                    : "Word matching cannot tell that a bullet about \"container orchestration\" evidences a requirement "
+                        + "for Kubernetes, so a requirement marked missing here may be evidenced in words the matcher did not "
+                        + "recognise. Read the missing list as \"not stated in these words\" rather than as \"not done\"."),
             BulletIds: []);
+    }
+
+    /// <summary>
+    /// Says on the report itself that some evidence was found by meaning rather than by wording. The
+    /// point of the feature is that a reader can tell the two apart, which needs saying once at the
+    /// top as well as per citation.
+    /// </summary>
+    private static IReadOnlyList<CoverageDiagnosticDto> WithSemanticNote(
+        SemanticEvidenceIndex? semantic,
+        IReadOnlyList<CoverageDiagnosticDto> existing)
+    {
+        if (semantic is null or { IsEmpty: true })
+        {
+            return existing;
+        }
+
+        return [.. existing, new CoverageDiagnosticDto(
+            DiagnosticSeverityDto.Info,
+            CoverageDiagnosticCodes.SemanticMatching,
+            "Some requirements were matched to bullets by meaning rather than by wording.",
+            new EvidenceRationaleDto(
+                Requirement: null,
+                SupportingEvidence: [],
+                MissingEvidence: [],
+                Reasoning: "Where a bullet does not use a requirement's words, the two were compared by embedding and "
+                    + $"counted when they scored at least {SemanticEvidenceMatcher.MinimumConfidence:0.00} out of 1. Those "
+                    + "citations carry their score and can never count as full evidence, because full evidence means the "
+                    + "resume states the requirement."),
+            BulletIds: [])];
     }
 }
