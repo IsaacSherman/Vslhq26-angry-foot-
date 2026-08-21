@@ -144,19 +144,30 @@ public sealed class BulletService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        var reusable = TaggingFor(request.Tagging, bullet.BulletText);
+        var enrichmentChanged = textChanged || reusable is not null;
+
         if (textChanged)
         {
             // The judgement that these two bullets were distinct was about the old wording.
             await ForgetIgnoredDuplicatesAsync(id, cancellationToken);
 
-            // Enrichment describes the wording, so only changed wording is worth an AI call - and
-            // re-tagging an unchanged bullet would spend one only to churn what is already there.
             await ApplyOrReuseTaggingAsync(bullet, request.Tagging, cancellationToken);
+        }
+        else if (reusable is not null)
+        {
+            // Unchanged wording does not earn a fresh tagger call, but tagging the caller already
+            // paid for costs nothing to apply - and dropping it is how Reassess-then-Save silently
+            // throws away the AI call the user just watched run.
+            ApplyEnrichment(bullet, reusable);
+        }
+
+        if (enrichmentChanged)
+        {
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        var isIndexed = await vectorStore.UpsertAsync(bullet, cancellationToken);
 
-        return bullet.ToDto(isIndexed);
+        return bullet.ToDto(await ReindexAsync(bullet, enrichmentChanged, cancellationToken));
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
@@ -206,7 +217,22 @@ public sealed class BulletService(
             return null;
         }
 
-        var suggested = await bulletTagger.TagAsync(bullet.BulletText, cancellationToken);
+        // The same outer bound the saving path gets. A proposal cannot degrade to "the tagger said
+        // nothing" the way enrichment can: an empty suggestion set reads as "drop everything you
+        // have", so a tagger that cannot answer must produce no proposal rather than a dangerous one.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TaggingTimeout);
+
+        BulletTagging suggested;
+        try
+        {
+            suggested = await bulletTagger.TagAsync(bullet.BulletText, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Enrichment proposal for bullet {BulletId} timed out after {Timeout}.", id, TaggingTimeout);
+            throw new TimeoutException("The tagger did not answer in time, so there is no proposal to show.");
+        }
 
         return new BulletEnrichmentProposalDto(
             bullet.BulletText,
@@ -416,13 +442,45 @@ public sealed class BulletService(
         BulletTaggingDto? tagging,
         CancellationToken cancellationToken)
     {
-        if (tagging is null || !string.Equals(tagging.ForText.Trim(), bullet.BulletText, StringComparison.Ordinal))
+        if (TaggingFor(tagging, bullet.BulletText) is { } reusable)
         {
-            await TryApplyTaggingAsync(bullet, cancellationToken);
+            ApplyEnrichment(bullet, reusable);
             return;
         }
 
-        ApplyEnrichment(bullet, tagging.ToTagging());
+        await TryApplyTaggingAsync(bullet, cancellationToken);
+    }
+
+    /// <summary>
+    /// The caller's tagging when it describes <paramref name="text"/>, otherwise null. The text has
+    /// to match because tagging that describes different wording is worse than none: it would file
+    /// the bullet under skills it never mentions.
+    /// </summary>
+    private static BulletTagging? TaggingFor(BulletTaggingDto? tagging, string text)
+    {
+        return tagging is not null && string.Equals(tagging.ForText.Trim(), text, StringComparison.Ordinal)
+            ? tagging.ToTagging()
+            : null;
+    }
+
+    /// <summary>
+    /// Re-embeds a bullet only when something it is embedded from actually moved.
+    /// <para>
+    /// <see cref="BulletEmbeddingText"/> reads the text, skills, technologies and categories - not
+    /// the employer - so renaming an employer would otherwise buy an embedding call and a vector
+    /// write to store a byte-identical point. When nothing moved, the index is asked what it already
+    /// holds instead, which costs a lookup and no embedding.
+    /// </para>
+    /// </summary>
+    private async Task<bool> ReindexAsync(Bullet bullet, bool embeddedTextChanged, CancellationToken cancellationToken)
+    {
+        if (embeddedTextChanged)
+        {
+            return await vectorStore.UpsertAsync(bullet, cancellationToken);
+        }
+
+        var indexed = await vectorStore.GetIndexedIdsAsync([bullet.Id], cancellationToken);
+        return indexed.Contains(bullet.Id);
     }
 
     private async Task TryApplyTaggingAsync(Bullet bullet, CancellationToken cancellationToken)

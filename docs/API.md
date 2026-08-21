@@ -64,7 +64,13 @@ enrichment again; see that endpoint.
 Returns `201 Created` with `BulletDto` and `Location: /api/bullets/{id}`.
 
 ### PUT `/api/bullets/{id}`
-Updates bullet text and re-enriches metadata. Returns `200` with `BulletDto` or `404`.
+Updates bullet text and employer. Returns `200` with `BulletDto` or `404`.
+
+Enrichment describes the wording, so the tagger runs only when the text actually changed — editing
+just the employer leaves enrichment alone and costs no AI call. A `tagging` from a prior
+`/api/bullets/assess` of the same text is applied either way, since the caller already paid for it.
+The bullet is re-embedded only when something it is embedded from moved (its text, skills,
+technologies or categories), never for an employer-only edit.
 
 ### DELETE `/api/bullets/{id}`
 Deletes bullet. Returns `204` or `404`.
@@ -75,7 +81,9 @@ answer is merged as `(suggested + authored) - removed`, so values the author add
 they removed are not reinstated. Returns `200` with `BulletDto` or `404`.
 
 ### POST `/api/bullets/{id}/enrich/preview`
-Runs the tagger and returns what it *would* change, saving nothing. Costs an AI call.
+Runs the tagger and returns what it *would* change, saving nothing. Costs an AI call, bounded at 30
+seconds; a tagger that does not answer in time fails the request rather than returning an empty
+proposal, because an empty suggestion set reads as "drop every tag you have".
 
 Returns `200` with `BulletEnrichmentProposalDto` or `404`:
 

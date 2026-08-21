@@ -62,7 +62,7 @@
                 is one of these, so correcting them here is often worth more than rewording the bullet.
             </p>
             <BulletEnrichmentPanel Enrichment="@enrichment"
-                                   CurrentText="@(savedText ?? string.Empty)"
+                                   CurrentText="@bulletText"
                                    Disabled="@(isSaving || isEnriching)"
                                    RequestProposal="@RequestEnrichmentProposalAsync"
                                    EnrichmentChanged="OnEnrichmentChangedAsync" />
@@ -204,12 +204,6 @@
 
     private BulletEnrichmentDto? enrichment;
 
-    /// <summary>
-    /// The wording the server currently holds. Enrichment is saved against that, not against
-    /// unsaved edits in the box, so a proposal describing one and applied to the other is impossible.
-    /// </summary>
-    private string? savedText;
-
     private bool isEnriching;
 
     private bool isQualityStale => quality is not null && !string.Equals(scoredText, bulletText, StringComparison.Ordinal);
@@ -350,7 +344,6 @@
             scoredText = null;
             assessedTagging = null;
             enrichment = null;
-            savedText = null;
             return;
         }
 
@@ -370,7 +363,6 @@
     private void ApplyEnrichment(BulletDto bullet)
     {
         enrichment = bullet.Enrichment;
-        savedText = bullet.BulletText;
     }
 
     private async Task<BulletEnrichmentProposalDto?> RequestEnrichmentProposalAsync()

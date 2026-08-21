@@ -161,6 +161,141 @@ public class BulletEnrichmentTests : IDisposable
         }
     }
 
+    public class ReusingTaggingTheCallerPaidFor : BulletEnrichmentTests
+    {
+        private static BulletTaggingDto TaggingFor(string text)
+            => new(text, ["Reassessed"], ["Reassessed Skill"], ["Reassessed Tech"], ["Reassessed Category"], ["40%"]);
+
+        [Fact]
+        public async Task ReassessingWithoutChangingTheWordingStillUpdatesEnrichment()
+        {
+            // Reassess buys a tagger call up front and hands the result to Save. Dropping it because
+            // the wording did not change throws away an AI call the user watched run, and leaves the
+            // enrichment they were just shown unsaved.
+            var bullet = await CreateBulletAsync();
+
+            var updated = await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, Tagging: TaggingFor(bullet.BulletText)),
+                TestContext.Current.CancellationToken);
+
+            updated!.Skills.Should().Contain("Reassessed Skill");
+            updated.Technologies.Should().Contain("Reassessed Tech");
+        }
+
+        [Fact]
+        public async Task ReusingTaggingCostsNoTaggerCall()
+        {
+            var bullet = await CreateBulletAsync();
+            _tagger.Invocations.Clear();
+
+            await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, Tagging: TaggingFor(bullet.BulletText)),
+                TestContext.Current.CancellationToken);
+
+            _tagger.Verify(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never,
+                "the caller already paid for this answer");
+        }
+
+        [Fact]
+        public async Task TaggingThatDescribesOtherWordingIsIgnored()
+        {
+            var bullet = await CreateBulletAsync();
+            _tagger.Invocations.Clear();
+
+            var updated = await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, Tagging: TaggingFor("some entirely different bullet")),
+                TestContext.Current.CancellationToken);
+
+            updated!.Skills.Should().NotContain("Reassessed Skill",
+                "metadata drawn from other wording would file the bullet under skills it never mentions");
+            _tagger.Verify(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ReusedTaggingStillKeepsWhatTheAuthorWrote()
+        {
+            var bullet = await CreateBulletAsync();
+            await CreateSut().SetEnrichmentAsync(
+                bullet.Id,
+                Enrichment(skills: ["Code Review", "Technical Leadership"]),
+                TestContext.Current.CancellationToken);
+
+            var updated = await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, Tagging: TaggingFor(bullet.BulletText)),
+                TestContext.Current.CancellationToken);
+
+            updated!.Skills.Should().Contain("Technical Leadership");
+            updated.Skills.Should().Contain("Reassessed Skill");
+        }
+    }
+
+    public class ReindexingOnlyWhatChanged : BulletEnrichmentTests
+    {
+        [Fact]
+        public async Task ChangingOnlyTheEmployerDoesNotReEmbedTheBullet()
+        {
+            var bullet = await CreateBulletAsync();
+            _vectorStore.Upserted.Clear();
+
+            await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, SourceEmployer: "Marmot Signal Works"),
+                TestContext.Current.CancellationToken);
+
+            _vectorStore.Upserted.Should().BeEmpty(
+                "the employer is not part of what a bullet is embedded from, so the vector cannot have moved");
+        }
+
+        [Fact]
+        public async Task ChangingOnlyTheEmployerStillReportsWhetherTheBulletIsIndexed()
+        {
+            var bullet = await CreateBulletAsync();
+            _vectorStore.Upserted.Clear();
+
+            var updated = await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(bullet.BulletText, SourceEmployer: "Marmot Signal Works"),
+                TestContext.Current.CancellationToken);
+
+            updated!.IsIndexed.Should().BeTrue("skipping the write must not make an indexed bullet look unindexed");
+        }
+
+        [Fact]
+        public async Task ChangingTheTextReEmbedsTheBullet()
+        {
+            var bullet = await CreateBulletAsync();
+            _vectorStore.Upserted.Clear();
+
+            await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest("Something else entirely."),
+                TestContext.Current.CancellationToken);
+
+            _vectorStore.Upserted.Should().ContainSingle();
+        }
+
+        [Fact]
+        public async Task ReusedTaggingReEmbedsTheBulletBecauseItsSkillsMoved()
+        {
+            var bullet = await CreateBulletAsync();
+            _vectorStore.Upserted.Clear();
+
+            await CreateSut().UpdateAsync(
+                bullet.Id,
+                new UpdateBulletRequest(
+                    bullet.BulletText,
+                    Tagging: new BulletTaggingDto(bullet.BulletText, [], ["Reassessed Skill"], [], [], [])),
+                TestContext.Current.CancellationToken);
+
+            _vectorStore.Upserted.Should().ContainSingle(
+                "skills are part of the embedding text even when the wording is not");
+        }
+    }
+
     public class Proposals : BulletEnrichmentTests
     {
         [Fact]
@@ -205,6 +340,36 @@ public class BulletEnrichmentTests : IDisposable
 
             proposal!.Facets.Single(x => x.Facet == EnrichmentFacetDto.Skills)
                 .Unchanged.Should().Contain("Code Review");
+        }
+
+        [Fact]
+        public async Task WhenTheTaggerCannotAnswerThereIsNoProposalRatherThanAnEmptyOne()
+        {
+            // An empty suggestion set is not "nothing to change" - Compare reads it as "drop every
+            // tag you have". A tagger that cannot answer must produce no proposal at all.
+            var bullet = await CreateBulletAsync();
+            _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new OperationCanceledException());
+
+            var act = () => CreateSut().ProposeEnrichmentAsync(bullet.Id, TestContext.Current.CancellationToken);
+
+            await act.Should().ThrowAsync<TimeoutException>();
+        }
+
+        [Fact]
+        public async Task ACallerCancellingIsNotReportedAsATimeout()
+        {
+            var bullet = await CreateBulletAsync();
+            using var cts = new CancellationTokenSource();
+            await cts.CancelAsync();
+            _tagger.Setup(x => x.TagAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new OperationCanceledException());
+
+            var act = () => CreateSut().ProposeEnrichmentAsync(bullet.Id, cts.Token);
+
+            // The two are unrelated types, so this cannot be reported as a timeout - the caller
+            // walking away is not the tagger failing, and the guard keeps them apart.
+            await act.Should().ThrowAsync<OperationCanceledException>();
         }
 
         [Fact]
